@@ -1,12 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 
-// `useEffect` is not invoked during server rendering, meaning
-// we can use this to determine if we're on the server or not.
+const emptySubscribe = () => () => {};
+
+// `useSyncExternalStore` with a server-specific snapshot is the recommended way
+// to handle hydration-safe client-only values in React 18+.
 export function useClientOnlyValue<S, C>(server: S, client: C): S | C {
-  const [value, setValue] = useState<S | C>(server);
-  useEffect(() => {
-    setValue(client);
-  }, [client]);
+  const isClient = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false,
+  );
 
-  return value;
+  return isClient ? client : server;
 }
