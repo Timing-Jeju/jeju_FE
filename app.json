@@ -8,9 +8,11 @@
     "scheme": "tourist",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yonghyeog.tourist"
     },
     "android": {
+      "package": "com.yonghyeog.tourist",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -32,6 +34,33 @@
           "image": "./assets/images/splash-icon.png",
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
+        }
+      ],
+      [
+        "@mj-studio/react-native-naver-map",
+        {
+          "client_id": "YOUR_NCP_MAPS_CLIENT_ID",
+          "android": {
+            "ACCESS_FINE_LOCATION": true,
+            "ACCESS_COARSE_LOCATION": true
+          },
+          "ios": {
+            "NSLocationWhenInUseUsageDescription": "현재 위치에서 목적지까지 경로를 안내하기 위해 위치 정보가 필요합니다."
+          }
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "현재 위치에서 목적지까지 경로를 안내하기 위해 위치 정보가 필요합니다."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "extraMavenRepos": ["https://repository.map.naver.com/archive/maven"]
+          }
         }
       ]
     ],

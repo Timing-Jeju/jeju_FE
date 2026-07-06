@@ -2,17 +2,14 @@ import { SymbolView } from 'expo-symbols';
 import { Link, Tabs } from 'expo-router';
 import { Pressable } from 'react-native';
 
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
+import colors from '@/constants/Colors';
 import { useClientOnlyValue } from '@/components/useClientOnlyValue';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme].tint,
+        tabBarActiveTintColor: colors.primary,
         // Disable the static render of the header on web
         // to prevent a hydration error in React Navigation v6.
         headerShown: useClientOnlyValue(false, true),
@@ -21,14 +18,11 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Tab One',
+          title: '지도',
+          headerShown: false,
           tabBarIcon: ({ color }) => (
             <SymbolView
-              name={{
-                ios: 'chevron.left.forwardslash.chevron.right',
-                android: 'code',
-                web: 'code',
-              }}
+              name={{ ios: 'map', android: 'map', web: 'map' }}
               tintColor={color}
               size={28}
             />
@@ -40,7 +34,7 @@ export default function TabLayout() {
                   <SymbolView
                     name={{ ios: 'info.circle', android: 'info', web: 'info' }}
                     size={25}
-                    tintColor={Colors[colorScheme].text}
+                    tintColor={colors.grey[900]}
                     style={{ opacity: pressed ? 0.5 : 1 }}
                   />
                 )}
