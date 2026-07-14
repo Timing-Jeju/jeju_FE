@@ -5,6 +5,7 @@ import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
+import { useUserStore } from '@/store/useUserStore';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -23,6 +24,7 @@ export default function RootLayout() {
   const [loaded, error] = useFonts({
     'Pretendard-Regular': require('../assets/fonts/Pretendard-Regular.otf'),
     'Pretendard-Medium': require('../assets/fonts/Pretendard-Medium.otf'),
+    'Pretendard-SemiBold': require('../assets/fonts/Pretendard-SemiBold.otf'),
     'Pretendard-Bold': require('../assets/fonts/Pretendard-Bold.otf'),
     'Pretendard-ExtraBold': require('../assets/fonts/Pretendard-ExtraBold.otf'),
   });
@@ -47,12 +49,20 @@ export default function RootLayout() {
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
+  const isLoggedIn = useUserStore((state) => state.isLoggedIn);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+        <Stack.Protected guard={!isLoggedIn}>
+          <Stack.Screen name="login" options={{ headerShown: false }} />
+          <Stack.Screen name="find-account" options={{ headerShown: false }} />
+          <Stack.Screen name="signup" options={{ headerShown: false }} />
+        </Stack.Protected>
+        <Stack.Protected guard={isLoggedIn}>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+        </Stack.Protected>
       </Stack>
     </ThemeProvider>
   );
