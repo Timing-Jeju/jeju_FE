@@ -1,6 +1,7 @@
 export const fontFamily = {
   regular: 'Pretendard-Regular',
   medium: 'Pretendard-Medium',
+  semiBold: 'Pretendard-SemiBold',
   bold: 'Pretendard-Bold',
   extraBold: 'Pretendard-ExtraBold',
 } as const;
@@ -8,6 +9,7 @@ export const fontFamily = {
 export const fontWeight = {
   regular: '400',
   medium: '500',
+  semiBold: '600',
   bold: '700',
   extraBold: '800',
 } as const;
