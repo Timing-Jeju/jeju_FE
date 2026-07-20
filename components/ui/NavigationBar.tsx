@@ -2,11 +2,12 @@ import { Image, Pressable, StyleSheet, View } from 'react-native';
 
 import { colors, radius } from '@/constants';
 
+// 네비게이션 바는 네 탭 모두 채워진(filled) 아이콘을 쓴다
 const TAB_ICON = {
-  home: require('../../assets/images/icon-home.png'),
+  home: require('../../assets/images/icon-home-fill.png'),
   calendar: require('../../assets/images/icon-calendar.png'),
   favorite: require('../../assets/images/icon-heart-fill.png'),
-  mypage: require('../../assets/images/icon-user.png'),
+  mypage: require('../../assets/images/icon-user-fill.png'),
 } as const;
 
 export type NavigationTab = keyof typeof TAB_ICON;

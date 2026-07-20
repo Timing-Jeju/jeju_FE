@@ -1,65 +1,50 @@
-import { SymbolView } from 'expo-symbols';
-import { Link, Tabs } from 'expo-router';
-import { Pressable } from 'react-native';
+import { Tabs } from 'expo-router';
+import { StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import colors from '@/constants/Colors';
-import { useClientOnlyValue } from '@/components/useClientOnlyValue';
+import { NavigationBar, type NavigationTab } from '@/components/ui';
+import { colors } from '@/constants';
+
+// expo-router 라우트명 ↔ NavigationBar 탭명 매핑
+const ROUTE_TO_TAB: Record<string, NavigationTab> = {
+  index: 'home',
+  calendar: 'calendar',
+  favorite: 'favorite',
+  mypage: 'mypage',
+};
+
+const TAB_TO_ROUTE: Record<NavigationTab, string> = {
+  home: 'index',
+  calendar: 'calendar',
+  favorite: 'favorite',
+  mypage: 'mypage',
+};
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: colors.primary,
-        // Disable the static render of the header on web
-        // to prevent a hydration error in React Navigation v6.
-        headerShown: useClientOnlyValue(false, true),
-      }}
+      screenOptions={{ headerShown: false }}
+      tabBar={({ state, navigation }) => (
+        <View style={[styles.tabBarWrap, { paddingBottom: insets.bottom }]}>
+          <NavigationBar
+            activeTab={ROUTE_TO_TAB[state.routes[state.index].name] ?? 'home'}
+            onTabPress={(tab) => navigation.navigate(TAB_TO_ROUTE[tab])}
+          />
+        </View>
+      )}
     >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: '지도',
-          headerShown: false,
-          tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{ ios: 'map', android: 'map', web: 'map' }}
-              tintColor={color}
-              size={28}
-            />
-          ),
-          headerRight: () => (
-            <Link href="/modal" asChild>
-              <Pressable style={{ marginRight: 15 }}>
-                {({ pressed }) => (
-                  <SymbolView
-                    name={{ ios: 'info.circle', android: 'info', web: 'info' }}
-                    size={25}
-                    tintColor={colors.grey[900]}
-                    style={{ opacity: pressed ? 0.5 : 1 }}
-                  />
-                )}
-              </Pressable>
-            </Link>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="two"
-        options={{
-          title: 'Tab Two',
-          tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{
-                ios: 'chevron.left.forwardslash.chevron.right',
-                android: 'code',
-                web: 'code',
-              }}
-              tintColor={color}
-              size={28}
-            />
-          ),
-        }}
-      />
+      <Tabs.Screen name="index" />
+      <Tabs.Screen name="calendar" />
+      <Tabs.Screen name="favorite" />
+      <Tabs.Screen name="mypage" />
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  tabBarWrap: {
+    backgroundColor: colors.grey[900],
+  },
+});

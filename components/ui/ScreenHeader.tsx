@@ -16,20 +16,28 @@ const chevronLeftIcon = require('../../assets/images/icon-chevron-left.png');
 interface ScreenHeaderProps {
   title?: string;
   onBack?: () => void;
+  /** 탭 진입 화면처럼 뒤로 갈 곳이 없으면 false */
+  showBack?: boolean;
 }
 
-export function ScreenHeader({ title, onBack }: ScreenHeaderProps) {
+export function ScreenHeader({
+  title,
+  onBack,
+  showBack = true,
+}: ScreenHeaderProps) {
   const router = useRouter();
 
   return (
     <View style={styles.header}>
-      <Pressable
-        style={styles.backButton}
-        hitSlop={spacing.xs}
-        onPress={onBack ?? (() => router.back())}
-      >
-        <Image source={chevronLeftIcon} style={styles.backIcon} />
-      </Pressable>
+      {showBack && (
+        <Pressable
+          style={styles.backButton}
+          hitSlop={spacing.xs}
+          onPress={onBack ?? (() => router.back())}
+        >
+          <Image source={chevronLeftIcon} style={styles.backIcon} />
+        </Pressable>
+      )}
       {title !== undefined && <Text style={styles.title}>{title}</Text>}
     </View>
   );

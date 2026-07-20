@@ -56,13 +56,24 @@ function RootLayoutNav() {
       <Stack>
         <Stack.Protected guard={!isLoggedIn}>
           <Stack.Screen name="login" options={{ headerShown: false }} />
-          <Stack.Screen name="find-account" options={{ headerShown: false }} />
           <Stack.Screen name="signup" options={{ headerShown: false }} />
         </Stack.Protected>
         <Stack.Protected guard={isLoggedIn}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="place-detail" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="trip-conditions"
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen name="withdraw" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
         </Stack.Protected>
+        {/*
+         * 로그인 전 계정 찾기 / 로그인 후 비밀번호 재설정에서 함께 쓰므로 가드 밖에 둔다.
+         * 로그아웃 상태에서는 initialRouteName('(tabs)')이 가드로 막혀 첫 번째 화면이
+         * 초기 화면이 되므로, 반드시 login보다 뒤에 선언해야 한다.
+         */}
+        <Stack.Screen name="find-account" options={{ headerShown: false }} />
       </Stack>
     </ThemeProvider>
   );

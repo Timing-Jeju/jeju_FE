@@ -53,7 +53,7 @@ export default function LoginScreen() {
     if (!isIdValid || !isPasswordValid) return;
 
     // 로그인 상태가 되면 _layout의 Stack.Protected 가드가 (tabs)로 전환한다
-    login(id.trim());
+    login({ id: id.trim() });
   };
 
   return (
