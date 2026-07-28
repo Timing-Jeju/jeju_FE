@@ -1,7 +1,6 @@
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
-  Alert,
   FlatList,
   Image,
   Pressable,
@@ -9,14 +8,16 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 
 import {
-  ConfirmModal,
+  Button,
+  Checkbox,
   FavoriteMemoModal,
   FilterChip,
-  FloatingButton,
-  LikeIcon,
   MEMO_EDIT_TAB_LABELS,
   PlaceTag,
   ScreenHeader,
@@ -38,25 +39,33 @@ import {
   type FavoriteFilter,
   type FavoritePlace,
 } from '@/store/useFavoriteStore';
+import {
+  dayOrdinal,
+  useScheduleStore,
+  type ScheduleItem,
+} from '@/store/useScheduleStore';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
-const CARD_BORDER = '#F0F0F0';
+const TITLE = '#191919';
+const CARD_BORDER = '#E9EAED';
+const SUB_TEXT = '#747476';
 
-const editIcon = require('../../assets/images/icon-edit.png');
-const trashIllust = require('../../assets/images/illust-trash.png');
-const placeholderPlace = require('../../assets/images/placeholder-place.png');
+const editIcon = require('../assets/images/icon-edit.png');
+const placeholderPlace = require('../assets/images/placeholder-place.png');
 
-export default function FavoriteScreen() {
+export default function ScheduleFavoritesScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ day?: string }>();
+  const day = Number(params.day) || 1;
 
   const favorites = useFavoriteStore((state) => state.favorites);
   const updateFavorite = useFavoriteStore((state) => state.updateFavorite);
-  const removeFavorite = useFavoriteStore((state) => state.removeFavorite);
+  const addItems = useScheduleStore((state) => state.addItems);
 
   const [filter, setFilter] = useState<FavoriteFilter>('전체');
   const [selectedNames, setSelectedNames] = useState<string[]>([]);
   const [memoTarget, setMemoTarget] = useState<FavoritePlace | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<FavoritePlace | null>(null);
 
   const visiblePlaces = favorites.filter((place) =>
     matchesFavoriteFilter(place, filter),
@@ -70,13 +79,32 @@ export default function FavoriteScreen() {
     );
   };
 
-  const openPlaceDetail = (place: FavoritePlace) => {
-    router.push({ pathname: '/place-detail', params: { name: place.name } });
+  const handleAdd = () => {
+    const items = favorites
+      .filter((place) => selectedNames.includes(place.name))
+      .map(
+        (place): ScheduleItem => ({
+          name: place.name,
+          type: 'visit',
+          category: place.category,
+          visitType: place.visitType,
+          stayMinutes: place.stayMinutes,
+          time: null,
+          coord: null,
+        }),
+      );
+
+    addItems(day, items);
+    router.back();
   };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScreenHeader title="관심장소" showBack={false} />
+      <ScreenHeader title="찜 목록에서 가져오기" />
+
+      <Text style={styles.title}>
+        여행 {dayOrdinal(day)} 날,{'\n'}방문하고 싶은 장소를 선택해 주세요
+      </Text>
 
       <ScrollView
         horizontal
@@ -88,6 +116,7 @@ export default function FavoriteScreen() {
           <FilterChip
             key={item}
             label={item}
+            variant="outlined"
             selected={filter === item}
             onPress={() => setFilter(item)}
           />
@@ -97,7 +126,10 @@ export default function FavoriteScreen() {
       <FlatList
         data={visiblePlaces}
         keyExtractor={(item) => item.name}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: insets.bottom + 106 },
+        ]}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <Text style={styles.emptyText}>찜한 장소가 없어요</Text>
@@ -111,24 +143,22 @@ export default function FavoriteScreen() {
             >
               <View style={styles.cardTop}>
                 <View style={styles.cardInfo}>
-                  <Image source={placeholderPlace} style={styles.cardImage} />
+                  <Checkbox
+                    checked={isSelected}
+                    onPress={() => toggleSelect(item.name)}
+                  />
                   <View style={styles.cardTextGroup}>
-                    <Pressable
-                      style={styles.nameRow}
-                      onPress={() => openPlaceDetail(item)}
-                    >
+                    <View style={styles.nameRow}>
                       <Text style={styles.name}>{item.name}</Text>
-                      <Text style={styles.category}>{item.category}</Text>
-                    </Pressable>
-                    <View style={styles.tagRow}>
+                      <PlaceTag label={item.category} />
                       <PlaceTag label={item.visitType} />
-                      <Text style={styles.stayText}>
-                        추천 체류 {item.stayMinutes}분 / {item.direction}
-                      </Text>
                     </View>
+                    <Text style={styles.stayText}>
+                      추천 체류 {item.stayMinutes}분 / {item.direction}
+                    </Text>
                   </View>
                 </View>
-                <LikeIcon liked onPress={() => setDeleteTarget(item)} />
+                <Image source={placeholderPlace} style={styles.cardImage} />
               </View>
 
               <View style={styles.cardDivider} />
@@ -137,27 +167,29 @@ export default function FavoriteScreen() {
                 style={styles.memoRow}
                 onPress={() => setMemoTarget(item)}
               >
-                <Image source={editIcon} style={styles.memoIcon} />
                 <Text style={styles.memoText}>
                   {item.memo.length > 0 ? item.memo : '메모없음'}
                 </Text>
+                <Image source={editIcon} style={styles.memoIcon} />
               </Pressable>
             </Pressable>
           );
         }}
       />
 
-      {selectedNames.length > 0 && (
-        <View style={styles.floatingArea}>
-          <FloatingButton
-            title="선택 장소로 일정 생성"
-            onPress={() =>
-              // TODO: 일정 생성 플로우 연동 전 임시 안내
-              Alert.alert('준비 중이에요', '일정 생성 기능을 준비하고 있어요.')
-            }
-          />
-        </View>
-      )}
+      <View
+        style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}
+      >
+        <Button
+          title={
+            selectedNames.length > 0
+              ? `선택한 ${selectedNames.length}개의 장소 추가`
+              : '선택 장소 추가'
+          }
+          disabled={selectedNames.length === 0}
+          onPress={handleAdd}
+        />
+      </View>
 
       <FavoriteMemoModal
         visible={memoTarget !== null}
@@ -170,23 +202,6 @@ export default function FavoriteScreen() {
           setMemoTarget(null);
         }}
       />
-
-      <ConfirmModal
-        visible={deleteTarget !== null}
-        image={trashIllust}
-        title="해당 장소 찜을 삭제할까요?"
-        description="찜 목록에서 삭제되며 저장한 메모도 함께 사라져요"
-        onCancel={() => setDeleteTarget(null)}
-        onConfirm={() => {
-          if (deleteTarget) {
-            removeFavorite(deleteTarget.name);
-            setSelectedNames((prev) =>
-              prev.filter((name) => name !== deleteTarget.name),
-            );
-          }
-          setDeleteTarget(null);
-        }}
-      />
     </SafeAreaView>
   );
 }
@@ -196,9 +211,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.white,
   },
+  title: {
+    marginTop: spacing.lg,
+    paddingHorizontal: grid.pageMargin,
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize['3xl'],
+    lineHeight: lineHeight['2xl'],
+    color: TITLE,
+  },
   filterArea: {
     flexGrow: 0,
-    marginTop: spacing.xs,
+    marginTop: spacing.md,
   },
   filterRow: {
     flexDirection: 'row',
@@ -210,7 +233,6 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingHorizontal: grid.pageMargin,
     paddingTop: spacing.md,
-    paddingBottom: spacing['2xl'],
   },
   emptyText: {
     marginTop: spacing['4xl'],
@@ -239,25 +261,24 @@ const styles = StyleSheet.create({
   },
   cardTop: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
   },
   cardInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexShrink: 1,
     gap: spacing.xs,
   },
   cardImage: {
-    width: 66,
-    height: 66,
-    borderRadius: 6.6,
+    width: 74,
+    height: 74,
+    borderRadius: 8.7,
   },
   cardTextGroup: {
-    gap: spacing['2xs'],
+    gap: spacing['3xs'],
   },
   nameRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     gap: spacing['2xs'],
   },
   name: {
@@ -266,22 +287,11 @@ const styles = StyleSheet.create({
     lineHeight: lineHeight.xl,
     color: colors.grey[900],
   },
-  category: {
-    fontFamily: fontFamily.regular,
-    fontSize: fontSize.xs,
-    lineHeight: lineHeight.lg,
-    color: colors.grey[400],
-  },
-  tagRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing['2xs'],
-  },
   stayText: {
     fontFamily: fontFamily.regular,
     fontSize: fontSize.xs,
     lineHeight: lineHeight.lg,
-    color: colors.grey[700],
+    color: SUB_TEXT,
   },
   cardDivider: {
     width: '100%',
@@ -291,23 +301,25 @@ const styles = StyleSheet.create({
   memoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'space-between',
+  },
+  memoText: {
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.xs,
+    lineHeight: lineHeight.lg,
+    color: SUB_TEXT,
   },
   memoIcon: {
     width: 24,
     height: 24,
   },
-  memoText: {
-    fontFamily: fontFamily.medium,
-    fontSize: fontSize.sm,
-    lineHeight: lineHeight.xs,
-    color: colors.grey[700],
-  },
-  floatingArea: {
+  footer: {
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: spacing.md,
-    alignItems: 'center',
+    bottom: 0,
+    paddingTop: spacing.md,
+    paddingHorizontal: grid.pageMargin,
+    backgroundColor: colors.white,
   },
 });

@@ -65,6 +65,14 @@ function RootLayoutNav() {
             name="trip-conditions"
             options={{ headerShown: false }}
           />
+          <Stack.Screen
+            name="schedule-favorites"
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="schedule-search"
+            options={{ headerShown: false }}
+          />
           <Stack.Screen name="withdraw" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
         </Stack.Protected>

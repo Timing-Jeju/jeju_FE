@@ -113,6 +113,7 @@ const styles = StyleSheet.create({
     fontSize: fontSize['2xl'],
     lineHeight: lineHeight.xl,
     color: colors.grey[900],
+    textAlign: 'center',
   },
   description: {
     fontFamily: fontFamily.regular,

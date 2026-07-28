@@ -1,5 +1,6 @@
 import { ReactNode } from 'react';
 import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, radius, spacing } from '@/constants';
 
@@ -20,6 +21,8 @@ function CloseIcon() {
 }
 
 export function BottomSheet({ visible, onClose, children }: BottomSheetProps) {
+  const insets = useSafeAreaInsets();
+
   return (
     <Modal
       visible={visible}
@@ -29,7 +32,13 @@ export function BottomSheet({ visible, onClose, children }: BottomSheetProps) {
     >
       <View style={styles.overlay}>
         <Pressable style={styles.dim} onPress={onClose} />
-        <View style={styles.sheet}>
+        {/* 홈 인디케이터 영역만큼 아래 여백을 더 준다 */}
+        <View
+          style={[
+            styles.sheet,
+            { paddingBottom: insets.bottom + spacing['2xl'] },
+          ]}
+        >
           <View style={styles.closeRow}>
             <Pressable
               style={styles.closeButton}
@@ -64,7 +73,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: radius.sm,
     borderTopRightRadius: radius.sm,
     paddingTop: spacing.lg,
-    paddingBottom: spacing['2xl'],
   },
   closeRow: {
     alignItems: 'flex-end',

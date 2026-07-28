@@ -14,6 +14,35 @@ export interface FavoritePlace {
   direction: string;
 }
 
+export const FAVORITE_FILTERS = [
+  '전체',
+  '관광지',
+  '식당',
+  '카페',
+  '필수방문',
+  '선택방문',
+] as const;
+
+export type FavoriteFilter = (typeof FAVORITE_FILTERS)[number];
+
+export const matchesFavoriteFilter = (
+  place: FavoritePlace,
+  filter: FavoriteFilter,
+) => {
+  switch (filter) {
+    case '전체':
+      return true;
+    case '관광지':
+      return place.category !== '식당' && place.category !== '카페';
+    case '식당':
+    case '카페':
+      return place.category === filter;
+    case '필수방문':
+    case '선택방문':
+      return place.visitType === filter;
+  }
+};
+
 // TODO: 찜 목록 API 연동 전 임시 데이터
 const MOCK_FAVORITES: FavoritePlace[] = [
   {

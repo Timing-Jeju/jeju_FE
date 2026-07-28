@@ -29,6 +29,12 @@ const INACTIVE_TEXT = '#747476';
 const MEMO_MAX_LENGTH = 50;
 const VISIT_TYPES: VisitType[] = ['필수방문', '선택방문'];
 
+/** 이미 찜한 장소를 수정할 때 쓰는 친근한 방문 유형 문구 */
+export const MEMO_EDIT_TAB_LABELS: Record<VisitType, string> = {
+  필수방문: '꼭 갈래요',
+  선택방문: '시간 되면 갈래요',
+};
+
 interface FavoriteMemoModalProps {
   visible: boolean;
   /** 수정 시 기존 방문 유형 (신규 찜은 null → 탭을 눌러야 저장 가능) */
