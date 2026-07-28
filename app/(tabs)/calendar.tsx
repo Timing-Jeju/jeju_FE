@@ -3,7 +3,14 @@ import {
   NaverMapView,
 } from '@mj-studio/react-native-naver-map';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Fragment, useCallback, useMemo, useState } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Animated,
   Image,
@@ -162,13 +169,47 @@ const subtitleOf = (item: ScheduleItem) => {
 interface TimelineRowProps {
   item: ScheduleItem;
   index: number;
+  /** 지금 끌고 있는 행인지 */
+  dragging: boolean;
+  /** 타임라인에서 드래그가 진행 중인지 (끝나면 밀린 행을 즉시 제자리로) */
+  dragActive: boolean;
+  /** 끌고 있는 행에 밀려 이동해야 하는 거리 */
+  shift: number;
+  /** 끌고 있는 행이 손가락을 따라가는 값 (타임라인이 소유) */
+  dragY: Animated.Value;
   onEditStay: (item: ScheduleItem) => void;
-  onMove: (from: number, to: number) => void;
+  onDragStart: (index: number) => void;
+  onDragMove: (index: number, dy: number) => void;
+  onDragEnd: (index: number) => void;
 }
 
-function TimelineRow({ item, index, onEditStay, onMove }: TimelineRowProps) {
-  const [dragging, setDragging] = useState(false);
-  const translateY = useMemo(() => new Animated.Value(0), []);
+function TimelineRow({
+  item,
+  index,
+  dragging,
+  dragActive,
+  shift,
+  dragY,
+  onEditStay,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+}: TimelineRowProps) {
+  // 밀려나는 행은 제자리에서 부드럽게 한 칸 이동한다
+  const shiftY = useMemo(() => new Animated.Value(0), []);
+
+  useEffect(() => {
+    // 드래그가 끝나면 목록이 실제로 재배치되므로 밀어둔 값은 즉시 되돌린다
+    if (!dragActive) {
+      shiftY.setValue(0);
+      return;
+    }
+    Animated.timing(shiftY, {
+      toValue: shift,
+      duration: 160,
+      useNativeDriver: false,
+    }).start();
+  }, [dragActive, shift, shiftY]);
 
   // 방문 장소만 순서를 바꿀 수 있다 (출발지 / 도착지는 고정)
   const draggable = item.type === 'visit';
@@ -176,21 +217,15 @@ function TimelineRow({ item, index, onEditStay, onMove }: TimelineRowProps) {
   const panResponder = useMemo(
     () =>
       PanResponder.create({
+        // 핸들을 잡는 순간 바로 드래그를 시작하고, ScrollView에 제스처를 뺏기지 않는다
         onStartShouldSetPanResponder: () => true,
-        onPanResponderGrant: () => setDragging(true),
-        onPanResponderMove: (_, gesture) => translateY.setValue(gesture.dy),
-        onPanResponderRelease: (_, gesture) => {
-          translateY.setValue(0);
-          setDragging(false);
-          const offset = Math.round(gesture.dy / TIMELINE_ROW_STEP);
-          if (offset !== 0) onMove(index, index + offset);
-        },
-        onPanResponderTerminate: () => {
-          translateY.setValue(0);
-          setDragging(false);
-        },
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: () => onDragStart(index),
+        onPanResponderMove: (_, gesture) => onDragMove(index, gesture.dy),
+        onPanResponderRelease: () => onDragEnd(index),
+        onPanResponderTerminate: () => onDragEnd(index),
       }),
-    [index, onMove, translateY],
+    [index, onDragStart, onDragMove, onDragEnd],
   );
 
   return (
@@ -198,7 +233,7 @@ function TimelineRow({ item, index, onEditStay, onMove }: TimelineRowProps) {
       style={[
         styles.row,
         dragging && styles.rowDragging,
-        { transform: [{ translateY }] },
+        { transform: [{ translateY: dragging ? dragY : shiftY }] },
       ]}
     >
       <View style={styles.rowIconWrap}>
@@ -220,13 +255,146 @@ function TimelineRow({ item, index, onEditStay, onMove }: TimelineRowProps) {
               <Text style={styles.stayLabel}>체류 {item.stayMinutes}분</Text>
               <Image source={editIcon} style={styles.stayEditIcon} />
             </Pressable>
-            <View style={styles.dragHandle} {...panResponder.panHandlers}>
-              <Image source={dragHandleIcon} style={styles.dragIcon} />
+            <View
+              style={styles.dragHandle}
+              hitSlop={spacing.xs}
+              {...panResponder.panHandlers}
+            >
+              <Image
+                source={dragHandleIcon}
+                style={[styles.dragIcon, dragging && styles.dragIconActive]}
+              />
             </View>
           </View>
         )}
       </View>
     </Animated.View>
+  );
+}
+
+interface ScheduleTimelineProps {
+  items: ScheduleItem[];
+  onEditStay: (item: ScheduleItem) => void;
+  onMove: (from: number, to: number) => void;
+  /**
+   * 드래그 중에는 바깥 ScrollView를 멈춰야 한다.
+   * iOS 스크롤은 네이티브 제스처라 PanResponder만으로는 막히지 않는다.
+   */
+  onReorderingChange: (reordering: boolean) => void;
+}
+
+function ScheduleTimeline({
+  items,
+  onEditStay,
+  onMove,
+  onReorderingChange,
+}: ScheduleTimelineProps) {
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
+  const dragY = useMemo(() => new Animated.Value(0), []);
+  // 드래그가 끝날 때 최신 목적지를 읽어야 해서 ref로도 들고 있는다
+  const dropIndexRef = useRef<number | null>(null);
+
+  // 방문 장소가 놓일 수 있는 구간 (출발지 다음 ~ 도착지 이전)
+  const bounds = useMemo(() => {
+    const visits = items.reduce<number[]>((acc, item, index) => {
+      if (item.type === 'visit') acc.push(index);
+      return acc;
+    }, []);
+    return visits.length > 0
+      ? { first: visits[0], last: visits[visits.length - 1] }
+      : null;
+  }, [items]);
+
+  const handleDragStart = useCallback(
+    (index: number) => {
+      // 직전 드래그의 마무리 애니메이션이 남아 있을 수 있다
+      dragY.stopAnimation();
+      dragY.setValue(0);
+      dropIndexRef.current = index;
+      setDragIndex(index);
+      setDropIndex(index);
+      onReorderingChange(true);
+    },
+    [dragY, onReorderingChange],
+  );
+
+  const handleDragMove = useCallback(
+    (index: number, dy: number) => {
+      if (!bounds) return;
+
+      // 출발지 / 도착지 밖으로는 끌고 나갈 수 없다
+      const clamped = Math.min(
+        Math.max(dy, (bounds.first - index) * TIMELINE_ROW_STEP),
+        (bounds.last - index) * TIMELINE_ROW_STEP,
+      );
+      dragY.setValue(clamped);
+
+      const next = index + Math.round(clamped / TIMELINE_ROW_STEP);
+      dropIndexRef.current = next;
+      setDropIndex((prev) => (prev === next ? prev : next));
+    },
+    [bounds, dragY],
+  );
+
+  const handleDragEnd = useCallback(
+    (index: number) => {
+      const target = dropIndexRef.current ?? index;
+      dropIndexRef.current = null;
+
+      // 놓을 자리까지 미끄러진 뒤에 목록을 바꾼다 (중간에 위치가 튀지 않도록)
+      Animated.timing(dragY, {
+        toValue: (target - index) * TIMELINE_ROW_STEP,
+        duration: 140,
+        useNativeDriver: false,
+      }).start(({ finished }) => {
+        // 마무리 도중 다음 드래그가 시작되면 그쪽 상태를 건드리지 않는다
+        if (!finished) return;
+        dragY.setValue(0);
+        setDragIndex(null);
+        setDropIndex(null);
+        onReorderingChange(false);
+        if (target !== index) onMove(index, target);
+      });
+    },
+    [dragY, onMove, onReorderingChange],
+  );
+
+  /** 끌고 있는 행이 지나간 자리만큼 다른 행을 한 칸씩 밀어준다 */
+  const shiftOf = (index: number) => {
+    if (dragIndex === null || dropIndex === null || index === dragIndex) {
+      return 0;
+    }
+    if (dragIndex < dropIndex && index > dragIndex && index <= dropIndex) {
+      return -TIMELINE_ROW_STEP;
+    }
+    if (dragIndex > dropIndex && index >= dropIndex && index < dragIndex) {
+      return TIMELINE_ROW_STEP;
+    }
+    return 0;
+  };
+
+  return (
+    <View style={styles.timeline}>
+      {items.map((item, index) => (
+        // 당일치기는 출발지 / 도착지가 모두 공항이라 종류까지 키에 넣는다
+        <Fragment key={`${item.type}-${item.name}`}>
+          {index > 0 && <View style={styles.timelineDivider} />}
+          <TimelineRow
+            item={item}
+            index={index}
+            dragging={dragIndex === index}
+            dragActive={dragIndex !== null}
+            shift={shiftOf(index)}
+            dragY={dragY}
+            onEditStay={onEditStay}
+            onDragStart={handleDragStart}
+            onDragMove={handleDragMove}
+            onDragEnd={handleDragEnd}
+          />
+        </Fragment>
+      ))}
+    </View>
   );
 }
 
@@ -254,6 +422,7 @@ export default function CalendarScreen() {
   const [resetModalVisible, setResetModalVisible] = useState(false);
   const [stayTarget, setStayTarget] = useState<ScheduleItem | null>(null);
   const [conditionNoticeVisible, setConditionNoticeVisible] = useState(false);
+  const [reordering, setReordering] = useState(false);
 
   // 탭에 들어올 때마다 여행 기본 조건이 저장돼 있는지 다시 확인한다
   useFocusEffect(
@@ -381,6 +550,7 @@ export default function CalendarScreen() {
     <ScrollView
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
+      scrollEnabled={!reordering}
     >
       <DaySelector
         dayCount={dayCount}
@@ -402,20 +572,12 @@ export default function CalendarScreen() {
         <Text style={styles.sectionTitle}>일정 항목</Text>
 
         {hasSchedule ? (
-          <View style={styles.timeline}>
-            {items.map((item, index) => (
-              // 당일치기는 출발지 / 도착지가 모두 공항이라 종류까지 키에 넣는다
-              <Fragment key={`${item.type}-${item.name}`}>
-                {index > 0 && <View style={styles.timelineDivider} />}
-                <TimelineRow
-                  item={item}
-                  index={index}
-                  onEditStay={setStayTarget}
-                  onMove={handleMove}
-                />
-              </Fragment>
-            ))}
-          </View>
+          <ScheduleTimeline
+            items={items}
+            onEditStay={setStayTarget}
+            onMove={handleMove}
+            onReorderingChange={setReordering}
+          />
         ) : (
           <View style={styles.emptyCard}>
             <Image source={emptyIllust} style={styles.emptyIllust} />
@@ -681,8 +843,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.xs,
   },
+  // 끌고 있는 동안에는 카드처럼 살짝 떠 보이게 한다
   rowDragging: {
-    opacity: 0.7,
+    zIndex: 1,
+    borderRadius: radius['2xs'],
+    backgroundColor: colors.white,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 6,
   },
   rowIconWrap: {
     width: 40,
@@ -756,6 +926,9 @@ const styles = StyleSheet.create({
   dragIcon: {
     width: 20,
     height: 20,
+  },
+  dragIconActive: {
+    tintColor: colors.primary,
   },
   conditionIllust: {
     width: 130,

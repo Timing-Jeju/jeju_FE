@@ -1,0 +1,7 @@
+# Expo가 자동 생성하는 파일 (git에도 올라가지 않는다)
+expo-env.d.ts
+.expo/
+
+node_modules/
+android/
+ios/
