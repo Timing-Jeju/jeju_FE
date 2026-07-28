@@ -38,6 +38,7 @@ import {
   type TripLodging,
   type TripTransportMode,
 } from '@/store/useTripStore';
+import { datesBetween, fromKey, toKey } from '@/utils/date';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
 const BACKGROUND = '#FAFAFA';
@@ -88,16 +89,6 @@ const TIME_SLOTS = Array.from({ length: 33 }, (_, i) => {
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const MINUTES = [0, 10, 20, 30, 40, 50];
 
-const toKey = (date: Date) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
-    date.getDate(),
-  ).padStart(2, '0')}`;
-
-const fromKey = (key: string) => {
-  const [y, m, d] = key.split('-').map(Number);
-  return new Date(y, m - 1, d);
-};
-
 const formatKorean = (key: string) => {
   const date = fromKey(key);
   return `${date.getMonth() + 1}월 ${date.getDate()}일 (${WEEKDAYS[date.getDay()]})`;
@@ -106,17 +97,6 @@ const formatKorean = (key: string) => {
 const formatShort = (key: string) => {
   const date = fromKey(key);
   return `${date.getMonth() + 1}월 ${date.getDate()}일`;
-};
-
-const datesBetween = (startKey: string, endKey: string) => {
-  const dates: string[] = [];
-  const cursor = fromKey(startKey);
-  const end = fromKey(endKey);
-  while (cursor <= end) {
-    dates.push(toKey(cursor));
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return dates;
 };
 
 const formatAmPm = (time: string) => {

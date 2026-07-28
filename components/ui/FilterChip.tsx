@@ -10,6 +10,8 @@ const INACTIVE_TEXT = '#747476';
 interface FilterChipProps {
   label: string;
   selected?: boolean;
+  /** filled: 선택 시 주황 배경, outlined: 선택 시 주황 테두리만 */
+  variant?: 'filled' | 'outlined';
   onPress?: () => void;
 }
 
@@ -17,16 +19,20 @@ interface FilterChipProps {
 export function FilterChip({
   label,
   selected = false,
+  variant = 'filled',
   onPress,
 }: FilterChipProps) {
+  const selectedContainer =
+    variant === 'filled' ? styles.containerFilled : styles.containerOutlined;
+  const selectedLabel =
+    variant === 'filled' ? styles.labelFilled : styles.labelOutlined;
+
   return (
     <Pressable
-      style={[styles.container, selected && styles.containerSelected]}
+      style={[styles.container, selected && selectedContainer]}
       onPress={onPress}
     >
-      <Text style={[styles.label, selected && styles.labelSelected]}>
-        {label}
-      </Text>
+      <Text style={[styles.label, selected && selectedLabel]}>{label}</Text>
     </Pressable>
   );
 }
@@ -41,8 +47,11 @@ const styles = StyleSheet.create({
     borderColor: INACTIVE_BORDER,
     alignSelf: 'flex-start',
   },
-  containerSelected: {
+  containerFilled: {
     backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  containerOutlined: {
     borderColor: colors.primary,
   },
   label: {
@@ -51,8 +60,12 @@ const styles = StyleSheet.create({
     lineHeight: lineHeight.md,
     color: INACTIVE_TEXT,
   },
-  labelSelected: {
+  labelFilled: {
     fontFamily: fontFamily.bold,
     color: colors.white,
+  },
+  labelOutlined: {
+    fontFamily: fontFamily.bold,
+    color: colors.primary,
   },
 });

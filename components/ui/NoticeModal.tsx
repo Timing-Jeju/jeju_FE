@@ -1,8 +1,10 @@
 import {
   Image,
   ImageSourcePropType,
+  ImageStyle,
   Modal,
   Pressable,
+  StyleProp,
   StyleSheet,
   View,
 } from 'react-native';
@@ -24,36 +26,44 @@ const DESCRIPTION_TEXT = '#747476';
 
 interface NoticeModalProps {
   visible: boolean;
-  /** 상단 일러스트 (80x80) */
+  /** 상단 일러스트 (기본 80x80) */
   image?: ImageSourcePropType;
+  /** 정사각형이 아닌 일러스트를 쓸 때 크기를 덮어쓴다 */
+  imageStyle?: StyleProp<ImageStyle>;
   title: string;
   description: string;
   buttonTitle?: string;
   onConfirm: () => void;
+  /** 배경 탭 / 안드로이드 뒤로가기로 닫을 때 (미지정 시 onConfirm) */
+  onClose?: () => void;
 }
 
 /** 확인 버튼 하나짜리 안내 모달 (일치하는 회원 정보 없음 등) */
 export function NoticeModal({
   visible,
   image,
+  imageStyle,
   title,
   description,
   buttonTitle = '확인',
   onConfirm,
+  onClose,
 }: NoticeModalProps) {
+  const close = onClose ?? onConfirm;
+
   return (
     <Modal
       visible={visible}
       transparent
       animationType="fade"
-      onRequestClose={onConfirm}
+      onRequestClose={close}
     >
       <View style={styles.overlay}>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onConfirm} />
+        <Pressable style={StyleSheet.absoluteFill} onPress={close} />
         <View style={styles.card}>
           <View style={styles.content}>
             {image !== undefined && (
-              <Image source={image} style={styles.illust} />
+              <Image source={image} style={[styles.illust, imageStyle]} />
             )}
             <View style={styles.textGroup}>
               <Text style={styles.title}>{title}</Text>
