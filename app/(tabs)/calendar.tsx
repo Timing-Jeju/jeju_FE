@@ -276,12 +276,18 @@ interface ScheduleTimelineProps {
   items: ScheduleItem[];
   onEditStay: (item: ScheduleItem) => void;
   onMove: (from: number, to: number) => void;
+  /**
+   * 드래그 중에는 바깥 ScrollView를 멈춰야 한다.
+   * iOS 스크롤은 네이티브 제스처라 PanResponder만으로는 막히지 않는다.
+   */
+  onReorderingChange: (reordering: boolean) => void;
 }
 
 function ScheduleTimeline({
   items,
   onEditStay,
   onMove,
+  onReorderingChange,
 }: ScheduleTimelineProps) {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
@@ -308,8 +314,9 @@ function ScheduleTimeline({
       dropIndexRef.current = index;
       setDragIndex(index);
       setDropIndex(index);
+      onReorderingChange(true);
     },
-    [dragY],
+    [dragY, onReorderingChange],
   );
 
   const handleDragMove = useCallback(
@@ -346,10 +353,11 @@ function ScheduleTimeline({
         dragY.setValue(0);
         setDragIndex(null);
         setDropIndex(null);
+        onReorderingChange(false);
         if (target !== index) onMove(index, target);
       });
     },
-    [dragY, onMove],
+    [dragY, onMove, onReorderingChange],
   );
 
   /** 끌고 있는 행이 지나간 자리만큼 다른 행을 한 칸씩 밀어준다 */
@@ -414,6 +422,7 @@ export default function CalendarScreen() {
   const [resetModalVisible, setResetModalVisible] = useState(false);
   const [stayTarget, setStayTarget] = useState<ScheduleItem | null>(null);
   const [conditionNoticeVisible, setConditionNoticeVisible] = useState(false);
+  const [reordering, setReordering] = useState(false);
 
   // 탭에 들어올 때마다 여행 기본 조건이 저장돼 있는지 다시 확인한다
   useFocusEffect(
@@ -541,6 +550,7 @@ export default function CalendarScreen() {
     <ScrollView
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
+      scrollEnabled={!reordering}
     >
       <DaySelector
         dayCount={dayCount}
@@ -566,6 +576,7 @@ export default function CalendarScreen() {
             items={items}
             onEditStay={setStayTarget}
             onMove={handleMove}
+            onReorderingChange={setReordering}
           />
         ) : (
           <View style={styles.emptyCard}>
