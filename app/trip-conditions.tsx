@@ -1627,6 +1627,8 @@ const sheetStyles = StyleSheet.create({
   timeChevron: {
     width: 24,
     height: 24,
+    // 시작 시간 → 종료 시간 방향이라 좌우를 뒤집어 오른쪽 화살표로 쓴다
+    transform: [{ scaleX: -1 }],
   },
   pickerRow: {
     flexDirection: 'row',
