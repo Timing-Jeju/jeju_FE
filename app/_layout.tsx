@@ -73,6 +73,12 @@ function RootLayoutNav() {
             name="schedule-search"
             options={{ headerShown: false }}
           />
+          <Stack.Screen
+            name="schedule-review"
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen name="schedule-leg" options={{ headerShown: false }} />
+          <Stack.Screen name="live-map" options={{ headerShown: false }} />
           <Stack.Screen name="withdraw" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
         </Stack.Protected>

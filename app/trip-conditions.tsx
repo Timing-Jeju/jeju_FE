@@ -15,6 +15,7 @@ import {
   BottomSheet,
   Button,
   CheckContained,
+  Checkbox,
   Chip,
   RadioButton,
   ScreenHeader,
@@ -32,30 +33,44 @@ import {
 } from '@/constants';
 import { searchPlaces, type Place } from '@/services/naverApi';
 import {
+  isLodgingComplete,
   useTripStore,
   type ArrivalTransport,
   type DayTime,
+  type LodgingMode,
   type TripLodging,
   type TripTransportMode,
 } from '@/store/useTripStore';
-import { datesBetween, fromKey, toKey } from '@/utils/date';
+import {
+  datesBetween,
+  formatAmPm,
+  formatDot,
+  formatKorean,
+  formatShort,
+  fromKey,
+  toKey,
+  WEEKDAYS,
+} from '@/utils/date';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
 const BACKGROUND = '#FAFAFA';
 const TITLE = '#191919';
 const INPUT_BORDER = '#F0F0F0';
+const CARD_BORDER = '#E9EAED';
 const PLACEHOLDER = '#898989';
 const INACTIVE_TEXT = '#747476';
 const TRACK_BACKGROUND = '#F5F6F9';
 const SELECTED_CARD_BG = '#FFFCFB';
 
 const chevronIcon = require('../assets/images/icon-chevron-left.png');
+const chevronDownIcon = require('../assets/images/icon-chevron-down.png');
 const searchIcon = require('../assets/images/icon-search.png');
 const busImage = require('../assets/images/transport-bus.png');
 const taxiImage = require('../assets/images/transport-taxi.png');
 const walkImage = require('../assets/images/transport-walk.png');
 const pinIllust = require('../assets/images/illust-pin.png');
 const searchIllust = require('../assets/images/illust-search.png');
+const placeholderPlace = require('../assets/images/placeholder-place.png');
 
 const TRAVEL_STYLES = [
   '맛집투어',
@@ -77,8 +92,6 @@ const TRANSPORT_OPTIONS: {
   { key: 'walk', label: '도보', image: walkImage },
 ];
 
-const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
-
 // 30분 간격 교통편 시간 후보 (06:00 ~ 22:00)
 const TIME_SLOTS = Array.from({ length: 33 }, (_, i) => {
   const hour = 6 + Math.floor(i / 2);
@@ -88,23 +101,6 @@ const TIME_SLOTS = Array.from({ length: 33 }, (_, i) => {
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const MINUTES = [0, 10, 20, 30, 40, 50];
-
-const formatKorean = (key: string) => {
-  const date = fromKey(key);
-  return `${date.getMonth() + 1}월 ${date.getDate()}일 (${WEEKDAYS[date.getDay()]})`;
-};
-
-const formatShort = (key: string) => {
-  const date = fromKey(key);
-  return `${date.getMonth() + 1}월 ${date.getDate()}일`;
-};
-
-const formatAmPm = (time: string) => {
-  const [hour, minute] = time.split(':').map(Number);
-  const period = hour < 12 ? '오전' : '오후';
-  const displayHour = hour % 12 === 0 ? 12 : hour % 12;
-  return `${period} ${displayHour}:${String(minute).padStart(2, '0')}`;
-};
 
 /* ---------------------------------- 캘린더 ---------------------------------- */
 
@@ -308,7 +304,13 @@ export default function TripConditionsScreen() {
     stored.dayTimes,
   );
   // 숙소 / 스타일 / 이동수단
+  const [lodgingMode, setLodgingMode] = useState<LodgingMode | null>(
+    stored.lodgingMode,
+  );
   const [lodging, setLodging] = useState<TripLodging | null>(stored.lodging);
+  const [dailyLodgings, setDailyLodgings] = useState<
+    Record<string, TripLodging>
+  >(stored.dailyLodgings);
   const [styleTags, setStyleTags] = useState<string[]>(stored.styles);
   const [transportMode, setTransportMode] = useState<TripTransportMode | null>(
     stored.transport,
@@ -316,7 +318,10 @@ export default function TripConditionsScreen() {
 
   // 바텀시트 / 모달
   const [scheduleOpen, setScheduleOpen] = useState(false);
-  const [timeSheetDate, setTimeSheetDate] = useState<string | null>(null);
+  const [timeSheet, setTimeSheet] = useState<{
+    date: string;
+    field: 'start' | 'end';
+  } | null>(null);
   const [lodgingOpen, setLodgingOpen] = useState(false);
   const [orderGuard, setOrderGuard] = useState<OrderGuard>(null);
 
@@ -329,16 +334,25 @@ export default function TripConditionsScreen() {
     !!startDate && !!endDate && !!arrivalTime && !!departureTime;
   const isDayTimesSet =
     isScheduleSet && tripDates.every((date) => dayTimes[date]);
-  // 모든 날의 활동 시간이 동일하면 Day별 행 대신 ALL 행 하나로 보여준다
-  const isAllSameTime =
-    isDayTimesSet &&
-    tripDates.every(
+  // 모든 날의 활동 시간이 같으면 두 드롭다운에 그 값을 그대로 보여준다
+  const commonTime = useMemo(() => {
+    if (!isDayTimesSet) return null;
+    const first = dayTimes[tripDates[0]];
+    return tripDates.every(
       (date) =>
-        dayTimes[date].start === dayTimes[tripDates[0]].start &&
-        dayTimes[date].end === dayTimes[tripDates[0]].end,
-    );
+        dayTimes[date].start === first.start &&
+        dayTimes[date].end === first.end,
+    )
+      ? first
+      : null;
+  }, [dayTimes, isDayTimesSet, tripDates]);
+
+  const lodgingDone = isLodgingComplete(
+    { lodgingMode, lodging, dailyLodgings },
+    tripDates,
+  );
   const canSave =
-    isDayTimesSet && !!lodging && styleTags.length > 0 && !!transportMode;
+    isDayTimesSet && lodgingDone && styleTags.length > 0 && !!transportMode;
 
   const toggleStyle = (tag: string) => {
     setStyleTags((prev) => {
@@ -348,12 +362,12 @@ export default function TripConditionsScreen() {
     });
   };
 
-  const openDayTimes = () => {
+  const openDayTimes = (field: 'start' | 'end') => {
     if (!isScheduleSet) {
       setOrderGuard('schedule');
       return;
     }
-    setTimeSheetDate(tripDates[0]);
+    setTimeSheet({ date: tripDates[0], field });
   };
 
   const openLodging = () => {
@@ -377,11 +391,25 @@ export default function TripConditionsScreen() {
       departureTransport,
       departureTime,
       dayTimes,
+      lodgingMode,
       lodging,
+      dailyLodgings,
       styles: styleTags,
       transport: transportMode,
     });
     router.back();
+  };
+
+  /** 숙소 위치 행에 보여줄 요약 문구 */
+  const lodgingLabel = () => {
+    if (lodgingMode === 'daily') {
+      const filled = tripDates.filter((date) => dailyLodgings[date]).length;
+      if (filled === 0) return null;
+      return filled === tripDates.length
+        ? `일자별 숙소 ${filled}곳`
+        : `일자별 숙소 ${filled}/${tripDates.length}곳`;
+    }
+    return lodging?.name ?? null;
   };
 
   return (
@@ -451,39 +479,43 @@ export default function TripConditionsScreen() {
           {/* 하루 활동 시간 */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>하루 활동 시간</Text>
-            {isAllSameTime ? (
+            <View style={styles.timeRow}>
               <Pressable
-                style={styles.dayRow}
-                onPress={() => setTimeSheetDate(tripDates[0])}
+                style={styles.dropdown}
+                onPress={() => openDayTimes('start')}
               >
-                <View style={styles.dayRowLeft}>
-                  <View style={[styles.dayBadge, styles.allBadge]}>
-                    <Text style={styles.dayBadgeLabel}>ALL</Text>
-                  </View>
-                  <Text style={styles.dayRowDate}>
-                    {formatShort(tripDates[0])} ~{' '}
-                    {fromKey(tripDates[tripDates.length - 1]).getMonth() ===
-                    fromKey(tripDates[0]).getMonth()
-                      ? `${fromKey(tripDates[tripDates.length - 1]).getDate()}일`
-                      : formatShort(tripDates[tripDates.length - 1])}
-                  </Text>
-                </View>
-                <View style={styles.dayRowRight}>
-                  <Text style={styles.dayRowTime}>
-                    {dayTimes[tripDates[0]].start} ~{' '}
-                    {dayTimes[tripDates[0]].end}
-                  </Text>
-                  <Image source={chevronIcon} style={styles.rowChevron} />
-                </View>
+                <Text
+                  style={
+                    commonTime ? styles.inputValue : styles.inputPlaceholder
+                  }
+                >
+                  {commonTime ? formatAmPm(commonTime.start) : '시작 시간'}
+                </Text>
+                <Image source={chevronDownIcon} style={styles.dropdownIcon} />
               </Pressable>
-            ) : isDayTimesSet ||
-              (isScheduleSet && tripDates.some((d) => dayTimes[d])) ? (
+              <Pressable
+                style={styles.dropdown}
+                onPress={() => openDayTimes('end')}
+              >
+                <Text
+                  style={
+                    commonTime ? styles.inputValue : styles.inputPlaceholder
+                  }
+                >
+                  {commonTime ? formatAmPm(commonTime.end) : '종료 시간'}
+                </Text>
+                <Image source={chevronDownIcon} style={styles.dropdownIcon} />
+              </Pressable>
+            </View>
+
+            {/* 날마다 시간이 다르면 Day별로도 확인할 수 있게 펼쳐둔다 */}
+            {isDayTimesSet && !commonTime && (
               <View style={styles.dayList}>
                 {tripDates.map((date, index) => (
                   <Pressable
                     key={date}
                     style={styles.dayRow}
-                    onPress={() => setTimeSheetDate(date)}
+                    onPress={() => setTimeSheet({ date, field: 'start' })}
                   >
                     <View style={styles.dayRowLeft}>
                       <View style={styles.dayBadge}>
@@ -495,37 +527,26 @@ export default function TripConditionsScreen() {
                     </View>
                     <View style={styles.dayRowRight}>
                       <Text style={styles.dayRowTime}>
-                        {dayTimes[date]
-                          ? `${dayTimes[date].start} ~ ${dayTimes[date].end}`
-                          : '시간 선택'}
+                        {dayTimes[date].start} ~ {dayTimes[date].end}
                       </Text>
                       <Image source={chevronIcon} style={styles.rowChevron} />
                     </View>
                   </Pressable>
                 ))}
               </View>
-            ) : (
-              <Pressable style={styles.inputRow} onPress={openDayTimes}>
-                <Text style={styles.inputPlaceholder}>00:00 ~ 00:00</Text>
-                <Image source={chevronIcon} style={styles.rowChevron} />
-              </Pressable>
             )}
           </View>
 
           {/* 숙소 위치 */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              {lodging ? '숙소/복귀 위치' : '숙소 위치'}
-            </Text>
+            <Text style={styles.sectionTitle}>숙소 위치</Text>
             <Pressable style={styles.inputRow} onPress={openLodging}>
-              {lodging ? (
-                <Text style={styles.inputValue}>{lodging.name}</Text>
+              {lodgingLabel() ? (
+                <Text style={styles.inputValue}>{lodgingLabel()}</Text>
               ) : (
-                <Text style={styles.inputPlaceholder}>
-                  돌아올 숙소 위치를 설정해주세요
-                </Text>
+                <Text style={styles.inputPlaceholder}>검색 또는 지도 선택</Text>
               )}
-              <Image source={chevronIcon} style={styles.rowChevron} />
+              <Image source={searchIcon} style={styles.rowSearchIcon} />
             </Pressable>
           </View>
 
@@ -612,36 +633,46 @@ export default function TripConditionsScreen() {
           setArrivalTime(value.arrivalTime);
           setDepartureTransport(value.departureTransport);
           setDepartureTime(value.departureTime);
+          // 날짜가 바뀌면 날짜 키로 잡아둔 값은 모두 다시 받아야 한다
           setDayTimes({});
+          setDailyLodgings({});
           setScheduleOpen(false);
         }}
       />
 
       {/* 하루 활동 시간 바텀시트 */}
-      {timeSheetDate && (
+      {timeSheet && (
         <DayTimeSheet
           visible
           dates={tripDates}
-          initialDate={timeSheetDate}
-          initialApplyAll={isAllSameTime}
+          initialDate={timeSheet.date}
+          initialField={timeSheet.field}
+          initialApplyAll={!!commonTime || !isDayTimesSet}
           existing={dayTimes}
-          onClose={() => setTimeSheetDate(null)}
+          onClose={() => setTimeSheet(null)}
           onComplete={(next) => {
             setDayTimes((prev) => ({ ...prev, ...next }));
-            setTimeSheetDate(null);
+            setTimeSheet(null);
           }}
         />
       )}
 
       {/* 숙소 위치 바텀시트 */}
-      <LodgingSheet
-        visible={lodgingOpen}
-        onClose={() => setLodgingOpen(false)}
-        onComplete={(value) => {
-          setLodging(value);
-          setLodgingOpen(false);
-        }}
-      />
+      {lodgingOpen && (
+        <LodgingSheet
+          dates={tripDates}
+          initialMode={lodgingMode}
+          initialLodging={lodging}
+          initialDailyLodgings={dailyLodgings}
+          onClose={() => setLodgingOpen(false)}
+          onComplete={(value) => {
+            setLodgingMode(value.mode);
+            setLodging(value.lodging);
+            setDailyLodgings(value.dailyLodgings);
+            setLodgingOpen(false);
+          }}
+        />
+      )}
 
       {/* 순서 안내 모달 */}
       <Modal visible={orderGuard !== null} transparent animationType="fade">
@@ -673,7 +704,7 @@ export default function TripConditionsScreen() {
                 const guard = orderGuard;
                 setOrderGuard(null);
                 if (guard === 'schedule') setScheduleOpen(true);
-                else openDayTimes();
+                else openDayTimes('start');
               }}
             />
           </View>
@@ -857,6 +888,7 @@ interface DayTimeSheetProps {
   visible: boolean;
   dates: string[];
   initialDate: string;
+  initialField: 'start' | 'end';
   initialApplyAll?: boolean;
   existing: Record<string, DayTime>;
   onClose: () => void;
@@ -867,6 +899,7 @@ function DayTimeSheet({
   visible,
   dates,
   initialDate,
+  initialField,
   initialApplyAll = false,
   existing,
   onClose,
@@ -882,7 +915,7 @@ function DayTimeSheet({
   const [end, setEnd] = useState<string | null>(
     existing[initialDate]?.end ?? null,
   );
-  const [activeField, setActiveField] = useState<'start' | 'end'>('start');
+  const [activeField, setActiveField] = useState<'start' | 'end'>(initialField);
 
   const activeTime = activeField === 'start' ? start : end;
   const [activeHour, activeMinute] = (activeTime ?? '9:00')
@@ -1078,13 +1111,205 @@ function DayTimeSheet({
 
 /* ------------------------------ 숙소 위치 시트 ------------------------------ */
 
+interface LodgingValue {
+  mode: LodgingMode;
+  lodging: TripLodging | null;
+  dailyLodgings: Record<string, TripLodging>;
+}
+
 interface LodgingSheetProps {
-  visible: boolean;
+  dates: string[];
+  initialMode: LodgingMode | null;
+  initialLodging: TripLodging | null;
+  initialDailyLodgings: Record<string, TripLodging>;
+  onClose: () => void;
+  onComplete: (value: LodgingValue) => void;
+}
+
+/** mode: 숙소 형태 선택 → days: 일자별 목록 → search: 숙소 검색 */
+type LodgingStep = 'mode' | 'days' | 'search';
+
+function LodgingSheet({
+  dates,
+  initialMode,
+  initialLodging,
+  initialDailyLodgings,
+  onClose,
+  onComplete,
+}: LodgingSheetProps) {
+  const [step, setStep] = useState<LodgingStep>('mode');
+  const [mode, setMode] = useState<LodgingMode | null>(initialMode);
+  const [lodging, setLodging] = useState<TripLodging | null>(initialLodging);
+  const [dailyLodgings, setDailyLodgings] = useState(initialDailyLodgings);
+  /** 지금 검색 중인 날짜 (단일 숙소면 null) */
+  const [targetDate, setTargetDate] = useState<string | null>(null);
+
+  const allFilled = dates.every((date) => dailyLodgings[date]);
+
+  const handleSelectMode = () => {
+    if (mode === 'daily') {
+      setStep('days');
+      return;
+    }
+    setTargetDate(null);
+    setStep('search');
+  };
+
+  const handleSearched = (place: TripLodging) => {
+    if (mode === 'daily' && targetDate) {
+      setDailyLodgings((prev) => ({ ...prev, [targetDate]: place }));
+      setStep('days');
+      return;
+    }
+    onComplete({ mode: 'single', lodging: place, dailyLodgings: {} });
+  };
+
+  if (step === 'mode') {
+    return (
+      <BottomSheet visible onClose={onClose}>
+        <View style={sheetStyles.headerArea}>
+          <Text style={sheetStyles.title}>
+            제주에서 머무를 숙소를 알려주세요
+          </Text>
+          <View style={lodgingStyles.modeRow}>
+            {(
+              [
+                {
+                  key: 'single',
+                  title: '한 숙소에서만 머물러요',
+                  description: '여행 기간 동안 한 곳에만\n숙박할 예정이에요.',
+                },
+                {
+                  key: 'daily',
+                  title: '여행 중 숙소가 달라져요',
+                  description: '중간에 숙소를\n옮길 예정이에요.',
+                },
+              ] as const
+            ).map((option) => {
+              const isSelected = mode === option.key;
+              return (
+                <Pressable
+                  key={option.key}
+                  style={[
+                    lodgingStyles.modeCard,
+                    isSelected && lodgingStyles.modeCardSelected,
+                  ]}
+                  onPress={() => setMode(option.key)}
+                >
+                  <Checkbox
+                    checked={isSelected}
+                    onPress={() => setMode(option.key)}
+                  />
+                  <View style={lodgingStyles.modeTextGroup}>
+                    <Text style={lodgingStyles.modeTitle}>{option.title}</Text>
+                    <Text style={lodgingStyles.modeDescription}>
+                      {option.description}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+        <View style={sheetStyles.footer}>
+          <Button
+            title="선택완료"
+            disabled={!mode}
+            onPress={handleSelectMode}
+          />
+        </View>
+      </BottomSheet>
+    );
+  }
+
+  if (step === 'days') {
+    return (
+      <BottomSheet visible onClose={onClose}>
+        <View style={sheetStyles.headerArea}>
+          <Text style={sheetStyles.title}>
+            {allFilled
+              ? '입력한 숙소를 확인해주세요'
+              : '일자별로 숙소를 입력해주세요'}
+          </Text>
+          <View style={lodgingStyles.dayList}>
+            {dates.map((date, index) => (
+              <Pressable
+                key={date}
+                style={lodgingStyles.dayRow}
+                onPress={() => {
+                  setTargetDate(date);
+                  setStep('search');
+                }}
+              >
+                <View style={lodgingStyles.dayTextGroup}>
+                  <Text style={lodgingStyles.dayTitle}>Day {index + 1}</Text>
+                  <Text style={lodgingStyles.dayDate}>{formatDot(date)}</Text>
+                </View>
+                <View style={lodgingStyles.dayValueGroup}>
+                  <Text
+                    style={
+                      dailyLodgings[date]
+                        ? lodgingStyles.dayValue
+                        : lodgingStyles.dayPlaceholder
+                    }
+                    numberOfLines={1}
+                  >
+                    {dailyLodgings[date]?.name ?? '숙소 선택'}
+                  </Text>
+                  <Image
+                    source={chevronIcon}
+                    style={lodgingStyles.dayChevron}
+                  />
+                </View>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+        <View style={[sheetStyles.footer, lodgingStyles.dayFooter]}>
+          {!allFilled && (
+            <Button
+              title="이전"
+              color="outlinedGrey"
+              style={lodgingStyles.footerButton}
+              onPress={() => setStep('mode')}
+            />
+          )}
+          <Button
+            title="다음"
+            disabled={!allFilled}
+            style={lodgingStyles.footerButton}
+            onPress={() =>
+              onComplete({ mode: 'daily', lodging: null, dailyLodgings })
+            }
+          />
+        </View>
+      </BottomSheet>
+    );
+  }
+
+  return (
+    <LodgingSearchSheet
+      selected={targetDate ? dailyLodgings[targetDate] : lodging}
+      onClose={mode === 'daily' ? () => setStep('days') : onClose}
+      onComplete={(place) => {
+        setLodging(place);
+        handleSearched(place);
+      }}
+    />
+  );
+}
+
+interface LodgingSearchSheetProps {
+  selected: TripLodging | null | undefined;
   onClose: () => void;
   onComplete: (lodging: TripLodging) => void;
 }
 
-function LodgingSheet({ visible, onClose, onComplete }: LodgingSheetProps) {
+function LodgingSearchSheet({
+  selected: initialSelected,
+  onClose,
+  onComplete,
+}: LodgingSearchSheetProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Place[]>([]);
   const [searched, setSearched] = useState(false);
@@ -1105,7 +1330,7 @@ function LodgingSheet({ visible, onClose, onComplete }: LodgingSheetProps) {
   };
 
   return (
-    <BottomSheet visible={visible} onClose={onClose}>
+    <BottomSheet visible onClose={onClose}>
       <View style={sheetStyles.headerArea}>
         <Text style={sheetStyles.title}>제주에서 머무를 숙소를 알려주세요</Text>
         <View style={sheetStyles.searchBox}>
@@ -1113,7 +1338,7 @@ function LodgingSheet({ visible, onClose, onComplete }: LodgingSheetProps) {
             style={sheetStyles.searchInput}
             value={query}
             onChangeText={setQuery}
-            placeholder="숙소를 입력해주세요"
+            placeholder={initialSelected?.name ?? '숙소를 입력해주세요'}
             placeholderTextColor={PLACEHOLDER}
             returnKeyType="search"
             onSubmitEditing={handleSearch}
@@ -1163,10 +1388,21 @@ function LodgingSheet({ visible, onClose, onComplete }: LodgingSheetProps) {
                     onPress={() => setSelected(place)}
                   >
                     <View style={sheetStyles.resultInfo}>
-                      <Text style={sheetStyles.resultName}>{place.name}</Text>
-                      <Text style={sheetStyles.resultAddress} numberOfLines={1}>
-                        {place.roadAddress}
-                      </Text>
+                      <Image
+                        source={placeholderPlace}
+                        style={sheetStyles.resultImage}
+                      />
+                      <View style={sheetStyles.resultTextGroup}>
+                        <Text style={sheetStyles.resultName} numberOfLines={1}>
+                          {place.name}
+                        </Text>
+                        <Text
+                          style={sheetStyles.resultAddress}
+                          numberOfLines={1}
+                        >
+                          {place.roadAddress}
+                        </Text>
+                      </View>
                     </View>
                     <RadioButton
                       selected={selected === place}
@@ -1195,7 +1431,11 @@ function LodgingSheet({ visible, onClose, onComplete }: LodgingSheetProps) {
           disabled={!selected}
           onPress={() =>
             selected &&
-            onComplete({ name: selected.name, address: selected.roadAddress })
+            onComplete({
+              name: selected.name,
+              address: selected.roadAddress,
+              coord: selected.coord,
+            })
           }
         />
       </View>
@@ -1303,8 +1543,29 @@ const styles = StyleSheet.create({
     height: 30,
     backgroundColor: colors.grey[200],
   },
+  timeRow: {
+    flexDirection: 'row',
+    gap: 3,
+  },
+  dropdown: {
+    flex: 1,
+    height: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: INPUT_BORDER,
+    borderRadius: radius['2xs'],
+  },
+  dropdownIcon: {
+    width: 24,
+    height: 24,
+    tintColor: colors.grey[500],
+  },
   inputRow: {
-    height: 48,
+    height: 50,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1331,6 +1592,11 @@ const styles = StyleSheet.create({
     height: 24,
     transform: [{ scaleX: -1 }],
   },
+  rowSearchIcon: {
+    width: 24,
+    height: 24,
+    tintColor: colors.grey[800],
+  },
   dayList: {
     gap: 3,
   },
@@ -1352,12 +1618,9 @@ const styles = StyleSheet.create({
   dayBadge: {
     width: 46,
     paddingVertical: spacing['2xs'],
-    borderRadius: 4,
+    borderRadius: radius['3xs'],
     backgroundColor: orange[50],
     alignItems: 'center',
-  },
-  allBadge: {
-    width: 34,
   },
   dayBadgeLabel: {
     fontFamily: fontFamily.medium,
@@ -1431,7 +1694,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.dim,
   },
   modalBox: {
-    width: 342,
+    width: grid.containerMaxWidth,
     alignItems: 'center',
     gap: spacing.xs,
     paddingTop: 30,
@@ -1464,6 +1727,100 @@ const styles = StyleSheet.create({
     lineHeight: lineHeight.xs,
     color: colors.grey[600],
     textAlign: 'center',
+  },
+});
+
+const lodgingStyles = StyleSheet.create({
+  modeRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  modeCard: {
+    flex: 1,
+    gap: 6,
+    padding: spacing.sm,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    borderRadius: radius['2xs'],
+    backgroundColor: colors.white,
+  },
+  modeCardSelected: {
+    borderColor: colors.primary,
+    backgroundColor: orange[50],
+  },
+  modeTextGroup: {
+    gap: spacing['2xs'],
+  },
+  modeTitle: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.md,
+    lineHeight: lineHeight.md,
+    color: colors.grey[900],
+  },
+  modeDescription: {
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.xs,
+    lineHeight: lineHeight.sm,
+    color: colors.grey[800],
+  },
+  dayList: {
+    gap: spacing.xs,
+  },
+  dayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.sm,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+    borderRadius: radius['2xs'],
+  },
+  dayTextGroup: {
+    gap: spacing['2xs'],
+  },
+  dayTitle: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.md,
+    lineHeight: lineHeight.md,
+    color: colors.grey[900],
+  },
+  dayDate: {
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.xs,
+    lineHeight: lineHeight.sm,
+    color: colors.grey[800],
+  },
+  dayValueGroup: {
+    flexShrink: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing['2xs'],
+  },
+  dayPlaceholder: {
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.md,
+    lineHeight: lineHeight.md,
+    color: colors.grey[700],
+  },
+  dayValue: {
+    flexShrink: 1,
+    fontFamily: fontFamily.semiBold,
+    fontSize: fontSize.md,
+    lineHeight: lineHeight.md,
+    color: colors.grey[900],
+  },
+  dayChevron: {
+    width: 24,
+    height: 24,
+    tintColor: colors.grey[700],
+    transform: [{ scaleX: -1 }],
+  },
+  dayFooter: {
+    flexDirection: 'row',
+    gap: spacing['2xs'],
+  },
+  footerButton: {
+    flex: 1,
   },
 });
 
@@ -1655,18 +2012,23 @@ const sheetStyles = StyleSheet.create({
     color: colors.grey[900],
   },
   searchBox: {
-    height: 48,
+    height: 50,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.md,
     borderWidth: 1,
-    borderColor: INPUT_BORDER,
-    borderRadius: radius['2xs'],
+    borderColor: CARD_BORDER,
+    borderRadius: radius.circle,
     backgroundColor: colors.white,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 28,
+    elevation: 2,
   },
   searchInput: {
     flex: 1,
-    fontFamily: fontFamily.regular,
+    fontFamily: fontFamily.bold,
     fontSize: fontSize.md,
     color: colors.grey[900],
     padding: 0,
@@ -1728,7 +2090,18 @@ const sheetStyles = StyleSheet.create({
   },
   resultInfo: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     marginRight: spacing.sm,
+  },
+  resultImage: {
+    width: 50,
+    height: 50,
+    borderRadius: radius['3xs'],
+  },
+  resultTextGroup: {
+    flexShrink: 1,
   },
   resultName: {
     fontFamily: fontFamily.bold,
@@ -1740,7 +2113,7 @@ const sheetStyles = StyleSheet.create({
     fontFamily: fontFamily.regular,
     fontSize: fontSize.xs,
     lineHeight: lineHeight.lg,
-    color: colors.grey[600],
+    color: INACTIVE_TEXT,
   },
   emptyArea: {
     alignItems: 'center',

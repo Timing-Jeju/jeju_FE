@@ -229,6 +229,7 @@ export default function PlaceDetailScreen() {
           addFavorite({
             name,
             category: MOCK_DETAIL.category,
+            address,
             visitType,
             memo,
             stayMinutes: MOCK_DETAIL.stayMinutes,
