@@ -6,6 +6,7 @@ import {
   fontSize,
   green,
   lineHeight,
+  radius,
   red,
   spacing,
   yellow,
@@ -21,21 +22,22 @@ const TAG_PRESET: Record<
   warning: {
     label: '위험',
     background: red[50],
-    border: colors.warning,
+    border: 'transparent',
     text: red[500],
   },
   cautionary: {
     label: '주의',
     background: yellow[50],
-    border: colors.cautionary,
+    border: 'transparent',
     text: yellow[600],
   },
   positive: {
     label: '안전',
     background: green[50],
-    border: colors.positive,
+    border: 'transparent',
     text: green[500],
   },
+  // 상태가 아닌 보조 정보(현위치 등)에 쓰는 회색 테두리 태그
   mono: {
     label: 'text',
     background: colors.white,
@@ -70,16 +72,16 @@ export function Tag({ status, text }: TagProps) {
 const styles = StyleSheet.create({
   container: {
     height: 22,
-    paddingHorizontal: spacing.xs,
+    paddingHorizontal: spacing['2xs'],
     borderWidth: 1,
-    borderRadius: 4,
+    borderRadius: radius['3xs'],
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'flex-start',
   },
   label: {
-    fontFamily: fontFamily.bold,
-    fontSize: fontSize.sm,
-    lineHeight: lineHeight.xs,
+    fontFamily: fontFamily.medium,
+    fontSize: fontSize['3xs'],
+    lineHeight: lineHeight.lg,
   },
 });

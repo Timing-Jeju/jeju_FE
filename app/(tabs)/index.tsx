@@ -22,7 +22,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Button, LikeIcon, Text } from '@/components/ui';
+import { Button, LikeIcon, Text, UpcomingScheduleCard } from '@/components/ui';
 import {
   colors,
   fontFamily,
@@ -33,6 +33,8 @@ import {
 } from '@/constants';
 import { getCurrentLocation } from '@/services/location';
 import { searchPlaces, type Coord, type Place } from '@/services/naverApi';
+import { useScheduleStore } from '@/store/useScheduleStore';
+import { activeReview } from '@/utils/schedule';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
 const INPUT_BORDER = '#F0F0F0';
@@ -102,6 +104,13 @@ export default function HomeScreen() {
   const [distance, setDistance] = useState<number | null>(null);
   const [liked, setLiked] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // 여행 중이면 지도 아래에 다가오는 일정 카드를 띄운다
+  const reviews = useScheduleStore((state) => state.reviews);
+  const tripLegs = useMemo(() => activeReview(reviews)?.legs ?? [], [reviews]);
+  // TODO: 실제 위치 추적 연동 전에는 두 번째 구간을 진행 중인 구간으로 본다
+  const currentLeg = tripLegs[Math.min(1, tripLegs.length - 1)];
+  const showTripCard = !selectedPlace && tripLegs.length > 0;
 
   // 바텀시트 드래그: 위로 올리면 확장(주변 정보), 아래로 내리면 축소/닫기
   const sheetHeight = useMemo(() => new Animated.Value(SHEET_COLLAPSED), []);
@@ -306,25 +315,42 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* 여행조건 플로팅 버튼 */}
-      <Animated.View
-        style={[
-          styles.tripConditionWrap,
-          {
-            bottom: selectedPlace
-              ? Animated.add(sheetHeight, spacing.md)
-              : spacing.md,
-          },
-        ]}
-      >
-        <Pressable
-          style={styles.tripConditionButton}
-          onPress={() => router.push('/trip-conditions')}
+      {/* 여행조건 플로팅 버튼 (여행 중이면 다가오는 일정 카드와 함께 띄운다) */}
+      {showTripCard ? (
+        <View style={styles.tripArea}>
+          <Pressable
+            style={styles.tripConditionButton}
+            onPress={() => router.push('/trip-conditions')}
+          >
+            <Image source={filterIcon} style={styles.filterIcon} />
+            <Text style={styles.tripConditionLabel}>여행조건</Text>
+          </Pressable>
+          <UpcomingScheduleCard
+            legs={tripLegs}
+            currentLeg={currentLeg}
+            onPress={() => router.push('/live-map')}
+          />
+        </View>
+      ) : (
+        <Animated.View
+          style={[
+            styles.tripConditionWrap,
+            {
+              bottom: selectedPlace
+                ? Animated.add(sheetHeight, spacing.md)
+                : spacing.md,
+            },
+          ]}
         >
-          <Image source={filterIcon} style={styles.filterIcon} />
-          <Text style={styles.tripConditionLabel}>여행조건</Text>
-        </Pressable>
-      </Animated.View>
+          <Pressable
+            style={styles.tripConditionButton}
+            onPress={() => router.push('/trip-conditions')}
+          >
+            <Image source={filterIcon} style={styles.filterIcon} />
+            <Text style={styles.tripConditionLabel}>여행조건</Text>
+          </Pressable>
+        </Animated.View>
+      )}
 
       {/* 장소 선택 바텀 패널 (드래그로 확장/축소/닫기) */}
       {selectedPlace && (
@@ -508,6 +534,15 @@ const styles = StyleSheet.create({
   tripConditionWrap: {
     position: 'absolute',
     right: spacing.md,
+  },
+  tripArea: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: spacing.md,
+    alignItems: 'flex-end',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
   },
   tripConditionButton: {
     height: 32,

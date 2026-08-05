@@ -39,7 +39,7 @@ import { searchPlaces, type Coord } from '@/services/naverApi';
 import {
   dayOrdinal,
   useScheduleStore,
-  type ScheduleItem,
+  type SchedulePlace,
 } from '@/store/useScheduleStore';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
@@ -101,7 +101,7 @@ export default function ScheduleSearchScreen() {
   const params = useLocalSearchParams<{ day?: string }>();
   const day = Number(params.day) || 1;
 
-  const addItems = useScheduleStore((state) => state.addItems);
+  const addPlaces = useScheduleStore((state) => state.addPlaces);
 
   const [query, setQuery] = useState('');
   /** null이면 아직 검색 전 (가볼 만한 장소를 보여준다) */
@@ -154,19 +154,19 @@ export default function ScheduleSearchScreen() {
   };
 
   const handleAdd = () => {
-    const items = selected.map(
-      (place): ScheduleItem => ({
-        name: place.name,
-        type: 'visit',
-        category: place.category,
-        visitType: '선택방문',
-        stayMinutes: 60,
-        time: null,
-        coord: place.coord,
-      }),
+    addPlaces(
+      day,
+      selected.map(
+        (place): SchedulePlace => ({
+          name: place.name,
+          category: place.category,
+          address: place.address,
+          visitType: '선택방문',
+          stayMinutes: 60,
+          coord: place.coord,
+        }),
+      ),
     );
-
-    addItems(day, items);
     router.back();
   };
 
@@ -416,6 +416,11 @@ const styles = StyleSheet.create({
     borderColor: CARD_BORDER,
     borderRadius: radius['2xs'],
     backgroundColor: colors.white,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 28,
+    elevation: 2,
   },
   cardSelected: {
     borderColor: colors.primary,

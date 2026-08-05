@@ -6,6 +6,7 @@ export interface FavoritePlace {
   name: string;
   /** 카페 / 바다 / 산 / 식당 등 장소 분류 */
   category: string;
+  address: string;
   visitType: VisitType;
   memo: string;
   /** 추천 체류 시간 (분) */
@@ -48,6 +49,7 @@ const MOCK_FAVORITES: FavoritePlace[] = [
   {
     name: '소심한 브런치',
     category: '카페',
+    address: '제주 제주시 조천읍 조함해안로 519-10',
     visitType: '선택방문',
     memo: '연어 샐러드 꼭 먹기!!!',
     stayMinutes: 90,
@@ -56,6 +58,7 @@ const MOCK_FAVORITES: FavoritePlace[] = [
   {
     name: '함덕해수욕장',
     category: '바다',
+    address: '제주 제주시 조천읍 조함해안로 525',
     visitType: '필수방문',
     memo: '바다 수영하기',
     stayMinutes: 180,
@@ -64,6 +67,7 @@ const MOCK_FAVORITES: FavoritePlace[] = [
   {
     name: '성산일출봉',
     category: '산',
+    address: '제주 서귀포시 성산읍 성산리 1',
     visitType: '필수방문',
     memo: '',
     stayMinutes: 60,

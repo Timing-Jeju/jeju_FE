@@ -42,7 +42,7 @@ import {
 import {
   dayOrdinal,
   useScheduleStore,
-  type ScheduleItem,
+  type SchedulePlace,
 } from '@/store/useScheduleStore';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
@@ -61,7 +61,7 @@ export default function ScheduleFavoritesScreen() {
 
   const favorites = useFavoriteStore((state) => state.favorites);
   const updateFavorite = useFavoriteStore((state) => state.updateFavorite);
-  const addItems = useScheduleStore((state) => state.addItems);
+  const addPlaces = useScheduleStore((state) => state.addPlaces);
 
   const [filter, setFilter] = useState<FavoriteFilter>('전체');
   const [selectedNames, setSelectedNames] = useState<string[]>([]);
@@ -80,21 +80,21 @@ export default function ScheduleFavoritesScreen() {
   };
 
   const handleAdd = () => {
-    const items = favorites
-      .filter((place) => selectedNames.includes(place.name))
-      .map(
-        (place): ScheduleItem => ({
-          name: place.name,
-          type: 'visit',
-          category: place.category,
-          visitType: place.visitType,
-          stayMinutes: place.stayMinutes,
-          time: null,
-          coord: null,
-        }),
-      );
-
-    addItems(day, items);
+    addPlaces(
+      day,
+      favorites
+        .filter((place) => selectedNames.includes(place.name))
+        .map(
+          (place): SchedulePlace => ({
+            name: place.name,
+            category: place.category,
+            address: place.address,
+            visitType: place.visitType,
+            stayMinutes: place.stayMinutes,
+            coord: null,
+          }),
+        ),
+    );
     router.back();
   };
 
