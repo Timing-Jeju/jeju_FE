@@ -1,9 +1,10 @@
 import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
 
+import { SplashView } from '@/components/ui';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useUserStore } from '@/store/useUserStore';
 
@@ -20,6 +21,9 @@ export const unstable_settings = {
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
+/** 브랜드 스플래시를 보여주는 시간 (폰트 로딩 완료 후 기준) */
+const SPLASH_DURATION_MS = 1500;
+
 export default function RootLayout() {
   const [loaded, error] = useFonts({
     'Pretendard-Regular': require('../assets/fonts/Pretendard-Regular.otf'),
@@ -27,21 +31,32 @@ export default function RootLayout() {
     'Pretendard-SemiBold': require('../assets/fonts/Pretendard-SemiBold.otf'),
     'Pretendard-Bold': require('../assets/fonts/Pretendard-Bold.otf'),
     'Pretendard-ExtraBold': require('../assets/fonts/Pretendard-ExtraBold.otf'),
+    'FugazOne-Regular': require('../assets/fonts/FugazOne-Regular.ttf'),
   });
+  const [splashVisible, setSplashVisible] = useState(true);
 
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.
   useEffect(() => {
     if (error) throw error;
   }, [error]);
 
+  /*
+   * 네이티브 스플래시(주황 단색)를 폰트 로딩 후에 내리고, 같은 배경의 브랜드
+   * 스플래시로 이어받는다. 로고가 Fugaz One 이라 폰트 로딩 전에 띄우면 안 된다.
+   */
   useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-    }
+    if (!loaded) return;
+    SplashScreen.hideAsync();
+    const timer = setTimeout(() => setSplashVisible(false), SPLASH_DURATION_MS);
+    return () => clearTimeout(timer);
   }, [loaded]);
 
   if (!loaded) {
     return null;
+  }
+
+  if (splashVisible) {
+    return <SplashView />;
   }
 
   return <RootLayoutNav />;
@@ -72,6 +87,10 @@ function RootLayoutNav() {
           <Stack.Screen
             name="schedule-search"
             options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="schedule-loading"
+            options={{ headerShown: false, gestureEnabled: false }}
           />
           <Stack.Screen
             name="schedule-review"
