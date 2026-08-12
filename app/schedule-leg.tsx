@@ -55,6 +55,16 @@ const busIcon = require('../assets/images/icon-bus.png');
 const infoIcon = require('../assets/images/icon-info-circle.png');
 const trashIcon = require('../assets/images/icon-trash.png');
 const trashIllust = require('../assets/images/illust-trash.png');
+const pinMarker = require('../assets/images/pin-marker.png');
+
+/** 지도 마커 크기 (UpcomingScheduleCard의 핀과 같은 크기로 맞춘다) */
+const MARKER_SIZE = 32;
+
+/**
+ * 핀 이미지 아래에 투명 여백이 7/96 만큼 있어서 기본 앵커(y: 1)로는 핀 끝이
+ * 좌표보다 위에 찍힌다. 불투명 영역의 밑변(89/96)을 앵커로 잡아 끝을 맞춘다.
+ */
+const MARKER_ANCHOR = { x: 0.5, y: 89 / 96 };
 
 const INITIAL_CAMERA = {
   latitude: 33.5104,
@@ -225,7 +235,10 @@ export default function ScheduleLegScreen() {
                 latitude={marker.coord.latitude}
                 longitude={marker.coord.longitude}
                 caption={{ text: `${marker.label} ${marker.name}` }}
-                tintColor={colors.primary}
+                image={pinMarker}
+                width={MARKER_SIZE}
+                height={MARKER_SIZE}
+                anchor={MARKER_ANCHOR}
               />
             ))}
             {path.length > 1 && (

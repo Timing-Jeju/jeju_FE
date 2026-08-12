@@ -68,30 +68,31 @@ interface SearchPlace {
 }
 
 // TODO: 추천 장소 API 연동 전 임시 데이터
+// 좌표가 없으면 지도에 마커가 찍히지 않으므로 네이버 지역 검색 결과값을 넣어둔다
 const MOCK_RECOMMENDED: SearchPlace[] = [
   {
     name: '성산일출봉',
     category: '관광지',
     address: '제주 서귀포시 성산읍 성산리 1',
-    coord: null,
+    coord: { latitude: 33.458883, longitude: 126.940823 },
   },
   {
     name: '9.81파크 제주',
     category: '관광지',
     address: '제주 제주시 애월읍 천덕로 880-24',
-    coord: null,
+    coord: { latitude: 33.390037, longitude: 126.366509 },
   },
   {
     name: '함덕해수욕장',
     category: '관광지',
     address: '제주 제주시 조천읍 조함해안로 525',
-    coord: null,
+    coord: { latitude: 33.543108, longitude: 126.669692 },
   },
   {
     name: '새물',
     category: '카페',
     address: '제주 제주시 애월읍 애월해안로 620 1.2.3층',
-    coord: null,
+    coord: { latitude: 33.47854, longitude: 126.36967 },
   },
 ];
 

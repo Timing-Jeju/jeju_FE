@@ -1,9 +1,10 @@
 import {
   NaverMapMarkerOverlay,
   NaverMapView,
+  type NaverMapViewRef,
 } from '@mj-studio/react-native-naver-map';
 import { useRouter } from 'expo-router';
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   Platform,
@@ -33,6 +34,8 @@ import {
   spacing,
   transport,
 } from '@/constants';
+import { requestLocationPermission } from '@/services/location';
+import type { Coord } from '@/services/naverApi';
 import { useScheduleStore, type RouteLeg } from '@/store/useScheduleStore';
 import { formatAmPm } from '@/utils/date';
 import { activeReview } from '@/utils/schedule';
@@ -43,6 +46,16 @@ const CURRENT_BORDER = '#FF9967';
 
 const chevronLeftIcon = require('../assets/images/icon-chevron-left.png');
 const restartIcon = require('../assets/images/icon-restart.png');
+const pinMarker = require('../assets/images/pin-marker.png');
+
+/** 지도 마커 크기 (UpcomingScheduleCard의 핀과 같은 크기로 맞춘다) */
+const MARKER_SIZE = 32;
+
+/**
+ * 핀 이미지 아래에 투명 여백이 7/96 만큼 있어서 기본 앵커(y: 1)로는 핀 끝이
+ * 좌표보다 위에 찍힌다. 불투명 영역의 밑변(89/96)을 앵커로 잡아 끝을 맞춘다.
+ */
+const MARKER_ANCHOR = { x: 0.5, y: 89 / 96 };
 
 const INITIAL_CAMERA = {
   latitude: 33.5104,
@@ -138,6 +151,8 @@ export default function LiveMapScreen() {
   // TODO: 실제 위치 추적 연동 전에는 오늘 일정의 두 번째 구간을 현위치로 본다
   const legs = useMemo(() => activeReview(reviews)?.legs ?? [], [reviews]);
 
+  const mapRef = useRef<NaverMapViewRef>(null);
+
   const currentLeg = legs[Math.min(1, legs.length - 1)];
   const [expandedId, setExpandedId] = useState<string | null>(
     currentLeg?.id ?? null,
@@ -147,13 +162,44 @@ export default function LiveMapScreen() {
   const minutesLeft = currentLeg?.slackMinutes ?? 0;
 
   // 구간 끝점을 모아 지도에 찍는다 (좌표를 아는 장소만)
-  const markers = useMemo(
-    () =>
-      legs.flatMap((leg) =>
-        leg.toCoord ? [{ name: leg.to, coord: leg.toCoord }] : [],
-      ),
-    [legs],
-  );
+  const markers = useMemo(() => {
+    const points: { name: string; coord: Coord }[] = [];
+    const push = (name: string, coord: Coord | null) => {
+      // 숙소처럼 출발지와 도착지가 같으면 마커가 겹치므로 이름으로 한 번만 담는다
+      if (!coord || points.some((point) => point.name === name)) return;
+      points.push({ name, coord });
+    };
+
+    legs.forEach((leg, index) => {
+      // 첫 구간은 출발지도 찍어야 경로의 시작점이 보인다
+      if (index === 0) push(leg.from, leg.fromCoord);
+      push(leg.to, leg.toCoord);
+    });
+
+    return points;
+  }, [legs]);
+
+  /*
+   * 현위치 오버레이(파란 점)는 위치 권한이 있어야 그려진다.
+   * 좌표는 지도 SDK가 직접 받으므로 여기서는 권한만 확인한다.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    requestLocationPermission().then((granted) => {
+      if (!cancelled && granted) {
+        mapRef.current?.setLocationTrackingMode('NoFollow');
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleRecenter = async () => {
+    if (await requestLocationPermission()) {
+      mapRef.current?.setLocationTrackingMode('Follow');
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -165,6 +211,7 @@ export default function LiveMapScreen() {
         </View>
       ) : (
         <NaverMapView
+          ref={mapRef}
           style={styles.map}
           initialCamera={
             currentLeg?.fromCoord
@@ -179,7 +226,10 @@ export default function LiveMapScreen() {
               latitude={marker.coord.latitude}
               longitude={marker.coord.longitude}
               caption={{ text: marker.name }}
-              tintColor={colors.primary}
+              image={pinMarker}
+              width={MARKER_SIZE}
+              height={MARKER_SIZE}
+              anchor={MARKER_ANCHOR}
             />
           ))}
         </NaverMapView>
@@ -211,7 +261,7 @@ export default function LiveMapScreen() {
                 <Text style={styles.currentLabel}>현재 위치:</Text>
                 <Text style={styles.currentValue}>{currentPlace}</Text>
               </View>
-              <Pressable hitSlop={spacing.xs}>
+              <Pressable hitSlop={spacing.xs} onPress={handleRecenter}>
                 <Image source={restartIcon} style={styles.refreshIcon} />
               </Pressable>
             </View>

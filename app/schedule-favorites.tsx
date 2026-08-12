@@ -91,7 +91,7 @@ export default function ScheduleFavoritesScreen() {
             address: place.address,
             visitType: place.visitType,
             stayMinutes: place.stayMinutes,
-            coord: null,
+            coord: place.coord,
           }),
         ),
     );

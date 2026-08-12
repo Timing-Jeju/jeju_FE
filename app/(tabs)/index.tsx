@@ -48,6 +48,16 @@ const utensilsIcon = require('../../assets/images/icon-utensils.png');
 const coffeeIcon = require('../../assets/images/icon-coffee.png');
 const targetIcon = require('../../assets/images/icon-target.png');
 const placeholderPlace = require('../../assets/images/placeholder-place.png');
+const pinMarker = require('../../assets/images/pin-marker.png');
+
+/** 지도 마커 크기 (UpcomingScheduleCard의 핀과 같은 크기로 맞춘다) */
+const MARKER_SIZE = 32;
+
+/**
+ * 핀 이미지 아래에 투명 여백이 7/96 만큼 있어서 기본 앵커(y: 1)로는 핀 끝이
+ * 좌표보다 위에 찍힌다. 불투명 영역의 밑변(89/96)을 앵커로 잡아 끝을 맞춘다.
+ */
+const MARKER_ANCHOR = { x: 0.5, y: 89 / 96 };
 
 const INITIAL_CAMERA = {
   latitude: 33.5104,
@@ -211,6 +221,8 @@ export default function HomeScreen() {
       params: {
         name: selectedPlace.name,
         address: selectedPlace.roadAddress,
+        latitude: String(selectedPlace.coord.latitude),
+        longitude: String(selectedPlace.coord.longitude),
       },
     });
   };
@@ -243,7 +255,10 @@ export default function HomeScreen() {
             latitude={selectedPlace.coord.latitude}
             longitude={selectedPlace.coord.longitude}
             caption={{ text: selectedPlace.name }}
-            tintColor={colors.primary}
+            image={pinMarker}
+            width={MARKER_SIZE}
+            height={MARKER_SIZE}
+            anchor={MARKER_ANCHOR}
           />
         )}
       </NaverMapView>

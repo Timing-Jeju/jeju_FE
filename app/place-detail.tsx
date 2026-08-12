@@ -69,7 +69,12 @@ function VerticalDivider() {
 export default function PlaceDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ name?: string; address?: string }>();
+  const params = useLocalSearchParams<{
+    name?: string;
+    address?: string;
+    latitude?: string;
+    longitude?: string;
+  }>();
 
   const [memoModalVisible, setMemoModalVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
@@ -81,6 +86,15 @@ export default function PlaceDetailScreen() {
   const favorite = useFavoriteStore((state) =>
     state.favorites.find((place) => place.name === name),
   );
+
+  // 찜해둔 장소를 일정에 담았을 때 지도에 찍으려면 좌표를 같이 저장해야 한다
+  const coord =
+    params.latitude && params.longitude
+      ? {
+          latitude: Number(params.latitude),
+          longitude: Number(params.longitude),
+        }
+      : (favorite?.coord ?? null);
   const addFavorite = useFavoriteStore((state) => state.addFavorite);
   const removeFavorite = useFavoriteStore((state) => state.removeFavorite);
   const liked = favorite !== undefined;
@@ -234,6 +248,7 @@ export default function PlaceDetailScreen() {
             memo,
             stayMinutes: MOCK_DETAIL.stayMinutes,
             direction: MOCK_DETAIL.direction,
+            coord,
           });
           setMemoModalVisible(false);
         }}
