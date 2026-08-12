@@ -110,6 +110,9 @@ interface CalendarProps {
   onSelectDate: (key: string) => void;
 }
 
+/** 날짜 셀이 그리는 회색 띠의 모양 (없음 / 오른쪽 절반 / 전체 / 왼쪽 절반) */
+type RangeBand = 'none' | 'start' | 'middle' | 'end';
+
 function Calendar({ startDate, endDate, onSelectDate }: CalendarProps) {
   const today = useMemo(() => new Date(), []);
   const [year, setYear] = useState(today.getFullYear());
@@ -134,9 +137,18 @@ function Calendar({ startDate, endDate, onSelectDate }: CalendarProps) {
     return rows;
   }, [year, month]);
 
-  const isInRange = (key: string) =>
-    !!startDate && !!endDate && key > startDate && key < endDate;
   const isEndpoint = (key: string) => key === startDate || key === endDate;
+
+  /**
+   * 가는날 ~ 오는날 사이를 끊김 없는 회색 띠로 잇기 위한 구간 판정.
+   * 가는날은 오른쪽 절반, 오는날은 왼쪽 절반만 칠해 동그란 선택 표시 뒤에서 이어지게 한다.
+   */
+  const rangeBandOf = (key: string): RangeBand => {
+    if (!startDate || !endDate || startDate === endDate) return 'none';
+    if (key === startDate) return 'start';
+    if (key === endDate) return 'end';
+    return key > startDate && key < endDate ? 'middle' : 'none';
+  };
 
   return (
     <View style={calendarStyles.container}>
@@ -175,28 +187,41 @@ function Calendar({ startDate, endDate, onSelectDate }: CalendarProps) {
             if (!key)
               return <View key={dayIndex} style={calendarStyles.dayCell} />;
             const endpoint = isEndpoint(key);
-            const inRange = isInRange(key);
+            const band = rangeBandOf(key);
             const weekend =
               fromKey(key).getDay() === 0 || fromKey(key).getDay() === 6;
             return (
               <Pressable
                 key={dayIndex}
-                style={[
-                  calendarStyles.dayCell,
-                  inRange && calendarStyles.dayCellInRange,
-                  endpoint && calendarStyles.dayCellSelected,
-                ]}
+                style={calendarStyles.dayCell}
                 onPress={() => onSelectDate(key)}
               >
-                <Text
+                {band !== 'none' && (
+                  <View
+                    style={[
+                      calendarStyles.rangeBand,
+                      band === 'start' && calendarStyles.rangeBandStart,
+                      band === 'middle' && calendarStyles.rangeBandFull,
+                      band === 'end' && calendarStyles.rangeBandEnd,
+                    ]}
+                  />
+                )}
+                <View
                   style={[
-                    calendarStyles.dayLabel,
-                    weekend && calendarStyles.dayLabelDim,
-                    endpoint && calendarStyles.dayLabelSelected,
+                    calendarStyles.daySlot,
+                    endpoint && calendarStyles.daySlotSelected,
                   ]}
                 >
-                  {fromKey(key).getDate()}
-                </Text>
+                  <Text
+                    style={[
+                      calendarStyles.dayLabel,
+                      weekend && calendarStyles.dayLabelDim,
+                      endpoint && calendarStyles.dayLabelSelected,
+                    ]}
+                  >
+                    {fromKey(key).getDate()}
+                  </Text>
+                </View>
               </Pressable>
             );
           })}
@@ -235,11 +260,9 @@ const calendarStyles = StyleSheet.create({
   },
   weekdayRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.xs,
   },
   weekday: {
-    width: 40,
+    flex: 1,
     fontFamily: fontFamily.semiBold,
     fontSize: fontSize.md,
     color: colors.grey[900],
@@ -249,23 +272,43 @@ const calendarStyles = StyleSheet.create({
     fontFamily: fontFamily.regular,
     color: PLACEHOLDER,
   },
+  // 셀을 균등 분할해 서로 맞닿게 한다. 간격이 있으면 회색 띠가 날짜마다 끊긴다.
   weekRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     marginBottom: 5,
   },
   dayCell: {
-    width: 44,
+    flex: 1,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rangeBand: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    backgroundColor: TRACK_BACKGROUND,
+  },
+  rangeBandFull: {
+    left: 0,
+    right: 0,
+  },
+  rangeBandStart: {
+    left: '50%',
+    right: 0,
+  },
+  rangeBandEnd: {
+    left: 0,
+    right: '50%',
+  },
+  daySlot: {
+    width: 40,
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radius.circle,
   },
-  dayCellInRange: {
-    backgroundColor: TRACK_BACKGROUND,
-    borderRadius: 0,
-  },
-  dayCellSelected: {
+  daySlotSelected: {
     backgroundColor: colors.primary,
   },
   dayLabel: {
