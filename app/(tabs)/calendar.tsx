@@ -252,8 +252,9 @@ export default function CalendarScreen() {
       ),
     );
     setModePickerOpen(false);
+    // 로딩 화면이 생성 연출을 보여준 뒤 검토 화면으로 replace 한다
     router.push({
-      pathname: '/schedule-review',
+      pathname: '/schedule-loading',
       params: { day: String(selectedDay) },
     });
   };

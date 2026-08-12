@@ -31,6 +31,7 @@ export { RadioButton } from './RadioButton';
 export { ReorderSheet, type ReorderItem } from './ReorderSheet';
 export { RouteTitle, type RouteTitleSize } from './RouteTitle';
 export { ScreenHeader } from './ScreenHeader';
+export { SplashView } from './SplashView';
 export { Tag, type TagStatus } from './Tag';
 export { Text } from './Text';
 export { TouristSpotCard } from './TouristSpotCard';

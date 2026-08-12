@@ -4,6 +4,8 @@ export const fontFamily = {
   semiBold: 'Pretendard-SemiBold',
   bold: 'Pretendard-Bold',
   extraBold: 'Pretendard-ExtraBold',
+  /** 로고 워드마크(Timing Jeju) 전용 — 본문에는 쓰지 않는다 */
+  display: 'FugazOne-Regular',
 } as const;
 
 export const fontWeight = {

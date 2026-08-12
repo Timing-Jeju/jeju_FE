@@ -12,7 +12,8 @@
       "bundleIdentifier": "com.yonghyeog.tourist"
     },
     "android": {
-      "package": "com.yonghyeog.tourist",
+      "package": "com.jeju.tourist",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -31,9 +32,8 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
-          "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "image": "./assets/images/splash-blank.png",
+          "backgroundColor": "#FF5602"
         }
       ],
       [
@@ -59,10 +59,16 @@
         "expo-build-properties",
         {
           "android": {
-            "extraMavenRepos": ["https://repository.map.naver.com/archive/maven"]
+            "extraMavenRepos": [
+              "https://repository.map.naver.com/archive/maven"
+            ],
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
           }
         }
-      ]
+      ],
+      "./plugins/withAndroidSigning",
+      "./plugins/withReleasePermissions"
     ],
     "experiments": {
       "typedRoutes": true

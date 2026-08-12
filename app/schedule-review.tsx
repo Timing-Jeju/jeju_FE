@@ -323,6 +323,23 @@ export default function ScheduleReviewScreen() {
   const review = reviews[selectedDay];
   const legs = useMemo(() => review?.legs ?? [], [review]);
 
+  // 마지막 날에만 확정하고, 그 전에는 다음 날 검토로 넘어간다
+  const isLastDay = selectedDay >= dayCount;
+
+  const handleConfirm = () => {
+    if (review?.dirty) {
+      recheck(selectedDay);
+      return;
+    }
+    confirmDay(selectedDay);
+    if (isLastDay) {
+      router.back();
+      return;
+    }
+    setSelectedDay(selectedDay + 1);
+    setExpandedId(null);
+  };
+
   const reorderItems = useMemo(
     () =>
       legs.map((leg) => ({
@@ -484,16 +501,15 @@ export default function ScheduleReviewScreen() {
         style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}
       >
         <Button
-          title={review.dirty ? '재검사 하기' : '확정하기'}
+          title={
+            review.dirty
+              ? '재검사 하기'
+              : isLastDay
+                ? '확정하기'
+                : `${selectedDay + 1}일차로 넘어가기`
+          }
           disabled={legs.length === 0}
-          onPress={() => {
-            if (review.dirty) {
-              recheck(selectedDay);
-              return;
-            }
-            confirmDay(selectedDay);
-            router.back();
-          }}
+          onPress={handleConfirm}
         />
       </View>
 

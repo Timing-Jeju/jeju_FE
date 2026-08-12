@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+import type { Coord } from '@/services/naverApi';
+
 export type VisitType = '필수방문' | '선택방문';
 
 export interface FavoritePlace {
@@ -13,6 +15,8 @@ export interface FavoritePlace {
   stayMinutes: number;
   /** 제주 기준 방향 (동쪽 / 서쪽 …) */
   direction: string;
+  /** 일정에 담았을 때 지도에 마커를 찍으려면 필요하다 (모르면 null) */
+  coord: Coord | null;
 }
 
 export const FAVORITE_FILTERS = [
@@ -54,6 +58,7 @@ const MOCK_FAVORITES: FavoritePlace[] = [
     memo: '연어 샐러드 꼭 먹기!!!',
     stayMinutes: 90,
     direction: '동쪽',
+    coord: { latitude: 33.54371, longitude: 126.668704 },
   },
   {
     name: '함덕해수욕장',
@@ -63,6 +68,7 @@ const MOCK_FAVORITES: FavoritePlace[] = [
     memo: '바다 수영하기',
     stayMinutes: 180,
     direction: '동쪽',
+    coord: { latitude: 33.543108, longitude: 126.669692 },
   },
   {
     name: '성산일출봉',
@@ -72,6 +78,7 @@ const MOCK_FAVORITES: FavoritePlace[] = [
     memo: '',
     stayMinutes: 60,
     direction: '동쪽',
+    coord: { latitude: 33.458883, longitude: 126.940823 },
   },
 ];
 
