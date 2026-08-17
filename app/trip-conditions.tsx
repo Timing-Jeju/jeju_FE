@@ -43,7 +43,7 @@ import {
 } from '@/store/useTripStore';
 import {
   datesBetween,
-  formatAmPm,
+  formatTime,
   formatDot,
   formatKorean,
   formatShort,
@@ -306,7 +306,12 @@ const calendarStyles = StyleSheet.create({
     height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: radius.circle,
+    /*
+     * Android에서 radius.circle(999)처럼 크기보다 큰 값을 주면 첫 선택 때 모서리가
+     * 깎이지 않고 네모로 그려진다. 지름의 절반을 그대로 넣어 항상 원으로 나오게 한다.
+     */
+    borderRadius: 20,
+    overflow: 'hidden',
   },
   daySlotSelected: {
     backgroundColor: colors.primary,
@@ -355,7 +360,7 @@ export default function TripConditionsScreen() {
     Record<string, TripLodging>
   >(stored.dailyLodgings);
   const [styleTags, setStyleTags] = useState<string[]>(stored.styles);
-  const [transportMode, setTransportMode] = useState<TripTransportMode | null>(
+  const [transportModes, setTransportModes] = useState<TripTransportMode[]>(
     stored.transport,
   );
 
@@ -394,8 +399,12 @@ export default function TripConditionsScreen() {
     { lodgingMode, lodging, dailyLodgings },
     tripDates,
   );
+
   const canSave =
-    isDayTimesSet && lodgingDone && styleTags.length > 0 && !!transportMode;
+    isDayTimesSet &&
+    lodgingDone &&
+    styleTags.length > 0 &&
+    transportModes.length > 0;
 
   const toggleStyle = (tag: string) => {
     setStyleTags((prev) => {
@@ -403,6 +412,14 @@ export default function TripConditionsScreen() {
       if (prev.length >= 4) return prev;
       return [...prev, tag];
     });
+  };
+
+  const toggleTransport = (mode: TripTransportMode) => {
+    setTransportModes((prev) =>
+      prev.includes(mode)
+        ? prev.filter((item) => item !== mode)
+        : [...prev, mode],
+    );
   };
 
   const openDayTimes = (field: 'start' | 'end') => {
@@ -438,21 +455,9 @@ export default function TripConditionsScreen() {
       lodging,
       dailyLodgings,
       styles: styleTags,
-      transport: transportMode,
+      transport: transportModes,
     });
     router.back();
-  };
-
-  /** 숙소 위치 행에 보여줄 요약 문구 */
-  const lodgingLabel = () => {
-    if (lodgingMode === 'daily') {
-      const filled = tripDates.filter((date) => dailyLodgings[date]).length;
-      if (filled === 0) return null;
-      return filled === tripDates.length
-        ? `일자별 숙소 ${filled}곳`
-        : `일자별 숙소 ${filled}/${tripDates.length}곳`;
-    }
-    return lodging?.name ?? null;
   };
 
   return (
@@ -487,7 +492,8 @@ export default function TripConditionsScreen() {
                       {formatKorean(startDate)}
                     </Text>
                     <Text style={styles.scheduleSub}>
-                      {arrivalTransport ?? '교통편'} {arrivalTime ?? ''} 도착
+                      {arrivalTransport ?? '교통편'}{' '}
+                      {arrivalTime ? formatTime(arrivalTime) : ''} 도착
                     </Text>
                   </>
                 ) : (
@@ -505,8 +511,8 @@ export default function TripConditionsScreen() {
                       {formatKorean(endDate)}
                     </Text>
                     <Text style={styles.scheduleSub}>
-                      {departureTransport ?? '교통편'} {departureTime ?? ''}{' '}
-                      떠남
+                      {departureTransport ?? '교통편'}{' '}
+                      {departureTime ? formatTime(departureTime) : ''} 떠남
                     </Text>
                   </>
                 ) : (
@@ -522,36 +528,48 @@ export default function TripConditionsScreen() {
           {/* 하루 활동 시간 */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>하루 활동 시간</Text>
-            <View style={styles.timeRow}>
+            {/* 다 입력하고 나면 아래 목록이 값을 들고 있으므로 드롭다운은 숨긴다 */}
+            {!isDayTimesSet && (
+              <View style={styles.timeRow}>
+                <Pressable
+                  style={styles.dropdown}
+                  onPress={() => openDayTimes('start')}
+                >
+                  <Text style={styles.inputPlaceholder}>시작 시간</Text>
+                  <Image source={chevronDownIcon} style={styles.dropdownIcon} />
+                </Pressable>
+                <Pressable
+                  style={styles.dropdown}
+                  onPress={() => openDayTimes('end')}
+                >
+                  <Text style={styles.inputPlaceholder}>종료 시간</Text>
+                  <Image source={chevronDownIcon} style={styles.dropdownIcon} />
+                </Pressable>
+              </View>
+            )}
+
+            {/* 모든 날이 같으면 Day All 한 줄로 접고, 다르면 Day별로 펼친다 */}
+            {isDayTimesSet && commonTime && (
               <Pressable
-                style={styles.dropdown}
+                style={styles.dayRow}
                 onPress={() => openDayTimes('start')}
               >
-                <Text
-                  style={
-                    commonTime ? styles.inputValue : styles.inputPlaceholder
-                  }
-                >
-                  {commonTime ? formatAmPm(commonTime.start) : '시작 시간'}
-                </Text>
-                <Image source={chevronDownIcon} style={styles.dropdownIcon} />
+                <View style={styles.dayRowLeft}>
+                  <View style={styles.dayBadge}>
+                    <Text style={styles.dayBadgeLabel}>Day All</Text>
+                  </View>
+                  <Text style={styles.dayRowDate}>모든 날</Text>
+                </View>
+                <View style={styles.dayRowRight}>
+                  <Text style={styles.dayRowTime}>
+                    {formatTime(commonTime.start)} ~{' '}
+                    {formatTime(commonTime.end)}
+                  </Text>
+                  <Image source={chevronIcon} style={styles.rowChevron} />
+                </View>
               </Pressable>
-              <Pressable
-                style={styles.dropdown}
-                onPress={() => openDayTimes('end')}
-              >
-                <Text
-                  style={
-                    commonTime ? styles.inputValue : styles.inputPlaceholder
-                  }
-                >
-                  {commonTime ? formatAmPm(commonTime.end) : '종료 시간'}
-                </Text>
-                <Image source={chevronDownIcon} style={styles.dropdownIcon} />
-              </Pressable>
-            </View>
+            )}
 
-            {/* 날마다 시간이 다르면 Day별로도 확인할 수 있게 펼쳐둔다 */}
             {isDayTimesSet && !commonTime && (
               <View style={styles.dayList}>
                 {tripDates.map((date, index) => (
@@ -570,7 +588,8 @@ export default function TripConditionsScreen() {
                     </View>
                     <View style={styles.dayRowRight}>
                       <Text style={styles.dayRowTime}>
-                        {dayTimes[date].start} ~ {dayTimes[date].end}
+                        {formatTime(dayTimes[date].start)} ~{' '}
+                        {formatTime(dayTimes[date].end)}
                       </Text>
                       <Image source={chevronIcon} style={styles.rowChevron} />
                     </View>
@@ -580,17 +599,61 @@ export default function TripConditionsScreen() {
             )}
           </View>
 
-          {/* 숙소 위치 */}
+          {/* 숙소/복귀 위치 */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>숙소 위치</Text>
-            <Pressable style={styles.inputRow} onPress={openLodging}>
-              {lodgingLabel() ? (
-                <Text style={styles.inputValue}>{lodgingLabel()}</Text>
-              ) : (
-                <Text style={styles.inputPlaceholder}>검색 또는 지도 선택</Text>
-              )}
-              <Image source={searchIcon} style={styles.rowSearchIcon} />
-            </Pressable>
+            <Text style={styles.sectionTitle}>숙소/복귀 위치</Text>
+            {lodgingMode === 'daily' ? (
+              /* 일자별 숙소는 "3곳" 요약 대신 Day별로 펼쳐서 보여준다 */
+              <View style={lodgingStyles.dayList}>
+                {tripDates.map((date, index) => (
+                  <Pressable
+                    key={date}
+                    style={lodgingStyles.dayRow}
+                    onPress={openLodging}
+                  >
+                    <View style={lodgingStyles.dayTextGroup}>
+                      <Text style={lodgingStyles.dayTitle}>
+                        Day {index + 1}
+                      </Text>
+                      <Text style={lodgingStyles.dayDate}>
+                        {formatDot(date)}
+                      </Text>
+                    </View>
+                    <View style={lodgingStyles.dayValueGroup}>
+                      <Text
+                        style={
+                          dailyLodgings[date]
+                            ? lodgingStyles.dayValue
+                            : lodgingStyles.dayPlaceholder
+                        }
+                        numberOfLines={1}
+                      >
+                        {dailyLodgings[date]?.name ?? '숙소 선택'}
+                      </Text>
+                      <Image
+                        source={chevronIcon}
+                        style={lodgingStyles.dayChevron}
+                      />
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            ) : (
+              <Pressable style={styles.inputRow} onPress={openLodging}>
+                {lodging ? (
+                  <Text style={styles.inputValue}>{lodging.name}</Text>
+                ) : (
+                  <Text style={styles.inputPlaceholder}>
+                    검색 또는 지도 선택
+                  </Text>
+                )}
+                {/* 입력을 마치면 돋보기 대신 다시 열 수 있는 화살표를 둔다 */}
+                <Image
+                  source={lodging ? chevronIcon : searchIcon}
+                  style={lodging ? styles.rowChevron : styles.rowSearchIcon}
+                />
+              </Pressable>
+            )}
           </View>
 
           {/* 여행 스타일 */}
@@ -615,11 +678,11 @@ export default function TripConditionsScreen() {
           <View style={styles.section}>
             <View style={styles.sectionTitleRow}>
               <Text style={styles.sectionTitle}>주요 이동 수단</Text>
-              <Text style={styles.sectionHint}>1개만 선택 가능해요</Text>
+              <Text style={styles.sectionHint}>중복 선택 가능해요</Text>
             </View>
             <View style={styles.transportRow}>
               {TRANSPORT_OPTIONS.map((option) => {
-                const isSelected = transportMode === option.key;
+                const isSelected = transportModes.includes(option.key);
                 return (
                   <Pressable
                     key={option.key}
@@ -627,7 +690,7 @@ export default function TripConditionsScreen() {
                       styles.transportCard,
                       isSelected && styles.transportCardSelected,
                     ]}
-                    onPress={() => setTransportMode(option.key)}
+                    onPress={() => toggleTransport(option.key)}
                   >
                     <Image
                       source={option.image}
@@ -914,7 +977,7 @@ function TransportQuestion({
                     isSelected && sheetStyles.timeChipLabelSelected,
                   ]}
                 >
-                  {slot}
+                  {formatTime(slot)}
                 </Text>
               </Pressable>
             );
@@ -1082,7 +1145,7 @@ function DayTimeSheet({
                   : sheetStyles.timeDisplayInactive,
               ]}
             >
-              {formatAmPm(start)}
+              {formatTime(start)}
             </Text>
           </Pressable>
           <Image source={chevronIcon} style={sheetStyles.timeChevron} />
@@ -1095,7 +1158,7 @@ function DayTimeSheet({
                   : sheetStyles.timeDisplayInactive,
               ]}
             >
-              {end ? formatAmPm(end) : '종료 시간'}
+              {end ? formatTime(end) : '종료 시간'}
             </Text>
           </Pressable>
         </View>
@@ -1267,14 +1330,30 @@ function LodgingSheet({
 
   if (step === 'days') {
     return (
-      <BottomSheet visible onClose={onClose}>
+      /*
+       * 닫기(X)로 나가도 지금까지 고른 숙소는 화면에 반영해야 한다.
+       * onClose로 흘리면 시트 안에 쌓아둔 dailyLodgings가 통째로 버려진다.
+       */
+      <BottomSheet
+        visible
+        onClose={() =>
+          Object.keys(dailyLodgings).length > 0
+            ? onComplete({ mode: 'daily', lodging: null, dailyLodgings })
+            : onClose()
+        }
+      >
         <View style={sheetStyles.headerArea}>
           <Text style={sheetStyles.title}>
             {allFilled
               ? '입력한 숙소를 확인해주세요'
               : '일자별로 숙소를 입력해주세요'}
           </Text>
-          <View style={lodgingStyles.dayList}>
+          {/* 일수가 많으면 목록이 화면 밖으로 넘어가므로 시트 안에서 스크롤한다 */}
+          <ScrollView
+            style={lodgingStyles.dayScroll}
+            contentContainerStyle={lodgingStyles.dayList}
+            showsVerticalScrollIndicator={false}
+          >
             {dates.map((date, index) => (
               <Pressable
                 key={date}
@@ -1306,7 +1385,7 @@ function LodgingSheet({
                 </View>
               </Pressable>
             ))}
-          </View>
+          </ScrollView>
         </View>
         <View style={[sheetStyles.footer, lodgingStyles.dayFooter]}>
           {!allFilled && (
@@ -1545,15 +1624,16 @@ const styles = StyleSheet.create({
   scheduleBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 40,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: INPUT_BORDER,
     borderRadius: radius['2xs'],
   },
+  // 가는 날 / 오는 날을 각 절반의 가운데에 두어 양 끝으로 퍼져 보이지 않게 한다
   scheduleSide: {
+    flex: 1,
     alignItems: 'center',
     gap: spacing['2xs'],
   },
@@ -1658,9 +1738,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
+  // "Day All"처럼 라벨이 길어져도 잘리지 않게 최소 너비만 잡는다
   dayBadge: {
-    width: 46,
+    minWidth: 46,
     paddingVertical: spacing['2xs'],
+    paddingHorizontal: spacing['2xs'],
     borderRadius: radius['3xs'],
     backgroundColor: orange[50],
     alignItems: 'center',
@@ -1805,6 +1887,10 @@ const lodgingStyles = StyleSheet.create({
     fontSize: fontSize.xs,
     lineHeight: lineHeight.sm,
     color: colors.grey[800],
+  },
+  // 3박4일 넘어가면 목록이 시트를 밀어내서 잘리므로 높이를 묶어 스크롤시킨다
+  dayScroll: {
+    maxHeight: 400,
   },
   dayList: {
     gap: spacing.xs,
@@ -2113,22 +2199,26 @@ const sheetStyles = StyleSheet.create({
   resultScroll: {
     maxHeight: 300,
   },
+  // 카드 사이가 너무 좁으면 양쪽 그림자가 겹쳐 회색 띠처럼 보인다
   resultList: {
-    gap: spacing['2xs'],
+    gap: spacing.xs,
   },
+  /*
+   * 회색 테두리를 두면 그림자가 묻혀 카드가 그냥 배경색만 깔린 것처럼 보인다.
+   * 테두리를 빼고 그림자만으로 카드를 띄우되, 번짐이 카드 간격(8)보다 넓으면
+   * 위아래 그림자가 겹쳐 이어진 회색 띠가 되므로 짧고 진하게 가져간다.
+   */
   resultRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: spacing.md,
-    borderWidth: 1,
-    borderColor: TRACK_BACKGROUND,
     borderRadius: radius['2xs'],
     backgroundColor: colors.white,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.14,
+    shadowRadius: 2,
     elevation: 2,
   },
   resultInfo: {

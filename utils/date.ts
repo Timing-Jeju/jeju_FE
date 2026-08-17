@@ -56,10 +56,8 @@ export const toMinutes = (time: string) => {
 export const toTime = (minutes: number) =>
   `${Math.floor(minutes / 60) % 24}:${String(minutes % 60).padStart(2, '0')}`;
 
-/** 'H:MM' → '오후 3:24' */
-export const formatAmPm = (time: string) => {
+/** 'H:MM' → '15:24' (24시간 두 자리 표기로 통일한다) */
+export const formatTime = (time: string) => {
   const [hour, minute] = time.split(':').map(Number);
-  const period = hour < 12 ? '오전' : '오후';
-  const displayHour = hour % 12 === 0 ? 12 : hour % 12;
-  return `${period} ${displayHour}:${String(minute).padStart(2, '0')}`;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 };

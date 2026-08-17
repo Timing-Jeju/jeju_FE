@@ -43,7 +43,7 @@ import {
 } from '@/constants';
 import { getDrivingRoute, type Coord } from '@/services/naverApi';
 import { useScheduleStore, type RouteLeg } from '@/store/useScheduleStore';
-import { formatAmPm } from '@/utils/date';
+import { formatTime } from '@/utils/date';
 import { buildAlternatives } from '@/utils/schedule';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
@@ -209,7 +209,7 @@ export default function ScheduleLegScreen() {
           </View>
           <MetaRow
             items={[
-              `${formatAmPm(leg.startTime)} - ${formatAmPm(leg.endTime)}`,
+              `${formatTime(leg.startTime)} - ${formatTime(leg.endTime)}`,
               `${leg.cost.toLocaleString()}원`,
             ]}
           />
@@ -278,8 +278,8 @@ export default function ScheduleLegScreen() {
                           <View key={bus.text} style={styles.busLine}>
                             <BusTag color={bus.color} text={bus.text} />
                             <Text style={styles.connectorLabel}>
-                              {formatAmPm(leg.startTime)} -{' '}
-                              {formatAmPm(leg.endTime)}
+                              {formatTime(leg.startTime)} -{' '}
+                              {formatTime(leg.endTime)}
                             </Text>
                             <Text style={styles.connectorLabel}>
                               {leg.cost.toLocaleString()}원
@@ -335,7 +335,7 @@ export default function ScheduleLegScreen() {
                     ) : (
                       '택시'
                     ),
-                    `${formatAmPm(alternative.startTime)} - ${formatAmPm(
+                    `${formatTime(alternative.startTime)} - ${formatTime(
                       alternative.endTime,
                     )}`,
                     `${alternative.cost.toLocaleString()}원`,

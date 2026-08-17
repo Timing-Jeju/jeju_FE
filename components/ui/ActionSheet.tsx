@@ -80,9 +80,11 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingVertical: spacing.sm,
   },
+  // 아이콘도 라벨과 같은 회색으로 맞춘다
   icon: {
     width: 24,
     height: 24,
+    tintColor: colors.grey[700],
   },
   label: {
     fontFamily: fontFamily.semiBold,

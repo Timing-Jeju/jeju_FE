@@ -40,7 +40,7 @@ import {
   type SchedulePlace,
 } from '@/store/useScheduleStore';
 import { useTripStore } from '@/store/useTripStore';
-import { datesBetween, formatAmPm } from '@/utils/date';
+import { datesBetween, formatTime } from '@/utils/date';
 import {
   buildFillSuggestions,
   insertPlacesBeforeEnd,
@@ -50,6 +50,7 @@ import {
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
 const CARD_BORDER = '#E9EAED';
+const SUMMARY_BACKGROUND = '#F5F6F9';
 
 const locationIcon = require('../assets/images/icon-location.png');
 const busIcon = require('../assets/images/icon-bus.png');
@@ -94,7 +95,7 @@ function LegCard({
 
       <MetaRow
         items={[
-          `${formatAmPm(leg.startTime)} - ${formatAmPm(leg.endTime)}`,
+          `${formatTime(leg.startTime)} - ${formatTime(leg.endTime)}`,
           `${leg.cost.toLocaleString()}원`,
         ]}
       />
@@ -268,7 +269,7 @@ function FillSheet({ leg, onClose, onConfirm }: FillSheetProps) {
                 color={colors.grey[900]}
                 items={[
                   item.transportLabel,
-                  `${formatAmPm(item.startTime)} - ${formatAmPm(item.endTime)}`,
+                  `${formatTime(item.startTime)} - ${formatTime(item.endTime)}`,
                   item.distanceText,
                 ]}
               />
@@ -572,18 +573,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.white,
   },
+  // Day 선택 ~ 총평은 8px로 붙이고, 그 아래 일정 목록만 20px 띄운다
   content: {
-    gap: spacing.lg,
+    gap: spacing.xs,
     paddingHorizontal: grid.pageMargin,
     paddingTop: spacing.md,
     paddingBottom: spacing['2xl'],
   },
   summaryBox: {
     padding: spacing.md,
-    borderWidth: 1,
-    borderColor: CARD_BORDER,
-    borderRadius: radius.xs,
-    backgroundColor: colors.white,
+    borderRadius: radius['2xs'],
+    backgroundColor: SUMMARY_BACKGROUND,
   },
   summary: {
     fontFamily: fontFamily.regular,
@@ -592,6 +592,7 @@ const styles = StyleSheet.create({
     color: colors.grey[800],
   },
   legSection: {
+    marginTop: spacing.sm,
     gap: spacing.xs,
   },
   sectionHeader: {

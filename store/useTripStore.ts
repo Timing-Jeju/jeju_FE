@@ -34,7 +34,8 @@ export interface TripConditions {
   /** lodgingMode === 'daily'일 때 날짜(YYYY-MM-DD)별 숙소 */
   dailyLodgings: Record<string, TripLodging>;
   styles: string[];
-  transport: TripTransportMode | null;
+  /** 주요 이동 수단 (중복 선택 가능) */
+  transport: TripTransportMode[];
 }
 
 interface TripState extends TripConditions {
@@ -54,7 +55,7 @@ export const useTripStore = create<TripState>((set) => ({
   lodging: null,
   dailyLodgings: {},
   styles: [],
-  transport: null,
+  transport: [],
   saved: false,
   saveConditions: (conditions) => set({ ...conditions, saved: true }),
 }));

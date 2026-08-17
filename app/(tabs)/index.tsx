@@ -39,6 +39,7 @@ import { activeReview } from '@/utils/schedule';
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
 const INPUT_BORDER = '#F0F0F0';
 const PLACEHOLDER = '#898989';
+// 칩 라벨 · 아이콘 공통 색 (Figma grey/600)
 const CHIP_TEXT = '#747476';
 
 const searchIcon = require('../../assets/images/icon-search.png');
@@ -279,9 +280,11 @@ export default function HomeScreen() {
             <Image source={searchIcon} style={styles.searchIcon} />
           </Pressable>
         </View>
+        {/* 칩 줄만 화면 끝까지 흘려서 좌우에 빈 공간이 남지 않게 한다 */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
+          style={styles.chipScroll}
           contentContainerStyle={styles.chipRow}
         >
           {CATEGORIES.map((item) => {
@@ -292,8 +295,17 @@ export default function HomeScreen() {
                 style={[styles.chip, isActive && styles.chipActive]}
                 onPress={() => setCategory(item.key)}
               >
-                {item.icon && !isActive && (
-                  <Image source={item.icon} style={styles.chipIcon} />
+                {/*
+                  선택해도 아이콘은 그대로 두고 색만 바꾼다 (전체만 아이콘 없음).
+                  tintColor를 스타일로 넣었다 뺐다 하면 처음 그린 색이 그대로 남아서
+                  항상 prop으로 넘겨준다.
+                */}
+                {item.icon && (
+                  <Image
+                    source={item.icon}
+                    style={styles.chipIcon}
+                    tintColor={isActive ? colors.white : CHIP_TEXT}
+                  />
                 )}
                 <Text
                   style={[styles.chipLabel, isActive && styles.chipLabelActive]}
@@ -476,10 +488,15 @@ const styles = StyleSheet.create({
     height: 24,
     tintColor: colors.grey[800],
   },
+  chipScroll: {
+    flexGrow: 0,
+    marginHorizontal: -spacing.md,
+  },
   chipRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing['2xs'],
+    paddingHorizontal: spacing.md,
   },
   chip: {
     flexDirection: 'row',
