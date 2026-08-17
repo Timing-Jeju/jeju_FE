@@ -5,8 +5,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   ActionSheet,
-  Button,
-  Checkbox,
   DaySelector,
   FloatingButton,
   MenuIcon,
@@ -24,15 +22,10 @@ import {
   fontSize,
   grid,
   lineHeight,
-  orange,
   radius,
   spacing,
 } from '@/constants';
-import {
-  useScheduleStore,
-  type ScheduleMode,
-  type SchedulePlace,
-} from '@/store/useScheduleStore';
+import { useScheduleStore, type SchedulePlace } from '@/store/useScheduleStore';
 import { lodgingOf, useTripStore } from '@/store/useTripStore';
 import { datesBetween } from '@/utils/date';
 import { buildDayReview, type DayEndpoint } from '@/utils/schedule';
@@ -45,8 +38,6 @@ const ADD_BUTTON_BG = '#F5F6F9';
 const heartOutlineIcon = require('../../assets/images/icon-heart-outline.png');
 const searchIcon = require('../../assets/images/icon-search.png');
 const placeholderPlace = require('../../assets/images/placeholder-place.png');
-const manualIllust = require('../../assets/images/illust-manual-schedule.png');
-const aiIllust = require('../../assets/images/illust-ai-schedule.png');
 const emptyIllust = require('../../assets/images/illust-pin-empty.png');
 const pinIllust = require('../../assets/images/illust-pin.png');
 
@@ -63,86 +54,6 @@ const PLACE_MENU = [
   { key: 'reorder', label: '일정 순서 변경하기' },
   { key: 'remove', label: '일정 삭제하기' },
 ];
-
-/* ------------------------------ 일정 생성 방법 모달 ----------------------------- */
-
-interface ModePickerProps {
-  visible: boolean;
-  onClose: () => void;
-  onConfirm: (mode: ScheduleMode) => void;
-}
-
-const MODE_OPTIONS: {
-  key: ScheduleMode;
-  title: string;
-  description: string;
-  illust: number;
-}[] = [
-  {
-    key: 'manual',
-    title: '직접 일정 입력',
-    description: '원하는 동선 및\n체류시간을 직접 설정해요.',
-    illust: manualIllust,
-  },
-  {
-    key: 'ai',
-    title: 'AI에게 맡길게요',
-    description: '선택 장소 바탕으로 AI가\n동선 및 체류시간을 제안해요.',
-    illust: aiIllust,
-  },
-];
-
-function ModePicker({ visible, onClose, onConfirm }: ModePickerProps) {
-  const [mode, setMode] = useState<ScheduleMode | null>(null);
-
-  if (!visible) return null;
-
-  return (
-    <View style={modeStyles.overlay}>
-      <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
-      <View style={modeStyles.card}>
-        <View style={modeStyles.content}>
-          <Text style={modeStyles.title}>일정 생성 방법을 선택해주세요</Text>
-          <View style={modeStyles.optionRow}>
-            {MODE_OPTIONS.map((option) => {
-              const isSelected = mode === option.key;
-              return (
-                <Pressable
-                  key={option.key}
-                  style={[
-                    modeStyles.option,
-                    isSelected && modeStyles.optionSelected,
-                  ]}
-                  onPress={() => setMode(option.key)}
-                >
-                  <Checkbox
-                    checked={isSelected}
-                    onPress={() => setMode(option.key)}
-                  />
-                  <Image source={option.illust} style={modeStyles.illust} />
-                  <View style={modeStyles.optionTextGroup}>
-                    <Text style={modeStyles.optionTitle}>{option.title}</Text>
-                    <Text style={modeStyles.optionDescription}>
-                      {option.description}
-                    </Text>
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-        <View style={modeStyles.footer}>
-          <Button
-            title="다음"
-            size="small"
-            disabled={!mode}
-            onPress={() => mode && onConfirm(mode)}
-          />
-        </View>
-      </View>
-    </View>
-  );
-}
 
 /* ------------------------------------ 화면 ----------------------------------- */
 
@@ -165,7 +76,6 @@ export default function CalendarScreen() {
 
   const [selectedDay, setSelectedDay] = useState(1);
   const [addSheetOpen, setAddSheetOpen] = useState(false);
-  const [modePickerOpen, setModePickerOpen] = useState(false);
   const [reorderOpen, setReorderOpen] = useState(false);
   const [stayTarget, setStayTarget] = useState<SchedulePlace | null>(null);
   const [menuTarget, setMenuTarget] = useState<{
@@ -240,7 +150,7 @@ export default function CalendarScreen() {
     return { start, end };
   }, [arrivalTime, dayCount, dayTimes, departureTime, selectedDay, tripDates]);
 
-  const handleGenerate = (mode: ScheduleMode) => {
+  const handleGenerate = () => {
     const { start, end } = endpointsOf();
     setReview(
       selectedDay,
@@ -248,10 +158,9 @@ export default function CalendarScreen() {
         useScheduleStore.getState().places[selectedDay] ?? [],
         start,
         end,
-        mode,
+        'ai',
       ),
     );
-    setModePickerOpen(false);
     // 로딩 화면이 생성 연출을 보여준 뒤 검토 화면으로 replace 한다
     router.push({
       pathname: '/schedule-loading',
@@ -370,12 +279,13 @@ export default function CalendarScreen() {
       </ScrollView>
 
       <View style={styles.floatingArea}>
+        {/* 방법을 고르는 단계 없이 바로 생성하고 로딩 화면으로 넘어간다 */}
         <FloatingButton
-          title={`Day ${selectedDay} 일정 생성`}
+          title="AI로 일정 생성"
           disabled={places.length === 0}
           onPress={() => {
             if (blockedByTripConditions()) return;
-            setModePickerOpen(true);
+            handleGenerate();
           }}
         />
       </View>
@@ -426,12 +336,6 @@ export default function CalendarScreen() {
           setStayTarget(null);
         }}
         onClose={() => setStayTarget(null)}
-      />
-
-      <ModePicker
-        visible={modePickerOpen}
-        onClose={() => setModePickerOpen(false)}
-        onConfirm={handleGenerate}
       />
 
       {/* 여행 기본 조건을 저장하기 전에는 일정을 만들 수 없다 */}
@@ -589,77 +493,5 @@ const styles = StyleSheet.create({
     width: 130,
     height: 91,
     resizeMode: 'contain',
-  },
-});
-
-const modeStyles = StyleSheet.create({
-  overlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.dim,
-  },
-  card: {
-    width: grid.containerMaxWidth,
-    borderRadius: radius.sm,
-    backgroundColor: colors.white,
-    overflow: 'hidden',
-  },
-  content: {
-    gap: spacing.md,
-    paddingTop: 30,
-    paddingBottom: spacing.xl,
-    paddingHorizontal: spacing.md,
-  },
-  title: {
-    fontFamily: fontFamily.bold,
-    fontSize: fontSize['2xl'],
-    lineHeight: lineHeight.xl,
-    color: colors.grey[900],
-  },
-  optionRow: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-  },
-  option: {
-    flex: 1,
-    gap: spacing.xs,
-    padding: spacing.xs,
-    borderWidth: 1,
-    borderColor: '#F5F6F9',
-    borderRadius: radius['2xs'],
-    backgroundColor: colors.white,
-  },
-  optionSelected: {
-    borderColor: orange[50],
-    backgroundColor: orange[50],
-  },
-  illust: {
-    width: 72,
-    height: 72,
-    resizeMode: 'contain',
-  },
-  optionTextGroup: {
-    gap: spacing['2xs'],
-  },
-  optionTitle: {
-    fontFamily: fontFamily.semiBold,
-    fontSize: fontSize.md,
-    lineHeight: lineHeight.md,
-    color: colors.grey[900],
-  },
-  optionDescription: {
-    fontFamily: fontFamily.regular,
-    fontSize: fontSize.xs,
-    lineHeight: lineHeight.sm,
-    color: colors.grey[700],
-  },
-  footer: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
   },
 });

@@ -2,7 +2,7 @@ import { Image, Pressable, StyleSheet } from 'react-native';
 
 import { colors, radius } from '@/constants';
 
-const chevronDownIcon = require('../../assets/images/icon-chevron-down.png');
+const chevronDownIcon = require('../../assets/images/icon-chevron-down-wide.png');
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
 const BAR_BACKGROUND = '#FAFAFA';

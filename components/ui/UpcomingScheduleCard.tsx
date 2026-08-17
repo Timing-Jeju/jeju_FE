@@ -11,7 +11,7 @@ import {
   spacing,
 } from '@/constants';
 import type { RouteLeg } from '@/store/useScheduleStore';
-import { formatAmPm, toMinutes, toTime } from '@/utils/date';
+import { formatTime, toMinutes, toTime } from '@/utils/date';
 import { Tag } from './Tag';
 import { Text } from './Text';
 
@@ -22,6 +22,8 @@ const CONNECTOR = '#D0D1D4';
 
 const calendarIcon = require('../../assets/images/icon-calendar.png');
 const pinMarker = require('../../assets/images/pin-marker.png');
+/** 출발지 · 도착지 핀은 캐리어 일러스트가 들어간 핀을 쓴다 */
+const pinMarkerCarrier = require('../../assets/images/pin-marker-carrier.png');
 
 /** 출발 몇 분 전에 나서야 하는지 (TODO: 경로 API 연동 전 임시 값) */
 const LEAVE_BEFORE_MINUTES = 30;
@@ -102,10 +104,13 @@ export function UpcomingScheduleCard({
                 {currentLeg.to}
               </Text>
               <Text style={styles.summaryTime}>
-                {currentLeg.startTime} ~ {currentLeg.endTime}
+                {formatTime(currentLeg.startTime)} ~{' '}
+                {formatTime(currentLeg.endTime)}
               </Text>
             </View>
-            <Text style={styles.leaveLabel}>출발 권장 {leaveAt}</Text>
+            <Text style={styles.leaveLabel}>
+              출발 권장 {formatTime(leaveAt)}
+            </Text>
           </View>
         </View>
       </Pressable>
@@ -140,7 +145,10 @@ export function UpcomingScheduleCard({
               )}
               <View style={styles.point}>
                 <View style={styles.marker}>
-                  <Image source={pinMarker} style={styles.markerImage} />
+                  <Image
+                    source={point.order === null ? pinMarkerCarrier : pinMarker}
+                    style={styles.markerImage}
+                  />
                   {point.order !== null && (
                     <Text style={styles.markerLabel}>{point.order}</Text>
                   )}
@@ -160,8 +168,7 @@ export function UpcomingScheduleCard({
                     point.current && styles.pointTimeCurrent,
                   ]}
                 >
-                  {formatAmPm(point.time).replace(/^(오전|오후) /, '')}{' '}
-                  {point.action}
+                  {formatTime(point.time)} {point.action}
                 </Text>
               </View>
             </Fragment>

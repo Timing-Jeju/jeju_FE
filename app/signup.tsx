@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -30,6 +31,8 @@ import {
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
 const BACKGROUND = '#FAFAFA';
+
+const doneIllust = require('../assets/images/illust-signup-done.png');
 
 type Step = 'terms' | 'credentials' | 'profile' | 'done';
 
@@ -352,8 +355,11 @@ export default function SignupScreen() {
   const renderDoneStep = () => (
     <>
       <View style={styles.doneBody}>
-        {/* TODO: 회원가입 완료 일러스트 에셋 확정 시 교체 */}
-        <View style={styles.doneImage} />
+        <Image
+          source={doneIllust}
+          style={styles.doneImage}
+          resizeMode="contain"
+        />
         <View style={styles.doneTextGroup}>
           <Text style={styles.doneTitle}>회원가입이 완료되었습니다.</Text>
           <Text style={styles.doneSubtitle}>
@@ -520,13 +526,12 @@ const styles = StyleSheet.create({
   },
   doneBody: {
     alignItems: 'center',
-    gap: 21,
+    gap: spacing.xl,
     marginTop: 57,
   },
   doneImage: {
-    width: 240,
-    height: 240,
-    backgroundColor: colors.grey[50],
+    width: 200,
+    height: 185,
   },
   doneTextGroup: {
     alignItems: 'center',

@@ -79,9 +79,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignSelf: 'flex-start',
   },
+  /*
+   * lineHeight(22)가 태그 높이(22)와 같으면 테두리 두께만큼 넘쳐서 글자가 아래로
+   * 쏠린다. 안쪽 높이보다 작게 잡고 Android의 폰트 여백도 꺼서 가운데에 맞춘다.
+   */
   label: {
     fontFamily: fontFamily.medium,
     fontSize: fontSize['3xs'],
-    lineHeight: lineHeight.lg,
+    lineHeight: lineHeight.xs,
+    textAlign: 'center',
+    includeFontPadding: false,
   },
 });

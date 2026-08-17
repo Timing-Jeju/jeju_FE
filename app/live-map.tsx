@@ -37,7 +37,7 @@ import {
 import { requestLocationPermission } from '@/services/location';
 import type { Coord } from '@/services/naverApi';
 import { useScheduleStore, type RouteLeg } from '@/store/useScheduleStore';
-import { formatAmPm } from '@/utils/date';
+import { formatTime } from '@/utils/date';
 import { activeReview } from '@/utils/schedule';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
@@ -92,7 +92,7 @@ function LiveLegCard({ leg, current, expanded, onToggle }: LiveLegCardProps) {
               <BusTag key={bus.text} color={bus.color} text={bus.text} />
             ))}
           </View>,
-          `${formatAmPm(leg.startTime)} - ${formatAmPm(leg.endTime)}`,
+          `${formatTime(leg.startTime)} - ${formatTime(leg.endTime)}`,
           leg.distanceText,
         ]}
       />
@@ -121,7 +121,7 @@ function LiveLegCard({ leg, current, expanded, onToggle }: LiveLegCardProps) {
                     <View key={bus.text} style={styles.stopBusRow}>
                       <BusTag color={bus.color} text={bus.text} />
                       <Text style={styles.stopBusLabel}>
-                        {formatAmPm(leg.startTime)} - {formatAmPm(leg.endTime)}
+                        {formatTime(leg.startTime)} - {formatTime(leg.endTime)}
                       </Text>
                       <Text style={styles.stopBusLabel}>
                         {leg.cost.toLocaleString()}원
