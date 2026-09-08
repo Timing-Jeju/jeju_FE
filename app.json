@@ -64,9 +64,13 @@
             ],
             "enableMinifyInReleaseBuilds": true,
             "enableShrinkResourcesInReleaseBuilds": true
+          },
+          "ios": {
+            "useFrameworks": "static"
           }
         }
       ],
+      "./plugins/withFirebaseDisableSPM",
       "./plugins/withAndroidSigning",
       "./plugins/withReleasePermissions"
     ],
