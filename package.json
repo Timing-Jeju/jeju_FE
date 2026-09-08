@@ -9,7 +9,9 @@
     "web": "expo start --web",
     "lint": "eslint .",
     "test": "jest --runInBand",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "api:generate": "node tooling/openapi/generate.mjs",
+    "api:check": "node tooling/openapi/generate.mjs --check"
   },
   "dependencies": {
     "@mj-studio/react-native-naver-map": "^2.9.0",

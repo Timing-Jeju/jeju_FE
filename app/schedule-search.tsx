@@ -2,12 +2,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
   Keyboard,
   Pressable,
-  ScrollView,
   StyleSheet,
   TextInput,
   View,
@@ -20,8 +18,6 @@ import {
 import {
   Button,
   Checkbox,
-  FilterChip,
-  OptionSheet,
   PlaceTag,
   ScreenHeader,
   Text,
@@ -35,7 +31,8 @@ import {
   radius,
   spacing,
 } from '@/constants';
-import { searchPlaces, type Coord } from '@/services/naverApi';
+import type { Place } from '@/services/places';
+import { usePlaceSearch } from '@/hooks/usePlaceSearch';
 import {
   dayOrdinal,
   useScheduleStore,
@@ -48,53 +45,7 @@ const CARD_BORDER = '#F5F6F9';
 const SUB_TEXT = '#747476';
 
 const searchIcon = require('../assets/images/icon-search.png');
-const chevronDownIcon = require('../assets/images/icon-chevron-down.png');
 const placeholderPlace = require('../assets/images/placeholder-place.png');
-
-const SORT_OPTIONS = ['인기순', '정확도', '최신순'] as const;
-
-type SortOption = (typeof SORT_OPTIONS)[number];
-
-const SEARCH_FILTERS = ['전체', '관광지', '식당', '카페'] as const;
-
-type SearchFilter = (typeof SEARCH_FILTERS)[number];
-
-interface SearchPlace {
-  name: string;
-  /** 관광지 / 식당 / 카페 */
-  category: string;
-  address: string;
-  coord: Coord | null;
-}
-
-// TODO: 추천 장소 API 연동 전 임시 데이터
-// 좌표가 없으면 지도에 마커가 찍히지 않으므로 네이버 지역 검색 결과값을 넣어둔다
-const MOCK_RECOMMENDED: SearchPlace[] = [
-  {
-    name: '성산일출봉',
-    category: '관광지',
-    address: '제주 서귀포시 성산읍 성산리 1',
-    coord: { latitude: 33.458883, longitude: 126.940823 },
-  },
-  {
-    name: '9.81파크 제주',
-    category: '관광지',
-    address: '제주 제주시 애월읍 천덕로 880-24',
-    coord: { latitude: 33.390037, longitude: 126.366509 },
-  },
-  {
-    name: '함덕해수욕장',
-    category: '관광지',
-    address: '제주 제주시 조천읍 조함해안로 525',
-    coord: { latitude: 33.543108, longitude: 126.669692 },
-  },
-  {
-    name: '새물',
-    category: '카페',
-    address: '제주 제주시 애월읍 애월해안로 620 1.2.3층',
-    coord: { latitude: 33.47854, longitude: 126.36967 },
-  },
-];
 
 export default function ScheduleSearchScreen() {
   const router = useRouter();
@@ -105,53 +56,22 @@ export default function ScheduleSearchScreen() {
   const addPlaces = useScheduleStore((state) => state.addPlaces);
 
   const [query, setQuery] = useState('');
-  /** null이면 아직 검색 전 (가볼 만한 장소를 보여준다) */
-  const [results, setResults] = useState<SearchPlace[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [sort, setSort] = useState<SortOption>('인기순');
-  const [sortSheetOpen, setSortSheetOpen] = useState(false);
-  const [filter, setFilter] = useState<SearchFilter>('전체');
-  const [selected, setSelected] = useState<SearchPlace[]>([]);
+  const { results, loading, error, searched, hasMore, search, more, clear } =
+    usePlaceSearch();
+  const [selected, setSelected] = useState<Place[]>([]);
+  const visiblePlaces = results;
 
-  const visiblePlaces =
-    results ??
-    MOCK_RECOMMENDED.filter(
-      (place) => filter === '전체' || place.category === filter,
-    );
-
-  const toggleSelect = (place: SearchPlace) => {
+  const toggleSelect = (place: Place) => {
     setSelected((prev) =>
-      prev.some((item) => item.name === place.name)
-        ? prev.filter((item) => item.name !== place.name)
+      prev.some((item) => item.placeId === place.placeId)
+        ? prev.filter((item) => item.placeId !== place.placeId)
         : [...prev, place],
     );
   };
 
-  const handleSearch = async () => {
-    const trimmed = query.trim();
-    if (!trimmed) return;
-
+  const handleSearch = () => {
     Keyboard.dismiss();
-    setLoading(true);
-    try {
-      const places = await searchPlaces(trimmed);
-      setResults(
-        // TODO: 장소 분류 API 연동 전에는 관광지로 표시한다
-        places.map((place) => ({
-          name: place.name,
-          category: '관광지',
-          address: place.roadAddress,
-          coord: place.coord,
-        })),
-      );
-    } catch (error) {
-      Alert.alert(
-        '검색 실패',
-        error instanceof Error ? error.message : '알 수 없는 오류',
-      );
-    } finally {
-      setLoading(false);
-    }
+    void search(query);
   };
 
   const handleAdd = () => {
@@ -159,11 +79,12 @@ export default function ScheduleSearchScreen() {
       day,
       selected.map(
         (place): SchedulePlace => ({
+          placeId: place.placeId,
           name: place.name,
-          category: place.category,
-          address: place.address,
+          category: place.categoryLabel,
+          address: place.roadAddress,
           visitType: '선택방문',
-          stayMinutes: 60,
+          stayMinutes: place.recommendedStayMinutes ?? 60,
           coord: place.coord,
         }),
       ),
@@ -173,7 +94,7 @@ export default function ScheduleSearchScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScreenHeader title={results ? '장소 추가' : '직접 검색하기'} />
+      <ScreenHeader title={searched ? '장소 추가' : '직접 검색하기'} />
 
       <View style={styles.headerArea}>
         <Text style={styles.title}>
@@ -186,7 +107,7 @@ export default function ScheduleSearchScreen() {
             value={query}
             onChangeText={(value) => {
               setQuery(value);
-              if (value.trim().length === 0) setResults(null);
+              clear();
             }}
             placeholder="장소를 검색해보세요."
             placeholderTextColor={colors.grey[400]}
@@ -199,42 +120,17 @@ export default function ScheduleSearchScreen() {
         </View>
       </View>
 
-      {results ? (
-        <Text style={styles.resultTitle}>검색 결과</Text>
-      ) : (
-        <View style={styles.recommendArea}>
-          <View style={styles.recommendTitleRow}>
-            <Text style={styles.title}>가볼 만한 장소</Text>
-            <Pressable
-              style={styles.sortButton}
-              onPress={() => setSortSheetOpen(true)}
-            >
-              <Text style={styles.sortLabel}>{sort}</Text>
-              <Image source={chevronDownIcon} style={styles.sortIcon} />
-            </Pressable>
-          </View>
-
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterRow}
-          >
-            {SEARCH_FILTERS.map((item) => (
-              <FilterChip
-                key={item}
-                label={item}
-                variant="outlined"
-                selected={filter === item}
-                onPress={() => setFilter(item)}
-              />
-            ))}
-          </ScrollView>
-        </View>
-      )}
+      <Text style={styles.resultTitle}>
+        {searched ? '검색 결과' : '장소 이름으로 검색해 주세요'}
+      </Text>
+      <Text style={styles.address}>
+        체류 시간이 미제공된 장소는 기본 60분으로 담겨요. 일정에서 변경할 수
+        있어요.
+      </Text>
 
       <FlatList
         data={visiblePlaces}
-        keyExtractor={(item) => item.name}
+        keyExtractor={(item) => item.placeId}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[
           styles.listContent,
@@ -243,11 +139,23 @@ export default function ScheduleSearchScreen() {
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <Text style={styles.emptyText}>
-            {results ? '검색 결과가 없어요' : '조건에 맞는 장소가 없어요'}
+            {error ??
+              (searched ? '검색 결과가 없어요' : '장소를 검색해 주세요')}
           </Text>
         }
+        ListFooterComponent={
+          hasMore ? (
+            <Button
+              title="더 보기"
+              disabled={loading}
+              onPress={() => void more()}
+            />
+          ) : null
+        }
         renderItem={({ item }) => {
-          const isSelected = selected.some((place) => place.name === item.name);
+          const isSelected = selected.some(
+            (place) => place.placeId === item.placeId,
+          );
           return (
             <Pressable
               style={[styles.card, isSelected && styles.cardSelected]}
@@ -261,10 +169,10 @@ export default function ScheduleSearchScreen() {
                 <View style={styles.cardTextGroup}>
                   <View style={styles.nameRow}>
                     <Text style={styles.name}>{item.name}</Text>
-                    <PlaceTag label={item.category} />
+                    <PlaceTag label={item.categoryLabel} />
                   </View>
                   <Text style={styles.address} numberOfLines={1}>
-                    {item.address}
+                    {item.roadAddress}
                   </Text>
                 </View>
               </View>
@@ -293,21 +201,6 @@ export default function ScheduleSearchScreen() {
           onPress={handleAdd}
         />
       </View>
-
-      <OptionSheet
-        visible={sortSheetOpen}
-        options={SORT_OPTIONS.map((option) => ({
-          key: option,
-          label: option,
-        }))}
-        selectedKey={sort}
-        onSelect={(key) => {
-          // TODO: 정렬 기준은 추천 장소 API 연동 시 파라미터로 넘긴다
-          setSort(key as SortOption);
-          setSortSheetOpen(false);
-        }}
-        onClose={() => setSortSheetOpen(false)}
-      />
     </SafeAreaView>
   );
 }

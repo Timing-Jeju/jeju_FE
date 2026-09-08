@@ -1,6 +1,13 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import {
+  ActivityIndicator,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -10,7 +17,6 @@ import {
   ConfirmModal,
   Divider,
   FavoriteMemoModal,
-  IndicatorDot,
   LikeIcon,
   PlaceTag,
   Text,
@@ -23,6 +29,7 @@ import {
   radius,
   spacing,
 } from '@/constants';
+import { getPlace, type PlaceDetail } from '@/services/places';
 import { useFavoriteStore } from '@/store/useFavoriteStore';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
@@ -36,65 +43,41 @@ const linkIcon = require('../assets/images/icon-link.png');
 const placeholderPlace = require('../assets/images/placeholder-place.png');
 const trashIllust = require('../assets/images/illust-trash.png');
 
-// TODO: 장소 상세 API 연동 전 임시 데이터
-const MOCK_DETAIL = {
-  category: '바다',
-  stayMinutes: 180,
-  direction: '동쪽',
-  openStatus: '영업 중',
-  openUntil: '19:00 까지',
-  openPeriod: '개장 기간 2026.06.24. ~ 09.06.',
-  phone: '064-728-3989',
-  link: 'https://www.visitjeju.net/kr/detail/view?',
-  intro:
-    '함덕해수욕장은 에메랄드빛 바다와 곱고 넓은 백사장이 어우러진 제주의 대표 해수욕장입니다. 주변에 다양한 편의시설이 잘 갖춰져 있어 가족, 연인, 친구와 함께 즐기기 좋은 여행지입니다.',
-  usageInfo: [
-    { label: '운영시간', value: '09:00 ~ 19:00' },
-    { label: '휴무일', value: '연중무휴' },
-    { label: '주차', value: '가능' },
-    { label: '반려동물', value: '가능 (전용 구역 이용, 목줄 착용 필수)' },
-    { label: '입장료', value: '무료' },
-    { label: '부대시설', value: '샤워장, 화장실, 탈의실, 음수대' },
-    {
-      label: '기타 안내',
-      value: '여름철 해수욕 안전 수칙을 준수하여 이용해주세요.',
-    },
-  ],
-};
-
 function VerticalDivider() {
   return <View style={styles.verticalDivider} />;
 }
 
 export default function PlaceDetailScreen() {
+  const params = useLocalSearchParams<{ placeId?: string }>();
+  const placeId = typeof params.placeId === 'string' ? params.placeId : '';
+  return <PlaceDetailContent key={placeId} placeId={placeId} />;
+}
+
+function PlaceDetailContent({ placeId }: { placeId: string }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{
-    name?: string;
-    address?: string;
-    latitude?: string;
-    longitude?: string;
-  }>();
-
+  const [detail, setDetail] = useState<PlaceDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [memoModalVisible, setMemoModalVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
-
-  const name = params.name ?? '함덕해수욕장';
-  const address =
-    params.address ?? '제주특별자치도 제주시 조천읍 조함해안로 525';
-
+  useEffect(() => {
+    const controller = new AbortController();
+    getPlace(placeId, controller.signal)
+      .then((value) => {
+        if (!controller.signal.aborted) setDetail(value);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted)
+          setError(
+            '장소를 불러오지 못했어요. 이전 항목은 검색에서 다시 선택해 주세요.',
+          );
+      });
+    return () => controller.abort();
+  }, [placeId, attempt]);
   const favorite = useFavoriteStore((state) =>
-    state.favorites.find((place) => place.name === name),
+    state.favorites.find((place) => place.placeId === placeId),
   );
-
-  // 찜해둔 장소를 일정에 담았을 때 지도에 찍으려면 좌표를 같이 저장해야 한다
-  const coord =
-    params.latitude && params.longitude
-      ? {
-          latitude: Number(params.latitude),
-          longitude: Number(params.longitude),
-        }
-      : (favorite?.coord ?? null);
   const addFavorite = useFavoriteStore((state) => state.addFavorite);
   const removeFavorite = useFavoriteStore((state) => state.removeFavorite);
   const liked = favorite !== undefined;
@@ -108,6 +91,37 @@ export default function PlaceDetailScreen() {
     }
   };
 
+  if (!detail)
+    return (
+      <SafeAreaView style={styles.container}>
+        <Pressable onPress={() => router.back()}>
+          <Text>뒤로가기</Text>
+        </Pressable>
+        {error ? (
+          <>
+            <Text>{error}</Text>
+            <Pressable
+              onPress={() => {
+                setError(null);
+                setAttempt((value) => value + 1);
+              }}
+            >
+              <Text>다시 시도</Text>
+            </Pressable>
+          </>
+        ) : (
+          <ActivityIndicator />
+        )}
+      </SafeAreaView>
+    );
+  const { name, roadAddress: address, coord } = detail;
+  const usageInfo = [
+    { label: '운영시간', value: detail.operations.operatingHoursText },
+    { label: '휴무일', value: detail.operations.closedDaysText },
+    { label: '주차', value: detail.operations.parkingText },
+    { label: '입장료', value: detail.operations.admissionFeeText },
+  ];
+
   return (
     <View style={styles.container}>
       <ScrollView
@@ -116,13 +130,14 @@ export default function PlaceDetailScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.hero}>
-          <Image source={placeholderPlace} style={styles.heroImage} />
-          <View style={styles.heroIndicator}>
-            <IndicatorDot selected />
-            <IndicatorDot selected={false} />
-            <IndicatorDot selected={false} />
-            <IndicatorDot selected={false} />
-          </View>
+          <Image
+            source={
+              detail.thumbnailUrl
+                ? { uri: detail.thumbnailUrl }
+                : placeholderPlace
+            }
+            style={styles.heroImage}
+          />
         </View>
 
         <View style={styles.body}>
@@ -130,7 +145,13 @@ export default function PlaceDetailScreen() {
             <View style={styles.titleGroup}>
               <Text style={styles.title}>{name}</Text>
               <View style={styles.tagRow}>
-                <PlaceTag label={`추천 체류 ${MOCK_DETAIL.stayMinutes}분`} />
+                <PlaceTag
+                  label={
+                    detail.recommendedStayMinutes === null
+                      ? '추천 체류 시간 미제공'
+                      : `추천 체류 ${detail.recommendedStayMinutes}분`
+                  }
+                />
                 {favorite && <PlaceTag label={favorite.visitType} />}
               </View>
             </View>
@@ -146,52 +167,46 @@ export default function PlaceDetailScreen() {
           <View style={styles.infoGroup}>
             <View style={styles.infoRow}>
               <Image source={timeIcon} style={styles.infoIcon} />
-              <Text style={styles.infoStrong}>{MOCK_DETAIL.openStatus}</Text>
-              <Text style={styles.infoText}>{MOCK_DETAIL.openUntil}</Text>
+              <Text style={styles.infoStrong}>{'운영 안내'}</Text>
+              <Text style={styles.infoText}>
+                {detail.operations.operatingHoursText ?? '미제공'}
+              </Text>
             </View>
-            <Text style={styles.infoSub}>{MOCK_DETAIL.openPeriod}</Text>
+            <Text style={styles.infoSub}>
+              {detail.operations.closedDaysText ?? '휴무일 미제공'}
+            </Text>
             <View style={styles.infoRow}>
               <Image source={callIcon} style={styles.infoIcon} />
-              <Text style={styles.infoText}>{MOCK_DETAIL.phone}</Text>
-              <Text style={styles.copyText}>복사</Text>
+              <Text style={styles.infoText}>
+                {detail.contact.phone ?? '미제공'}
+              </Text>
             </View>
             <View style={styles.infoRow}>
               <Image source={mapIcon} style={styles.infoIcon} />
               <Text style={styles.infoText} numberOfLines={1}>
                 {address}
               </Text>
-              <Text style={styles.copyText}>복사</Text>
             </View>
             <View style={styles.infoRow}>
               <Image source={linkIcon} style={styles.infoIcon} />
               <Text style={styles.linkText} numberOfLines={1}>
-                {MOCK_DETAIL.link}
+                {detail.contact.homepageUrl ?? '미제공'}
               </Text>
             </View>
           </View>
 
-          <View style={styles.actionBar}>
-            <Pressable style={styles.actionItem}>
-              <Image source={callIcon} style={styles.infoIcon} />
-              <Text style={styles.infoText}>전화하기</Text>
-            </Pressable>
-            <VerticalDivider />
-            <Pressable style={styles.actionItem}>
-              <Image source={mapIcon} style={styles.infoIcon} />
-              <Text style={styles.infoText}>지도보기</Text>
-            </Pressable>
-            <VerticalDivider />
-            <Pressable style={styles.actionItem}>
-              <Image source={linkIcon} style={styles.infoIcon} />
-              <Text style={styles.infoText}>홈페이지</Text>
-            </Pressable>
-          </View>
+          <Text style={styles.infoSub}>
+            체류 시간이 미제공되면 기본 60분으로 담겨요. 일정에서 변경할 수
+            있어요.
+          </Text>
 
           <Divider size="small" />
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>소개</Text>
-            <Text style={styles.sectionBody}>{MOCK_DETAIL.intro}</Text>
+            <Text style={styles.sectionBody}>
+              {detail.overview ?? '소개 미제공'}
+            </Text>
           </View>
 
           <Divider size="small" />
@@ -199,11 +214,11 @@ export default function PlaceDetailScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>이용 안내</Text>
             <View style={styles.usageBox}>
-              {MOCK_DETAIL.usageInfo.map((row) => (
+              {usageInfo.map((row) => (
                 <View key={row.label} style={styles.usageRow}>
                   <Text style={styles.usageLabel}>{row.label}</Text>
                   <VerticalDivider />
-                  <Text style={styles.usageValue}>{row.value}</Text>
+                  <Text style={styles.usageValue}>{row.value ?? '미제공'}</Text>
                 </View>
               ))}
             </View>
@@ -231,7 +246,7 @@ export default function PlaceDetailScreen() {
           onPress={handleToggleFavorite}
         >
           <Text style={styles.likeButtonLabel}>
-            {liked ? '찜하기 취소' : '장소 찜하기'}
+            {liked ? '찜하기 취소' : '장소 찜하기 (앱 내 임시)'}
           </Text>
         </Pressable>
       </View>
@@ -241,13 +256,15 @@ export default function PlaceDetailScreen() {
         onClose={() => setMemoModalVisible(false)}
         onSave={(visitType, memo) => {
           addFavorite({
+            placeId: detail.placeId,
             name,
-            category: MOCK_DETAIL.category,
+            category: detail.categoryLabel,
             address,
             visitType,
             memo,
-            stayMinutes: MOCK_DETAIL.stayMinutes,
-            direction: MOCK_DETAIL.direction,
+            stayMinutes:
+              favorite?.stayMinutes ?? detail.recommendedStayMinutes ?? 60,
+            direction: '',
             coord,
           });
           setMemoModalVisible(false);
@@ -261,7 +278,7 @@ export default function PlaceDetailScreen() {
         description="찜 목록에서 삭제되며 저장한 메모도 함께 사라져요"
         onCancel={() => setDeleteModalVisible(false)}
         onConfirm={() => {
-          removeFavorite(name);
+          removeFavorite(placeId);
           setDeleteModalVisible(false);
         }}
       />

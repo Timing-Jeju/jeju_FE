@@ -1,0 +1,993 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Timing Jeju API",
+    "description": "제주 여행 일정과 관광·교통 데이터를 제공하는 공개 API",
+    "version": "v1"
+  },
+  "paths": {
+    "/api/v1/places": {
+      "get": {
+        "tags": [
+          "관광지"
+        ],
+        "summary": "관광지 검색·필터 목록",
+        "description": "정규화된 제주 관광지 read model을 안정적인 HMAC keyset cursor로 조회합니다.",
+        "operationId": "placesList",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "description": "trim 적용 검색어",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1
+            },
+            "example": "성산일출봉"
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "description": "공개 canonical 장소 category",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(?:[A-Z]{2}|content-type:[0-9]{1,10})$"
+            },
+            "example": "content-type:12"
+          },
+          {
+            "name": "regionCode",
+            "in": "query",
+            "description": "정규화 제주 지역 code",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_-]{0,49}$"
+            },
+            "example": "jeju-seogwipo"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "직전 응답 nextCursor를 해석하지 않고 그대로 전달하는 opaque cursor",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 2048,
+              "minLength": 1,
+              "pattern": "^plc2\\.[A-Za-z0-9_-]{1,2043}$"
+            },
+            "example": "plc2.cHVibGljLWN1cnNvci1leGFtcGxl"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "description": "한 page의 최대 item 수",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "maximum": 100,
+              "minimum": 1
+            },
+            "example": 20
+          },
+          {
+            "name": "savedOnly",
+            "in": "query",
+            "description": "인증 사용자의 저장 장소만 조회할지 여부",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "example": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "관광지 cursor page",
+            "headers": {
+              "X-Trace-Id": {
+                "$ref": "#/components/headers/TraceId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlacesListResponse"
+                },
+                "example": {
+                  "items": [],
+                  "page": {
+                    "size": 20,
+                    "hasNext": false,
+                    "nextCursor": null
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "검색·cursor 조건 오류",
+            "headers": {
+              "X-Trace-Id": {
+                "$ref": "#/components/headers/TraceId"
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblemDetails"
+                },
+                "example": {
+                  "type": "https://api.timing-jeju.com/problems/invalid-query-parameter",
+                  "title": "요청 검색 조건이 올바르지 않습니다",
+                  "status": 400,
+                  "detail": "검색 조건의 형식과 범위를 확인해 주세요.",
+                  "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                  "code": "INVALID_QUERY_PARAMETER",
+                  "traceId": "0123456789abcdef0123456789abcdef",
+                  "fieldErrors": []
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "유효하지 않은 token 또는 익명 savedOnly 요청",
+            "headers": {
+              "X-Trace-Id": {
+                "$ref": "#/components/headers/TraceId"
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblemDetails"
+                },
+                "example": {
+                  "type": "https://api.timing-jeju.com/problems/invalid-access-token",
+                  "title": "인증 정보가 올바르지 않습니다",
+                  "status": 401,
+                  "detail": "유효한 인증 정보로 다시 요청해 주세요.",
+                  "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                  "code": "INVALID_ACCESS_TOKEN",
+                  "traceId": "0123456789abcdef0123456789abcdef",
+                  "fieldErrors": []
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "검색 도메인 제약 위반",
+            "headers": {
+              "X-Trace-Id": {
+                "$ref": "#/components/headers/TraceId"
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblemDetails"
+                },
+                "example": {
+                  "type": "https://api.timing-jeju.com/problems/place-query-constraint-violation",
+                  "title": "검색 조건을 처리할 수 없습니다",
+                  "status": 422,
+                  "detail": "검색 조건 조합을 변경해 주세요.",
+                  "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                  "code": "PLACE_QUERY_CONSTRAINT_VIOLATION",
+                  "traceId": "0123456789abcdef0123456789abcdef",
+                  "fieldErrors": []
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerProblem"
+          },
+          "503": {
+            "description": "안전한 정규화 장소 데이터 사용 불가",
+            "headers": {
+              "X-Trace-Id": {
+                "$ref": "#/components/headers/TraceId"
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblemDetails"
+                },
+                "example": {
+                  "type": "https://api.timing-jeju.com/problems/place-data-unavailable",
+                  "title": "장소 데이터를 사용할 수 없습니다",
+                  "status": 503,
+                  "detail": "잠시 후 다시 시도해 주세요.",
+                  "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                  "code": "PLACE_DATA_UNAVAILABLE",
+                  "traceId": "0123456789abcdef0123456789abcdef",
+                  "fieldErrors": []
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/places/{placeId}": {
+      "get": {
+        "tags": [
+          "관광지"
+        ],
+        "summary": "관광지 상세·운영정보 조회",
+        "description": "active 정규화 장소의 상세, 이미지, 운영정보와 저장 상태를 조회합니다.",
+        "operationId": "placesRead",
+        "parameters": [
+          {
+            "name": "placeId",
+            "in": "path",
+            "description": "lowercase canonical UUID 장소 식별자",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+            },
+            "example": "34000000-0000-4000-8000-000000000034"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "관광지 상세",
+            "headers": {
+              "X-Trace-Id": {
+                "$ref": "#/components/headers/TraceId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaceDetailResponse"
+                },
+                "example": {
+                  "placeId": "34000000-0000-4000-8000-000000000034",
+                  "contentId": "126508",
+                  "name": "성산일출봉",
+                  "category": "content-type:12",
+                  "regionCode": "jeju-seogwipo",
+                  "regionLabel": "서귀포시",
+                  "address": "제주특별자치도 서귀포시 성산읍",
+                  "location": {
+                    "lat": 33.458,
+                    "lng": 126.942
+                  },
+                  "thumbnailUrl": null,
+                  "recommendedStayMinutes": 90,
+                  "recommendedStaySource": "policy",
+                  "recommendedStayPolicyVersion": null,
+                  "recommendedStayEffectiveAt": null,
+                  "recommendedStayUpdatedAt": null,
+                  "operationsSummary": null,
+                  "saved": {
+                    "value": false,
+                    "memo": null,
+                    "tags": []
+                  },
+                  "overview": "제주의 대표 오름",
+                  "contact": {
+                    "phone": null,
+                    "homepageUrl": null
+                  },
+                  "operations": {
+                    "operatingHoursText": null,
+                    "closedDaysText": null,
+                    "parkingText": null,
+                    "admissionFeeText": null
+                  },
+                  "images": [],
+                  "nearbyStops": []
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "canonical UUID 형식 오류",
+            "headers": {
+              "X-Trace-Id": {
+                "$ref": "#/components/headers/TraceId"
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblemDetails"
+                },
+                "example": {
+                  "type": "https://api.timing-jeju.com/problems/invalid-query-parameter",
+                  "title": "요청 검색 조건이 올바르지 않습니다",
+                  "status": 400,
+                  "detail": "검색 조건의 형식과 범위를 확인해 주세요.",
+                  "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                  "code": "INVALID_QUERY_PARAMETER",
+                  "traceId": "0123456789abcdef0123456789abcdef",
+                  "fieldErrors": []
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "유효하지 않은 token",
+            "headers": {
+              "X-Trace-Id": {
+                "$ref": "#/components/headers/TraceId"
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblemDetails"
+                },
+                "example": {
+                  "type": "https://api.timing-jeju.com/problems/invalid-access-token",
+                  "title": "인증 정보가 올바르지 않습니다",
+                  "status": 401,
+                  "detail": "유효한 인증 정보로 다시 요청해 주세요.",
+                  "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                  "code": "INVALID_ACCESS_TOKEN",
+                  "traceId": "0123456789abcdef0123456789abcdef",
+                  "fieldErrors": []
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "장소가 없거나 공개할 수 없음",
+            "headers": {
+              "X-Trace-Id": {
+                "$ref": "#/components/headers/TraceId"
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblemDetails"
+                },
+                "example": {
+                  "type": "https://api.timing-jeju.com/problems/place-not-found",
+                  "title": "장소를 찾을 수 없습니다",
+                  "status": 404,
+                  "detail": "장소가 없거나 공개할 수 없습니다.",
+                  "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                  "code": "PLACE_NOT_FOUND",
+                  "traceId": "0123456789abcdef0123456789abcdef",
+                  "fieldErrors": []
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerProblem"
+          },
+          "503": {
+            "description": "안전한 정규화 장소 상세 사용 불가",
+            "headers": {
+              "X-Trace-Id": {
+                "$ref": "#/components/headers/TraceId"
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiProblemDetails"
+                },
+                "example": {
+                  "type": "https://api.timing-jeju.com/problems/place-data-unavailable",
+                  "title": "장소 데이터를 사용할 수 없습니다",
+                  "status": 503,
+                  "detail": "잠시 후 다시 시도해 주세요.",
+                  "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                  "code": "PLACE_DATA_UNAVAILABLE",
+                  "traceId": "0123456789abcdef0123456789abcdef",
+                  "fieldErrors": []
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {},
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "headers": {
+      "TraceId": {
+        "description": "서버가 요청 단위로 생성한 추적 식별자",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "example": "0123456789abcdef0123456789abcdef"
+      }
+    },
+    "schemas": {
+      "PlacesListResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaceListItem"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/PlaceCursorPage"
+          }
+        }
+      },
+      "PlaceListItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "placeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contentId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "pattern": "^(?:[A-Z]{2}|content-type:[0-9]{1,10})$"
+          },
+          "regionCode": {
+            "type": "string"
+          },
+          "regionLabel": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string"
+          },
+          "location": {
+            "$ref": "#/components/schemas/PlaceLocation"
+          },
+          "thumbnailUrl": {
+            "type": "string"
+          },
+          "recommendedStayMinutes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "recommendedStaySource": {
+            "type": "string"
+          },
+          "recommendedStayPolicyVersion": {
+            "type": "string"
+          },
+          "recommendedStayEffectiveAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "recommendedStayUpdatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "operationsSummary": {
+            "type": "string"
+          },
+          "dataFreshness": {
+            "$ref": "#/components/schemas/PlaceDataFreshness"
+          },
+          "saved": {
+            "type": "boolean"
+          },
+          "memo": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "PlaceLocation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "lat": {
+            "type": "number",
+            "format": "double"
+          },
+          "lng": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "PlaceDataFreshness": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "observedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "stale": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PlaceCursorPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "size": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "hasNext": {
+            "type": "boolean"
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ApiProblemDetails": {
+        "additionalProperties": false,
+        "description": "Timing Jeju 공개 API 공통 오류 응답",
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string",
+            "format": "uri-reference"
+          },
+          "code": {
+            "type": "string"
+          },
+          "traceId": {
+            "type": "string",
+            "description": "서버가 요청 단위로 생성한 추적 식별자",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "fieldErrors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldErrorDetail"
+            }
+          }
+        },
+        "required": [
+          "code",
+          "detail",
+          "fieldErrors",
+          "instance",
+          "status",
+          "title",
+          "traceId",
+          "type"
+        ]
+      },
+      "FieldErrorDetail": {
+        "additionalProperties": false,
+        "description": "검증에 실패한 필드와 안전한 사용자 안내",
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail",
+          "field"
+        ]
+      },
+      "PlaceDetailResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "placeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contentId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "pattern": "^(?:[A-Z]{2}|content-type:[0-9]{1,10})$"
+          },
+          "regionCode": {
+            "type": "string"
+          },
+          "regionLabel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "address": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "location": {
+            "$ref": "#/components/schemas/PlaceLocation"
+          },
+          "thumbnailUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          },
+          "recommendedStayMinutes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "recommendedStaySource": {
+            "type": "string"
+          },
+          "recommendedStayPolicyVersion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recommendedStayEffectiveAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "recommendedStayUpdatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "operationsSummary": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000
+          },
+          "saved": {
+            "$ref": "#/components/schemas/SavedPlaceState"
+          },
+          "overview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "contact": {
+            "$ref": "#/components/schemas/Contact"
+          },
+          "operations": {
+            "$ref": "#/components/schemas/Operations"
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaceImage"
+            },
+            "maxItems": 20,
+            "minItems": 0
+          },
+          "nearbyStops": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NearbyStop"
+            },
+            "maxItems": 5,
+            "minItems": 0
+          }
+        },
+        "required": [
+          "address",
+          "category",
+          "contact",
+          "contentId",
+          "images",
+          "location",
+          "name",
+          "nearbyStops",
+          "operations",
+          "operationsSummary",
+          "overview",
+          "placeId",
+          "recommendedStayEffectiveAt",
+          "recommendedStayMinutes",
+          "recommendedStayPolicyVersion",
+          "recommendedStaySource",
+          "recommendedStayUpdatedAt",
+          "regionCode",
+          "regionLabel",
+          "saved",
+          "thumbnailUrl"
+        ]
+      },
+      "SavedPlaceState": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "value": {
+            "type": "boolean"
+          },
+          "memo": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "memo",
+          "tags",
+          "value"
+        ]
+      },
+      "Contact": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "phone": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000
+          },
+          "homepageUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          }
+        },
+        "required": [
+          "homepageUrl",
+          "phone"
+        ]
+      },
+      "Operations": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "operatingHoursText": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000
+          },
+          "closedDaysText": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000
+          },
+          "parkingText": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000
+          },
+          "admissionFeeText": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "admissionFeeText",
+          "closedDaysText",
+          "operatingHoursText",
+          "parkingText"
+        ]
+      },
+      "PlaceImage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "thumbnailUrl": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "observedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "stale": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "expiresAt",
+          "observedAt",
+          "provider",
+          "stale",
+          "thumbnailUrl",
+          "url"
+        ]
+      },
+      "NearbyStop": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "stopId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stopName": {
+            "type": "string"
+          },
+          "distanceMeters": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "walkMinutes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "linkMethod": {
+            "type": "string",
+            "enum": [
+              "spatial_radius",
+              "fixture",
+              "manual",
+              "api_nearby"
+            ]
+          },
+          "provider": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1
+          },
+          "observedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "stale": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "distanceMeters",
+          "expiresAt",
+          "linkMethod",
+          "observedAt",
+          "provider",
+          "stale",
+          "stopId",
+          "stopName",
+          "walkMinutes"
+        ]
+      }
+    },
+    "responses": {
+      "InternalServerProblem": {
+        "description": "안전한 내부 서버 오류",
+        "headers": {
+          "X-Trace-Id": {
+            "$ref": "#/components/headers/TraceId"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/ApiProblemDetails"
+            },
+            "example": {
+              "type": "https://api.timing-jeju.example/problems/internal-server-error",
+              "title": "내부 서버 오류가 발생했습니다.",
+              "status": 500,
+              "detail": "요청을 처리하는 중 내부 오류가 발생했습니다.",
+              "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+              "code": "INTERNAL_SERVER_ERROR",
+              "traceId": "0123456789abcdef0123456789abcdef",
+              "fieldErrors": []
+            }
+          }
+        }
+      }
+    }
+  }
+}

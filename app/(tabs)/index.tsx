@@ -7,7 +7,6 @@ import { useRouter } from 'expo-router';
 import { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   FlatList,
   Image,
@@ -31,8 +30,10 @@ import {
   radius,
   spacing,
 } from '@/constants';
-import { getCurrentLocation } from '@/services/location';
-import { searchPlaces, type Coord, type Place } from '@/services/naverApi';
+import type { Place } from '@/services/places';
+import { usePlaceSearch } from '@/hooks/usePlaceSearch';
+import { useMapPlaceSelection } from '@/hooks/useMapPlaceSelection';
+import { useFavoriteStore } from '@/store/useFavoriteStore';
 import { useScheduleStore } from '@/store/useScheduleStore';
 import { activeReview } from '@/utils/schedule';
 
@@ -48,7 +49,6 @@ const sunIcon = require('../../assets/images/icon-sun.png');
 const utensilsIcon = require('../../assets/images/icon-utensils.png');
 const coffeeIcon = require('../../assets/images/icon-coffee.png');
 const targetIcon = require('../../assets/images/icon-target.png');
-const placeholderPlace = require('../../assets/images/placeholder-place.png');
 const pinMarker = require('../../assets/images/pin-marker.png');
 
 /** 지도 마커 크기 (UpcomingScheduleCard의 핀과 같은 크기로 맞춘다) */
@@ -81,27 +81,8 @@ const CATEGORIES = [
 
 type CategoryKey = (typeof CATEGORIES)[number]['key'];
 
-// TODO: 주변 식당/카페 API 연동 전 임시 데이터
-const MOCK_NEARBY = [
-  { name: '소심한 브런치', category: '카페', distance: '25m' },
-  { name: '오른', category: '카페', distance: '130m' },
-];
-
 const formatDistance = (meters: number) =>
   meters >= 1000 ? `${(meters / 1000).toFixed(1)}km` : `${Math.round(meters)}m`;
-
-const haversine = (a: Coord, b: Coord) => {
-  const R = 6371000;
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const dLat = toRad(b.latitude - a.latitude);
-  const dLng = toRad(b.longitude - a.longitude);
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(a.latitude)) *
-      Math.cos(toRad(b.latitude)) *
-      Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-};
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -109,12 +90,20 @@ export default function HomeScreen() {
   const mapRef = useRef<NaverMapViewRef>(null);
 
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Place[]>([]);
+  const {
+    results,
+    loading,
+    error: searchError,
+    searched,
+    hasMore,
+    search,
+    more,
+    clear,
+  } = usePlaceSearch();
   const [category, setCategory] = useState<CategoryKey>('all');
-  const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
-  const [distance, setDistance] = useState<number | null>(null);
-  const [liked, setLiked] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const { selectedPlace, distance, liked, selectPlace } =
+    useMapPlaceSelection();
+  const removeFavorite = useFavoriteStore((state) => state.removeFavorite);
 
   // 여행 중이면 지도 아래에 다가오는 일정 카드를 띄운다
   const reviews = useScheduleStore((state) => state.reviews);
@@ -155,7 +144,9 @@ export default function HomeScreen() {
               toValue: 0,
               duration: 180,
               useNativeDriver: false,
-            }).start(() => setSelectedPlace(null));
+            }).start(({ finished }) => {
+              if (finished) void selectPlace(null);
+            });
             return;
           }
           const midpoint = (SHEET_COLLAPSED + SHEET_EXPANDED) / 2;
@@ -170,49 +161,24 @@ export default function HomeScreen() {
     [],
   );
 
-  const handleSearch = async () => {
-    const trimmed = query.trim();
-    if (!trimmed) return;
-
+  const handleSearch = () => {
     Keyboard.dismiss();
-    setLoading(true);
-    try {
-      const places = await searchPlaces(trimmed);
-      setResults(places);
-      if (places.length === 0) {
-        Alert.alert('검색 결과 없음', '다른 키워드나 주소로 검색해보세요.');
-      }
-    } catch (error) {
-      Alert.alert(
-        '검색 실패',
-        error instanceof Error ? error.message : '알 수 없는 오류',
-      );
-    } finally {
-      setLoading(false);
-    }
+    void search(query);
   };
 
-  const handleSelectPlace = async (place: Place) => {
-    setResults([]);
+  const handleSelectPlace = (place: Place) => {
+    clear();
     setQuery(place.name);
-    setSelectedPlace(place);
-    setLiked(false);
-    setDistance(null);
+    void selectPlace(place);
     sheetHeight.setValue(SHEET_COLLAPSED);
     sheetSnap.current = SHEET_COLLAPSED;
 
+    if (!place.coord) return;
     mapRef.current?.animateCameraTo({
       ...place.coord,
       zoom: 14,
       duration: 600,
     });
-
-    try {
-      const current = await getCurrentLocation();
-      setDistance(haversine(current, place.coord));
-    } catch {
-      // 위치 권한이 없으면 거리 표시를 생략한다
-    }
   };
 
   const openPlaceDetail = () => {
@@ -220,17 +186,14 @@ export default function HomeScreen() {
     router.push({
       pathname: '/place-detail',
       params: {
-        name: selectedPlace.name,
-        address: selectedPlace.roadAddress,
-        latitude: String(selectedPlace.coord.latitude),
-        longitude: String(selectedPlace.coord.longitude),
+        placeId: selectedPlace.placeId,
       },
     });
   };
 
   // TODO: 백엔드 주변 장소 API 연동 전까지는 탭하면 열려 있던 시트만 닫는다
   const handleTapMap = () => {
-    setSelectedPlace(null);
+    void selectPlace(null);
   };
 
   if (Platform.OS === 'web') {
@@ -251,7 +214,7 @@ export default function HomeScreen() {
         initialCamera={INITIAL_CAMERA}
         onTapMap={handleTapMap}
       >
-        {selectedPlace && (
+        {selectedPlace?.coord && (
           <NaverMapMarkerOverlay
             latitude={selectedPlace.coord.latitude}
             longitude={selectedPlace.coord.longitude}
@@ -270,7 +233,10 @@ export default function HomeScreen() {
           <TextInput
             style={styles.searchInput}
             value={query}
-            onChangeText={setQuery}
+            onChangeText={(value) => {
+              setQuery(value);
+              clear();
+            }}
             placeholder="가고싶은 장소를 검색해보세요."
             placeholderTextColor={PLACEHOLDER}
             returnKeyType="search"
@@ -317,12 +283,24 @@ export default function HomeScreen() {
           })}
         </ScrollView>
 
+        {searched && !loading && !searchError && results.length === 0 && (
+          <Text>검색 결과가 없어요</Text>
+        )}
         {results.length > 0 && (
           <FlatList
             style={styles.resultList}
             data={results}
             keyboardShouldPersistTaps="handled"
-            keyExtractor={(item) => `${item.name}-${item.coord.longitude}`}
+            keyExtractor={(item) => item.placeId}
+            ListFooterComponent={
+              hasMore ? (
+                <Button
+                  title="더 보기"
+                  onPress={() => void more()}
+                  disabled={loading}
+                />
+              ) : null
+            }
             renderItem={({ item }) => (
               <Pressable
                 style={styles.resultItem}
@@ -380,6 +358,7 @@ export default function HomeScreen() {
       )}
 
       {/* 장소 선택 바텀 패널 (드래그로 확장/축소/닫기) */}
+      {searchError && <Text>{searchError}</Text>}
       {selectedPlace && (
         <Animated.View style={[styles.placeSheet, { height: sheetHeight }]}>
           <View {...panResponder.panHandlers}>
@@ -391,7 +370,10 @@ export default function HomeScreen() {
                 <Text style={styles.placeName}>{selectedPlace.name}</Text>
                 <LikeIcon
                   liked={liked}
-                  onPress={() => setLiked((prev) => !prev)}
+                  onPress={() => {
+                    if (liked) removeFavorite(selectedPlace.placeId);
+                    else openPlaceDetail();
+                  }}
                 />
               </View>
               <Text style={styles.placeAddress}>
@@ -419,35 +401,7 @@ export default function HomeScreen() {
             <Text style={styles.nearbyTitle}>
               {selectedPlace.name}의 주변 식당/카페
             </Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={styles.nearbyCards}>
-                {MOCK_NEARBY.map((item) => (
-                  <View key={item.name} style={styles.nearbyCard}>
-                    <View style={styles.nearbyImageWrap}>
-                      <Image
-                        source={placeholderPlace}
-                        style={styles.nearbyImage}
-                      />
-                      <View style={styles.nearbyImageOverlay} />
-                      <View style={styles.nearbyCaption}>
-                        <Text style={styles.nearbyName}>{item.name}</Text>
-                        <Text style={styles.nearbyCategory}>
-                          {item.category}
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={styles.nearbyDistanceRow}>
-                      <Text style={styles.nearbyDistanceLabel}>
-                        {selectedPlace.name}에서{' '}
-                      </Text>
-                      <Text style={styles.nearbyDistanceValue}>
-                        {item.distance}
-                      </Text>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            </ScrollView>
+            <Text>주변 장소 추천은 준비 중이에요.</Text>
           </View>
         </Animated.View>
       )}

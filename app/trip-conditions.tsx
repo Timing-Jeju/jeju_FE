@@ -31,7 +31,8 @@ import {
   radius,
   spacing,
 } from '@/constants';
-import { searchPlaces, type Place } from '@/services/naverApi';
+import type { Place } from '@/services/places';
+import { usePlaceSearch } from '@/hooks/usePlaceSearch';
 import {
   isLodgingComplete,
   useTripStore,
@@ -1434,22 +1435,13 @@ function LodgingSearchSheet({
   onComplete,
 }: LodgingSearchSheetProps) {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Place[]>([]);
-  const [searched, setSearched] = useState(false);
+  const { results, loading, error, searched, hasMore, search, more, clear } =
+    usePlaceSearch();
   const [selected, setSelected] = useState<Place | null>(null);
 
-  const handleSearch = async () => {
-    const trimmed = query.trim();
-    if (!trimmed) return;
-    try {
-      const places = await searchPlaces(`제주 ${trimmed}`);
-      setResults(places);
-    } catch {
-      setResults([]);
-    } finally {
-      setSearched(true);
-      setSelected(null);
-    }
+  const handleSearch = () => {
+    setSelected(null);
+    void search(query);
   };
 
   return (
@@ -1460,7 +1452,11 @@ function LodgingSearchSheet({
           <TextInput
             style={sheetStyles.searchInput}
             value={query}
-            onChangeText={setQuery}
+            onChangeText={(value) => {
+              setQuery(value);
+              setSelected(null);
+              clear();
+            }}
             placeholder={initialSelected?.name ?? '숙소를 입력해주세요'}
             placeholderTextColor={PLACEHOLDER}
             returnKeyType="search"
@@ -1499,6 +1495,15 @@ function LodgingSearchSheet({
           </View>
         )}
 
+        {error && <Text>{error}</Text>}
+        {loading && <Text>검색 중이에요</Text>}
+        {hasMore && (
+          <Button
+            title="더 보기"
+            disabled={loading}
+            onPress={() => void more()}
+          />
+        )}
         {searched && results.length > 0 && (
           <View style={sheetStyles.resultArea}>
             <Text style={sheetStyles.exampleTitle}>검색 결과</Text>
@@ -1506,7 +1511,7 @@ function LodgingSearchSheet({
               <View style={sheetStyles.resultList}>
                 {results.map((place) => (
                   <Pressable
-                    key={`${place.name}-${place.coord.longitude}`}
+                    key={place.placeId}
                     style={sheetStyles.resultRow}
                     onPress={() => setSelected(place)}
                   >
@@ -1528,7 +1533,7 @@ function LodgingSearchSheet({
                       </View>
                     </View>
                     <RadioButton
-                      selected={selected === place}
+                      selected={selected?.placeId === place.placeId}
                       onPress={() => setSelected(place)}
                     />
                   </Pressable>
@@ -1538,7 +1543,7 @@ function LodgingSearchSheet({
           </View>
         )}
 
-        {searched && results.length === 0 && (
+        {searched && !error && !loading && results.length === 0 && (
           <View style={sheetStyles.emptyArea}>
             <Image source={searchIllust} style={sheetStyles.emptyIllust} />
             <Text style={sheetStyles.emptyTitle}>검색 결과가 없어요</Text>
@@ -1555,6 +1560,7 @@ function LodgingSearchSheet({
           onPress={() =>
             selected &&
             onComplete({
+              placeId: selected.placeId,
               name: selected.name,
               address: selected.roadAddress,
               coord: selected.coord,

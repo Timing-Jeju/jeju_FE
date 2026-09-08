@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { isCanonicalPlaceId } from '@/services/canonicalId';
 
 import type { Coord } from '@/services/naverApi';
 
@@ -8,6 +9,7 @@ export type ArrivalTransport = '비행기' | '선박';
 export type LodgingMode = 'single' | 'daily';
 
 export interface TripLodging {
+  placeId: string;
   name: string;
   address: string;
   coord: Coord | null;
@@ -85,11 +87,14 @@ export const isLodgingComplete = (
   conditions: LodgingFields,
   dates: string[],
 ) => {
-  if (conditions.lodgingMode === 'single') return !!conditions.lodging;
+  if (conditions.lodgingMode === 'single')
+    return isCanonicalPlaceId(conditions.lodging?.placeId);
   if (conditions.lodgingMode === 'daily') {
     return (
       dates.length > 0 &&
-      dates.every((date) => !!conditions.dailyLodgings[date])
+      dates.every((date) =>
+        isCanonicalPlaceId(conditions.dailyLodgings[date]?.placeId),
+      )
     );
   }
   return false;

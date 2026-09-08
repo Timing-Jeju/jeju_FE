@@ -1,0 +1,10 @@
+{
+  "repository": "Timing-Jeju/jeju_BE",
+  "sourceCommit": "c699bd121e1bcd7d78fb31c60caed002a0c60e74",
+  "sourceOpenApiSha256": "54b5459c17d4458c5eccaa088ccfe592d3d98acd6197de0de0fb7258535d1411",
+  "exportedSha256": "d686470f5b1b4779578b582723dfdac4fe8c0faa5af4242cf6a6acd15d202451",
+  "operations": [
+    "GET /api/v1/places",
+    "GET /api/v1/places/{placeId}"
+  ]
+}

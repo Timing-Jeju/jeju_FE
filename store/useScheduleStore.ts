@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { requireCanonicalPlaceId } from '@/services/canonicalId';
 
 import type { BusTagColor } from '@/components/ui';
 import type { Coord } from '@/services/naverApi';
@@ -14,7 +15,8 @@ export type ScheduleMode = 'manual' | 'ai';
 
 /** Day에 담아둔 방문 예정 장소 */
 export interface SchedulePlace {
-  /** Day 안에서 항목을 구분하는 키 */
+  /** 서버의 canonical 장소 ID */
+  placeId: string;
   name: string;
   /** 관광지 / 식당 / 카페 … */
   category: string;
@@ -99,9 +101,13 @@ interface ScheduleState {
   reviews: Record<number, DayReview>;
   /** 이미 담긴 장소는 건너뛰고 뒤에 이어 붙인다 */
   addPlaces: (day: number, places: SchedulePlace[]) => void;
-  removePlace: (day: number, name: string) => void;
+  removePlace: (day: number, placeId: string) => void;
   movePlace: (day: number, from: number, to: number) => void;
-  updateStayMinutes: (day: number, name: string, stayMinutes: number) => void;
+  updateStayMinutes: (
+    day: number,
+    placeId: string,
+    stayMinutes: number,
+  ) => void;
   setReview: (day: number, review: DayReview) => void;
   /** 검토 화면에서 구간 순서를 바꾸거나 대체 경로를 반영한다 */
   setLegs: (day: number, legs: RouteLeg[]) => void;
@@ -121,15 +127,9 @@ const applyLegs = (
   review: DayReview,
   legs: RouteLeg[],
 ): Pick<ScheduleState, 'places' | 'reviews'> => {
-  const visited = new Set(legs.flatMap((leg) => [leg.from, leg.to]));
-
+  // 구간의 표시 이름으로 canonical 장소 목록을 변경하지 않는다.
   return {
-    places: {
-      ...state.places,
-      [day]: (state.places[day] ?? []).filter((place) =>
-        visited.has(place.name),
-      ),
-    },
+    places: state.places,
     reviews: {
       ...state.reviews,
       [day]: { ...review, legs, dirty: true, confirmed: false },
@@ -140,19 +140,26 @@ const applyLegs = (
 export const useScheduleStore = create<ScheduleState>((set) => ({
   places: {},
   reviews: {},
-  addPlaces: (day, places) =>
+  addPlaces: (day, places) => {
+    places.forEach((place) => requireCanonicalPlaceId(place.placeId));
     set((state) => {
       const current = state.places[day] ?? [];
-      const added = places.filter(
-        (place) => !current.some((item) => item.name === place.name),
-      );
+      const seen = new Set(current.map((place) => place.placeId));
+      const added = places.filter((place) => {
+        if (seen.has(place.placeId)) return false;
+        seen.add(place.placeId);
+        return true;
+      });
       return { places: { ...state.places, [day]: [...current, ...added] } };
-    }),
-  removePlace: (day, name) =>
+    });
+  },
+  removePlace: (day, placeId) =>
     set((state) => ({
       places: {
         ...state.places,
-        [day]: (state.places[day] ?? []).filter((place) => place.name !== name),
+        [day]: (state.places[day] ?? []).filter(
+          (place) => place.placeId !== placeId,
+        ),
       },
     })),
   movePlace: (day, from, to) =>
@@ -165,12 +172,12 @@ export const useScheduleStore = create<ScheduleState>((set) => ({
       next.splice(to, 0, moved);
       return { places: { ...state.places, [day]: next } };
     }),
-  updateStayMinutes: (day, name, stayMinutes) =>
+  updateStayMinutes: (day, placeId, stayMinutes) =>
     set((state) => ({
       places: {
         ...state.places,
         [day]: (state.places[day] ?? []).map((place) =>
-          place.name === name ? { ...place, stayMinutes } : place,
+          place.placeId === placeId ? { ...place, stayMinutes } : place,
         ),
       },
     })),
