@@ -1,17 +1,19 @@
 import { create } from 'zustand';
+import { requireCanonicalPlaceId } from '@/services/canonicalId';
 
 import type { Coord } from '@/services/naverApi';
 
 export type VisitType = '필수방문' | '선택방문';
 
 export interface FavoritePlace {
+  placeId: string;
   name: string;
   /** 카페 / 바다 / 산 / 식당 등 장소 분류 */
   category: string;
   address: string;
   visitType: VisitType;
   memo: string;
-  /** 추천 체류 시간 (분) */
+  /** 사용자가 변경할 수 있는 일정 초안 체류 시간 (분) */
   stayMinutes: number;
   /** 제주 기준 방향 (동쪽 / 서쪽 …) */
   direction: string;
@@ -38,7 +40,7 @@ export const matchesFavoriteFilter = (
     case '전체':
       return true;
     case '관광지':
-      return place.category !== '식당' && place.category !== '카페';
+      return place.category === '관광지';
     case '식당':
     case '카페':
       return place.category === filter;
@@ -50,30 +52,33 @@ export const matchesFavoriteFilter = (
 
 interface FavoriteState {
   favorites: FavoritePlace[];
-  isFavorite: (name: string) => boolean;
+  isFavorite: (placeId: string) => boolean;
   addFavorite: (place: FavoritePlace) => void;
-  updateFavorite: (name: string, visitType: VisitType, memo: string) => void;
-  removeFavorite: (name: string) => void;
+  updateFavorite: (placeId: string, visitType: VisitType, memo: string) => void;
+  removeFavorite: (placeId: string) => void;
 }
 
 export const useFavoriteStore = create<FavoriteState>((set, get) => ({
   favorites: [],
-  isFavorite: (name) => get().favorites.some((place) => place.name === name),
-  addFavorite: (place) =>
+  isFavorite: (placeId) =>
+    get().favorites.some((place) => place.placeId === placeId),
+  addFavorite: (place) => {
+    requireCanonicalPlaceId(place.placeId);
     set((state) => ({
       favorites: [
-        ...state.favorites.filter((item) => item.name !== place.name),
+        ...state.favorites.filter((item) => item.placeId !== place.placeId),
         place,
       ],
-    })),
-  updateFavorite: (name, visitType, memo) =>
+    }));
+  },
+  updateFavorite: (placeId, visitType, memo) =>
     set((state) => ({
       favorites: state.favorites.map((place) =>
-        place.name === name ? { ...place, visitType, memo } : place,
+        place.placeId === placeId ? { ...place, visitType, memo } : place,
       ),
     })),
-  removeFavorite: (name) =>
+  removeFavorite: (placeId) =>
     set((state) => ({
-      favorites: state.favorites.filter((place) => place.name !== name),
+      favorites: state.favorites.filter((place) => place.placeId !== placeId),
     })),
 }));

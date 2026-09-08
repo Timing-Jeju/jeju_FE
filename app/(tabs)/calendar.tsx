@@ -108,7 +108,7 @@ export default function CalendarScreen() {
   const dayCount = Math.max(tripDates.length, 1);
 
   const reorderItems = useMemo(
-    () => places.map((place) => ({ key: place.name, label: place.name })),
+    () => places.map((place) => ({ key: place.placeId, label: place.name })),
     [places],
   );
 
@@ -131,7 +131,7 @@ export default function CalendarScreen() {
 
     if (key === 'stay') setStayTarget(target);
     else if (key === 'reorder') setReorderOpen(true);
-    else if (key === 'remove') removePlace(selectedDay, target.name);
+    else if (key === 'remove') removePlace(selectedDay, target.placeId);
   };
 
   const handleReorder = (keys: string[]) => {
@@ -139,7 +139,7 @@ export default function CalendarScreen() {
     // 앞에서부터 원하는 자리로 하나씩 끌어다 놓는다
     keys.forEach((name, target) => {
       const current = useScheduleStore.getState().places[selectedDay] ?? [];
-      const from = current.findIndex((place) => place.name === name);
+      const from = current.findIndex((place) => place.placeId === name);
       if (from !== -1 && from !== target) {
         movePlace(selectedDay, from, target);
       }
@@ -166,7 +166,7 @@ export default function CalendarScreen() {
           {places.length > 0 ? (
             <View>
               {places.map((place, index) => (
-                <Fragment key={place.name}>
+                <Fragment key={place.placeId}>
                   {index > 0 && <View style={styles.rowDivider} />}
                   <View style={styles.placeRow}>
                     <View style={styles.placeInfo}>
@@ -279,7 +279,7 @@ export default function CalendarScreen() {
         selectedKey={stayTarget ? String(stayTarget.stayMinutes) : undefined}
         onSelect={(key) => {
           if (stayTarget) {
-            updateStayMinutes(selectedDay, stayTarget.name, Number(key));
+            updateStayMinutes(selectedDay, stayTarget.placeId, Number(key));
           }
           setStayTarget(null);
         }}

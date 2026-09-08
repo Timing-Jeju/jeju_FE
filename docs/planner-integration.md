@@ -82,3 +82,8 @@ DB 변경·운영 배포·Notion/Figma readback·독립 승인 리뷰는 수행�
 설치된 SDK 2.116.0의 오류 타입을 확인했다. foreground 장애→연결 회복, SDK refresh
 통신 오류, 최초 오프라인, 명시적 세션 거부 및 기존 auth event 경합 테스트를 포함한다.
 현재 Jest 31개, typecheck/lint 통과. 실제 인증 서버·native E2E의 SKIPPED 상태는 유지한다.
+
+## 후속: canonical 장소 연결
+
+장소 검색·상세 및 초안 선택의 최신 상태는 [canonical 장소 연결](canonical-place-selection.md)을 참조한다.
+이후에도 여행/찜 서버 저장과 생성·평가·적용 기능은 완료되지 않았다.

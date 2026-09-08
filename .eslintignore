@@ -5,3 +5,5 @@ expo-env.d.ts
 node_modules/
 android/
 ios/
+
+services/generated/

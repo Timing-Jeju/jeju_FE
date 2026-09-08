@@ -1,8 +1,15 @@
 import { PlannerUnavailable } from '@/components/PlannerUnavailable';
 import { PLANNER_AVAILABLE } from '@/services/plannerAvailability';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Fragment, useCallback, useMemo, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Fragment, useMemo, useState } from 'react';
+import {
+  Alert,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -39,13 +46,11 @@ import {
   useScheduleStore,
   worstStatus,
   type RouteLeg,
-  type SchedulePlace,
 } from '@/store/useScheduleStore';
 import { useTripStore } from '@/store/useTripStore';
 import { datesBetween, formatTime } from '@/utils/date';
 import {
   buildFillSuggestions,
-  insertPlacesBeforeEnd,
   rechainLegs,
   type FillSuggestion,
 } from '@/utils/schedule';
@@ -305,7 +310,6 @@ function ScheduleReviewScreenContent() {
   const removeLegs = useScheduleStore((state) => state.removeLegs);
   const recheck = useScheduleStore((state) => state.recheck);
   const confirmDay = useScheduleStore((state) => state.confirmDay);
-  const addPlaces = useScheduleStore((state) => state.addPlaces);
 
   const [selectedDay, setSelectedDay] = useState(Number(params.day) || 1);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -367,61 +371,10 @@ function ScheduleReviewScreenContent() {
     setLegs(selectedDay, rechainLegs(ordered));
   };
 
-  const handleFill = (suggestion: FillSuggestion) => {
-    const target = fillTarget;
+  const handleFill = (_suggestion: FillSuggestion) => {
     setFillTarget(null);
-    if (!target) return;
-
-    // 제안 장소를 그 Day의 장소 목록에 넣고, 구간을 둘로 쪼갠다
-    const place: SchedulePlace = {
-      name: suggestion.name,
-      category: '카페',
-      address: '',
-      visitType: '선택방문',
-      stayMinutes: 30,
-      coord: null,
-    };
-    addPlaces(selectedDay, [place]);
-
-    const inserted: RouteLeg[] = [
-      {
-        ...target,
-        id: `${target.from}→${suggestion.name}`,
-        to: suggestion.name,
-      },
-      {
-        ...target,
-        id: `${suggestion.name}→${target.to}`,
-        from: suggestion.name,
-        departStayMinutes: place.stayMinutes,
-      },
-    ];
-    setLegs(
-      selectedDay,
-      rechainLegs(
-        legs.flatMap((leg) => (leg.id === target.id ? inserted : [leg])),
-      ),
-    );
+    Alert.alert('준비 중이에요', '빈시간 추천은 아직 지원하지 않아요.');
   };
-
-  // 장소 추가 화면에서 돌아오면 새로 담긴 장소를 일정에 끼워 넣는다
-  useFocusEffect(
-    useCallback(() => {
-      const state = useScheduleStore.getState();
-      const current = state.reviews[selectedDay];
-      if (!current || current.legs.length === 0) return;
-
-      const visited = new Set(
-        current.legs.flatMap((leg) => [leg.from, leg.to]),
-      );
-      const added = (state.places[selectedDay] ?? []).filter(
-        (place) => !visited.has(place.name),
-      );
-      if (added.length === 0) return;
-
-      state.setLegs(selectedDay, insertPlacesBeforeEnd(current.legs, added));
-    }, [selectedDay]),
-  );
 
   const handleAddPlace = (key: string) => {
     setAddSheetOpen(false);
