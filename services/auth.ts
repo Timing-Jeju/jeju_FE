@@ -1,4 +1,8 @@
-import type { Session } from '@supabase/supabase-js';
+import {
+  isAuthApiError,
+  isAuthSessionMissingError,
+  type Session,
+} from '@supabase/supabase-js';
 import { AppState, Platform } from 'react-native';
 
 import { useFavoriteStore } from '@/store/useFavoriteStore';
@@ -27,6 +31,28 @@ function acceptSession(session: Session | null) {
   });
 }
 
+function handleRestoreFailure(error: unknown) {
+  const rejected =
+    isAuthSessionMissingError(error) ||
+    (isAuthApiError(error) &&
+      (error.status === 401 ||
+        [
+          'bad_jwt',
+          'session_not_found',
+          'session_expired',
+          'refresh_token_not_found',
+          'refresh_token_already_used',
+          'user_not_found',
+          'user_banned',
+        ].includes(error.code ?? '')));
+  if (rejected) acceptSession(null);
+  else {
+    // 통신 장애는 로그아웃 증거가 아니다. 검증한 사용자와 임시 입력을 보존한다.
+    // 최초 복원 때는 로그인 상태를 새로 만들지 않으며 BE 요청은 토큰 검증을 거친다.
+    useUserStore.setState({ authReady: true });
+  }
+}
+
 /** Root layout가 한 번 구독하고 해제한다. 늦은 restore 응답은 새 auth event를 덮지 않는다. */
 export function startAuthSession(): () => void {
   let active = true;
@@ -44,20 +70,26 @@ export function startAuthSession(): () => void {
       const started = revision;
       try {
         const { data, error } = await auth.getSession();
-        if (error || !valid(data.session)) {
+        if (error) {
+          if (active && revision === started) handleRestoreFailure(error);
+          return;
+        }
+        if (!valid(data.session)) {
           if (active && revision === started) acceptSession(null);
           return;
         }
         const verified = await auth.getUser();
         if (active && revision === started) {
-          acceptSession(
-            !verified.error && verified.data.user?.id === data.session!.user.id
-              ? data.session
-              : null,
-          );
+          if (verified.error) handleRestoreFailure(verified.error);
+          else
+            acceptSession(
+              verified.data.user?.id === data.session!.user.id
+                ? data.session
+                : null,
+            );
         }
-      } catch {
-        if (active && revision === started) acceptSession(null);
+      } catch (error) {
+        if (active && revision === started) handleRestoreFailure(error);
       }
     }
     const updateRefresh = (state: string) => {
@@ -80,8 +112,8 @@ export function startAuthSession(): () => void {
       remove();
       if (Platform.OS !== 'web') auth.stopAutoRefresh();
     };
-  } catch {
-    acceptSession(null);
+  } catch (error) {
+    handleRestoreFailure(error);
     return () => {
       active = false;
     };

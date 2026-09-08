@@ -70,3 +70,15 @@ Spring facts, MCP 0.8, generation/feasibility worker와 원자 저장, 3개 후�
 따라서 이번 PR을 FE 전체 서비스 또는 1차 통합 완료로 표시하면 안 된다.
 
 DB 변경·운영 배포·Notion/Figma readback·독립 승인 리뷰는 수행하지 않았다.
+
+## 독립 리뷰 보완: 오프라인 복귀
+
+앱 복귀 시 인증 서버의 일시적 통신 오류를 로그아웃으로 처리해 임시 여행을 지우던
+문제를 수정했다. 명시적인 세션 거부/만료/로그아웃과 통신 장애를 분리한다. 장애 시
+기존 사용자 입력을 보존하며 최초 복원에서 검증되지 않은 로그인 상태를 만들지 않는다.
+실제 BE 접근은 access token 검증을 계속 요구한다.
+
+[Supabase 오류 분류](https://supabase.com/docs/guides/auth/debugging/error-codes)와
+설치된 SDK 2.116.0의 오류 타입을 확인했다. foreground 장애→연결 회복, SDK refresh
+통신 오류, 최초 오프라인, 명시적 세션 거부 및 기존 auth event 경합 테스트를 포함한다.
+현재 Jest 31개, typecheck/lint 통과. 실제 인증 서버·native E2E의 SKIPPED 상태는 유지한다.

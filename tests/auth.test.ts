@@ -1,3 +1,5 @@
+import { AuthApiError, AuthRetryableFetchError } from '@supabase/supabase-js';
+import { useTripStore } from '@/store/useTripStore';
 import { AppState, type AppStateStatus } from 'react-native';
 
 import {
@@ -162,7 +164,7 @@ test('진행 중인 로그인 요청을 중복 실행하지 않는다', async ()
 test('인증 서버가 거부한 저장 세션은 로그인 상태가 되지 않는다', async () => {
   mockAuth.getUser.mockResolvedValueOnce({
     data: { user: null },
-    error: new Error('revoked'),
+    error: new AuthApiError('revoked', 401, 'bad_jwt'),
   });
   const stop = startAuthSession();
   await settle();
@@ -178,4 +180,100 @@ test('구독 해제 뒤 늦게 도착한 세션으로 로그인하지 않는다'
   stop();
   await settle();
   expect(useUserStore.getState().isLoggedIn).toBe(false);
+});
+
+test('오프라인 복귀는 인증된 사용자의 임시 여행을 지우지 않고 회복 후 재검증한다', async () => {
+  let onState!: (state: AppStateStatus) => void;
+  jest
+    .spyOn(AppState, 'addEventListener')
+    .mockImplementationOnce((_event, listener) => {
+      onState = listener;
+      return { remove: jest.fn() };
+    });
+  const stop = startAuthSession();
+  await settle();
+  useTripStore.setState({ startDate: '2026-09-10', draftSaved: true });
+  mockAuth.getUser.mockResolvedValueOnce({
+    data: { user: null },
+    error: new AuthRetryableFetchError('offline', 0),
+  });
+  onState('background');
+  onState('active');
+  await settle();
+  expect(useUserStore.getState().userId).toBe(session.user.id);
+  expect(useTripStore.getState()).toMatchObject({
+    startDate: '2026-09-10',
+    draftSaved: true,
+  });
+  onState('active');
+  await settle();
+  expect(useUserStore.getState().isLoggedIn).toBe(true);
+  expect(useTripStore.getState().startDate).toBe('2026-09-10');
+  stop();
+});
+
+test('세션 조회 통신 예외도 임시 입력을 삭제하지 않는다', async () => {
+  useUserStore.setState({
+    isLoggedIn: true,
+    userId: session.user.id,
+    authReady: true,
+  });
+  useTripStore.setState({ startDate: '2026-09-10', draftSaved: true });
+  mockAuth.getSession.mockRejectedValueOnce(
+    new TypeError('Network request failed'),
+  );
+  const stop = startAuthSession();
+  await settle();
+  expect(useTripStore.getState().startDate).toBe('2026-09-10');
+  stop();
+});
+
+test('명시적인 세션 거부는 사용자 임시 입력을 정리한다', async () => {
+  useUserStore.setState({
+    isLoggedIn: true,
+    userId: session.user.id,
+    authReady: true,
+  });
+  useTripStore.setState({ startDate: '2026-09-10', draftSaved: true });
+  mockAuth.getUser.mockResolvedValueOnce({
+    data: { user: null },
+    error: new AuthApiError('revoked', 401, 'bad_jwt'),
+  });
+  const stop = startAuthSession();
+  await settle();
+  expect(useUserStore.getState().isLoggedIn).toBe(false);
+  expect(useTripStore.getState().startDate).toBeNull();
+  stop();
+});
+
+test('최초 오프라인 복원은 저장 세션만으로 로그인 상태를 만들지 않는다', async () => {
+  mockAuth.getUser.mockResolvedValueOnce({
+    data: { user: null },
+    error: new AuthRetryableFetchError('unavailable', 503),
+  });
+  const stop = startAuthSession();
+  await settle();
+  expect(useUserStore.getState()).toMatchObject({
+    isLoggedIn: false,
+    userId: null,
+    authReady: true,
+  });
+  stop();
+});
+
+test('SDK가 반환한 refresh 통신 오류도 기존 입력을 보존한다', async () => {
+  useUserStore.setState({
+    isLoggedIn: true,
+    userId: session.user.id,
+    authReady: true,
+  });
+  useTripStore.setState({ startDate: '2026-09-10', draftSaved: true });
+  mockAuth.getSession.mockResolvedValueOnce({
+    data: { session: null },
+    error: new AuthRetryableFetchError('unavailable', 503),
+  });
+  const stop = startAuthSession();
+  await settle();
+  expect(useTripStore.getState().startDate).toBe('2026-09-10');
+  stop();
 });
