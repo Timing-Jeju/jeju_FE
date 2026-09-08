@@ -6,6 +6,7 @@ import 'react-native-reanimated';
 
 import { SplashView } from '@/components/ui';
 import { useColorScheme } from '@/components/useColorScheme';
+import { startAuthSession } from '@/services/auth';
 import { useUserStore } from '@/store/useUserStore';
 
 export {
@@ -33,6 +34,8 @@ export default function RootLayout() {
     'Pretendard-ExtraBold': require('../assets/fonts/Pretendard-ExtraBold.otf'),
     'FugazOne-Regular': require('../assets/fonts/FugazOne-Regular.ttf'),
   });
+  const authReady = useUserStore((state) => state.authReady);
+  useEffect(() => startAuthSession(), []);
   const [splashVisible, setSplashVisible] = useState(true);
 
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.
@@ -55,7 +58,7 @@ export default function RootLayout() {
     return null;
   }
 
-  if (splashVisible) {
+  if (splashVisible || !authReady) {
     return <SplashView />;
   }
 

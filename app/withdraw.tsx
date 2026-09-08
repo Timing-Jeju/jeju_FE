@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -21,7 +22,6 @@ import {
   radius,
   spacing,
 } from '@/constants';
-import { useUserStore } from '@/store/useUserStore';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
 const REASON_BACKGROUND = '#F5F6F9';
@@ -43,7 +43,6 @@ type Reason = (typeof REASONS)[number];
 
 export default function WithdrawScreen() {
   const router = useRouter();
-  const logout = useUserStore((state) => state.logout);
 
   const [reason, setReason] = useState<Reason | null>(null);
   const [detail, setDetail] = useState('');
@@ -54,7 +53,10 @@ export default function WithdrawScreen() {
 
   const handleWithdraw = () => {
     // TODO: 회원 탈퇴 API 연동
-    logout();
+    Alert.alert(
+      '회원 탈퇴 준비 중',
+      '현재 앱에서는 회원 탈퇴를 지원하지 않아요.',
+    );
   };
 
   return (

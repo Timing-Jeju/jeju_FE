@@ -48,40 +48,6 @@ export const matchesFavoriteFilter = (
   }
 };
 
-// TODO: 찜 목록 API 연동 전 임시 데이터
-const MOCK_FAVORITES: FavoritePlace[] = [
-  {
-    name: '소심한 브런치',
-    category: '카페',
-    address: '제주 제주시 조천읍 조함해안로 519-10',
-    visitType: '선택방문',
-    memo: '연어 샐러드 꼭 먹기!!!',
-    stayMinutes: 90,
-    direction: '동쪽',
-    coord: { latitude: 33.54371, longitude: 126.668704 },
-  },
-  {
-    name: '함덕해수욕장',
-    category: '바다',
-    address: '제주 제주시 조천읍 조함해안로 525',
-    visitType: '필수방문',
-    memo: '바다 수영하기',
-    stayMinutes: 180,
-    direction: '동쪽',
-    coord: { latitude: 33.543108, longitude: 126.669692 },
-  },
-  {
-    name: '성산일출봉',
-    category: '산',
-    address: '제주 서귀포시 성산읍 성산리 1',
-    visitType: '필수방문',
-    memo: '',
-    stayMinutes: 60,
-    direction: '동쪽',
-    coord: { latitude: 33.458883, longitude: 126.940823 },
-  },
-];
-
 interface FavoriteState {
   favorites: FavoritePlace[];
   isFavorite: (name: string) => boolean;
@@ -91,7 +57,7 @@ interface FavoriteState {
 }
 
 export const useFavoriteStore = create<FavoriteState>((set, get) => ({
-  favorites: MOCK_FAVORITES,
+  favorites: [],
   isFavorite: (name) => get().favorites.some((place) => place.name === name),
   addFavorite: (place) =>
     set((state) => ({

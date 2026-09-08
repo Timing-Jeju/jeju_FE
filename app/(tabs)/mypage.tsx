@@ -21,6 +21,7 @@ import {
   radius,
   spacing,
 } from '@/constants';
+import { signOut } from '@/services/auth';
 import { useUserStore } from '@/store/useUserStore';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
@@ -89,7 +90,6 @@ export default function MypageScreen() {
 
   const userName = useUserStore((state) => state.userName);
   const userId = useUserStore((state) => state.userId);
-  const logout = useUserStore((state) => state.logout);
 
   const [logoutVisible, setLogoutVisible] = useState(false);
 
@@ -181,7 +181,12 @@ export default function MypageScreen() {
         onCancel={() => setLogoutVisible(false)}
         onConfirm={() => {
           setLogoutVisible(false);
-          logout();
+          void signOut().catch(() =>
+            Alert.alert(
+              '로그아웃하지 못했어요',
+              '연결을 확인하고 다시 시도해 주세요.',
+            ),
+          );
         }}
       />
     </SafeAreaView>
