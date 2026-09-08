@@ -6,6 +6,7 @@ import 'react-native-reanimated';
 
 import { SplashView } from '@/components/ui';
 import { useColorScheme } from '@/components/useColorScheme';
+import { useAuthSession } from '@/hooks/useAuthSession';
 import { useUserStore } from '@/store/useUserStore';
 
 export {
@@ -65,6 +66,9 @@ export default function RootLayout() {
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
   const isLoggedIn = useUserStore((state) => state.isLoggedIn);
+
+  // Supabase 세션을 store에 붙인다 (로그인 상태와 access token의 출처)
+  useAuthSession();
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>

@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Image,
@@ -21,6 +21,7 @@ import {
   radius,
   spacing,
 } from '@/constants';
+import { signOut } from '@/services/auth';
 import { useUserStore } from '@/store/useUserStore';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
@@ -88,10 +89,20 @@ export default function MypageScreen() {
   const router = useRouter();
 
   const userName = useUserStore((state) => state.userName);
-  const userId = useUserStore((state) => state.userId);
+  const email = useUserStore((state) => state.email);
+  const profileEmail = useUserStore((state) => state.profile?.email ?? null);
   const logout = useUserStore((state) => state.logout);
+  const loadProfile = useUserStore((state) => state.loadProfile);
 
   const [logoutVisible, setLogoutVisible] = useState(false);
+
+  /*
+   * 화면에 들어올 때마다 프로필을 다시 받아 닉네임 변경을 반영한다.
+   * 실패하면 store가 기존 값을 유지하므로 별도 처리는 하지 않는다.
+   */
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
 
   // TODO: 준비 중인 메뉴는 화면 연동 전까지 안내만 띄운다
   const showPreparing = () =>
@@ -107,7 +118,7 @@ export default function MypageScreen() {
           <Image source={avatarIllust} style={styles.avatar} />
           <View style={styles.profileText}>
             <Text style={styles.nickname}>{userName ?? '제주도굿'}</Text>
-            <Text style={styles.userId}>{userId ?? 'jejujoa123'}</Text>
+            <Text style={styles.userId}>{profileEmail ?? email ?? '-'}</Text>
             <Pressable style={styles.editBadge} onPress={showPreparing}>
               <Text style={styles.editBadgeLabel}>정보 수정</Text>
             </Pressable>
@@ -181,6 +192,11 @@ export default function MypageScreen() {
         onCancel={() => setLogoutVisible(false)}
         onConfirm={() => {
           setLogoutVisible(false);
+          /*
+           * Supabase 세션을 끊으면 구독이 store를 비워 주지만,
+           * Supabase 설정이 없는 환경에서도 로그아웃은 되어야 하므로 함께 부른다.
+           */
+          signOut();
           logout();
         }}
       />

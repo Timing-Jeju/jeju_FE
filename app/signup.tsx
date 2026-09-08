@@ -1,6 +1,8 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import * as WebBrowser from 'expo-web-browser';
+import { useEffect, useState } from 'react';
 import {
+  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -28,6 +30,8 @@ import {
   lineHeight,
   spacing,
 } from '@/constants';
+import { fetchLegalDocuments, type LegalDocument } from '@/services/api';
+import { signUpWithProfile } from '@/services/auth';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
 const BACKGROUND = '#FAFAFA';
@@ -92,6 +96,33 @@ export default function SignupScreen() {
   const router = useRouter();
 
   const [step, setStep] = useState<Step>('terms');
+  const [loading, setLoading] = useState(false);
+  /**
+   * 서버가 시행 중인 법정 문서. AGREEMENTS의 terms/privacy/location과 type으로 짝을 맞춘다.
+   * 만 14세 확인과 마케팅 수신은 서버 문서가 없어 앱에서만 확인한다.
+   */
+  const [documents, setDocuments] = useState<LegalDocument[]>([]);
+  /** 이메일 인증이 켜져 있어 가입 직후 프로필을 저장하지 못한 경우 */
+  const [needsEmailConfirmation, setNeedsEmailConfirmation] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchLegalDocuments()
+      .then((response) => {
+        if (!cancelled) setDocuments(response.items);
+      })
+      .catch(() => {
+        // 문서를 못 받으면 동의 내용을 서버에 남기지 못한다 (가입 자체는 진행한다)
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const documentOf = (key: AgreementKey) =>
+    documents.find((document) => document.type === key);
 
   // 약관 동의
   const [agreed, setAgreed] = useState<Set<AgreementKey>>(new Set());
@@ -118,21 +149,13 @@ export default function SignupScreen() {
     );
   };
 
-  // 1단계: 아이디/비밀번호
-  const [id, setId] = useState('');
-  const [idStatus, setIdStatus] = useState<
-    'unchecked' | 'available' | 'duplicated'
-  >('unchecked');
+  // 1단계: 이메일/비밀번호 (Supabase 계정의 신원은 이메일이다)
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
 
   // 2단계: 개인 정보
-  const [name, setName] = useState('');
   const [nickname, setNickname] = useState('');
-  const [nicknameStatus, setNicknameStatus] = useState<
-    'unchecked' | 'available' | 'duplicated'
-  >('unchecked');
-  const [email, setEmail] = useState('');
 
   const hasLetter = /[a-zA-Z]/.test(password);
   const hasNumber = /\d/.test(password);
@@ -141,29 +164,54 @@ export default function SignupScreen() {
   const isConfirmMismatch =
     passwordConfirm.length > 0 && passwordConfirm !== password;
 
+  const isEmailValid = /^\S+@\S+\.\S+$/.test(email.trim());
+
   const canGoProfile =
-    idStatus === 'available' &&
+    isEmailValid &&
     isPasswordValid &&
     passwordConfirm.length > 0 &&
     !isConfirmMismatch;
 
+  // 서버 nickname은 trim 후 1..50자다
+  const trimmedNickname = nickname.trim();
   const canComplete =
-    name.trim().length > 0 &&
-    nicknameStatus === 'available' &&
-    /^\S+@\S+\.\S+$/.test(email);
+    trimmedNickname.length > 0 && trimmedNickname.length <= 50 && !loading;
 
-  const handleCheckId = () => {
-    // TODO: 아이디 중복 확인 API 연동 전 임시 검증
-    setIdStatus(id.trim().length >= 4 ? 'available' : 'duplicated');
+  /** 약관 '보기' — 서버가 준 문서 주소를 브라우저로 연다 */
+  const openDocument = (key: AgreementKey) => {
+    const document = documentOf(key);
+    if (!document) {
+      Alert.alert('준비 중이에요', '약관 문서를 불러오지 못했어요.');
+      return;
+    }
+    WebBrowser.openBrowserAsync(document.contentUrl);
   };
 
-  const handleCheckNickname = () => {
-    // TODO: 닉네임 중복 확인 API 연동 전 임시 검증
-    setNicknameStatus(nickname.trim().length >= 2 ? 'available' : 'duplicated');
-  };
+  /** 가입 -> 닉네임 저장 -> 약관 동의 저장까지 services/auth가 한 번에 처리한다 */
+  const handleComplete = async () => {
+    setLoading(true);
 
-  const handleComplete = () => {
-    // TODO: 회원가입 API 연동
+    // 서버 문서가 있는 항목만 동의 내역으로 남긴다
+    const consents = documents.map((document) => ({
+      documentId: document.documentId,
+      agreed: agreed.has(document.type as AgreementKey),
+    }));
+
+    const result = await signUpWithProfile({
+      email: email.trim(),
+      password,
+      nickname: trimmedNickname,
+      consents,
+    });
+    setLoading(false);
+
+    if (!result.ok) {
+      if (result.message) Alert.alert('회원가입 실패', result.message);
+      return;
+    }
+
+    setNeedsEmailConfirmation(result.needsEmailConfirmation);
+    if (result.warning) Alert.alert('알림', result.warning);
     setStep('done');
   };
 
@@ -193,8 +241,10 @@ export default function SignupScreen() {
                   <Text style={styles.agreementLabel}>{item.label}</Text>
                 </View>
                 {item.viewable && (
-                  <Pressable hitSlop={spacing.xs}>
-                    {/* TODO: 약관 상세 화면/웹뷰 연결 */}
+                  <Pressable
+                    hitSlop={spacing.xs}
+                    onPress={() => openDocument(item.key)}
+                  >
                     <Text style={styles.agreementView}>보기</Text>
                   </Pressable>
                 )}
@@ -217,36 +267,25 @@ export default function SignupScreen() {
     <>
       <View style={styles.main}>
         <Text style={styles.title}>
-          로그인에 사용할{'\n'}아이디와 비밀번호를 입력해주세요.
+          로그인에 사용할{'\n'}이메일과 비밀번호를 입력해주세요.
         </Text>
         <View style={styles.fieldGroup}>
+          {/*
+           * 계정의 신원은 이메일이다. 중복 확인 API가 따로 없고,
+           * 이미 가입된 이메일은 마지막 단계에서 Supabase가 알려준다.
+           */}
           <View style={styles.checkField}>
-            <View style={styles.checkRow}>
-              <View style={styles.checkInput}>
-                <InputField
-                  placeholder="아이디를 입력해주세요."
-                  value={id}
-                  onChangeText={(text) => {
-                    setId(text);
-                    setIdStatus('unchecked');
-                  }}
-                  isError={idStatus === 'duplicated'}
-                />
-              </View>
-              <Button
-                title="중복 확인"
-                color="point"
-                size="small"
-                shape="rectangle"
-                onPress={handleCheckId}
-                style={styles.checkButton}
-              />
-            </View>
-            {idStatus === 'duplicated' && (
-              <Text style={styles.errorText}>이미 존재하는 아이디입니다.</Text>
-            )}
-            {idStatus === 'available' && (
-              <Text style={styles.correctText}>아이디 사용 가능</Text>
+            <InputField
+              placeholder="이메일을 입력해주세요."
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              isError={email.length > 0 && !isEmailValid}
+            />
+            {email.length > 0 && !isEmailValid && (
+              <Text style={styles.errorText}>
+                이메일 형식이 올바르지 않아요.
+              </Text>
             )}
           </View>
 
@@ -295,53 +334,17 @@ export default function SignupScreen() {
           타이밍제주 사용을 위해{'\n'}간단한 정보를 입력해주세요
         </Text>
         <View style={styles.profileGroup}>
-          <View style={styles.profileField}>
-            <Text style={styles.fieldLabel}>이름</Text>
-            <InputField
-              placeholder="내용을 입력해주세요."
-              value={name}
-              onChangeText={setName}
-            />
-          </View>
-
+          {/*
+           * 서버 프로필에는 nickname만 있다. 이름 입력란은 저장할 곳이 없어 뺐고,
+           * 이메일은 앞 단계에서 계정 아이디로 받는다.
+           * 닉네임 중복 확인 API도 없어 저장할 때 409로 알려준다.
+           */}
           <View style={styles.profileField}>
             <Text style={styles.fieldLabel}>닉네임</Text>
-            <View style={styles.checkRow}>
-              <View style={styles.checkInput}>
-                <InputField
-                  placeholder="내용을 입력해주세요."
-                  value={nickname}
-                  onChangeText={(text) => {
-                    setNickname(text);
-                    setNicknameStatus('unchecked');
-                  }}
-                  isError={nicknameStatus === 'duplicated'}
-                />
-              </View>
-              <Button
-                title="중복 확인"
-                color="point"
-                size="small"
-                shape="rectangle"
-                onPress={handleCheckNickname}
-                style={styles.checkButton}
-              />
-            </View>
-            {nicknameStatus === 'duplicated' && (
-              <Text style={styles.errorText}>이미 존재하는 닉네임입니다.</Text>
-            )}
-            {nicknameStatus === 'available' && (
-              <Text style={styles.correctText}>닉네임 사용 가능</Text>
-            )}
-          </View>
-
-          <View style={styles.profileField}>
-            <Text style={styles.fieldLabel}>이메일</Text>
             <InputField
               placeholder="내용을 입력해주세요."
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
+              value={nickname}
+              onChangeText={setNickname}
             />
           </View>
         </View>
@@ -361,9 +364,15 @@ export default function SignupScreen() {
           resizeMode="contain"
         />
         <View style={styles.doneTextGroup}>
-          <Text style={styles.doneTitle}>회원가입이 완료되었습니다.</Text>
+          <Text style={styles.doneTitle}>
+            {needsEmailConfirmation
+              ? '인증 메일을 보냈어요.'
+              : '회원가입이 완료되었습니다.'}
+          </Text>
           <Text style={styles.doneSubtitle}>
-            타이밍 제주와 함께 즐거운 여행되세요.
+            {needsEmailConfirmation
+              ? '메일의 링크로 인증을 마친 뒤 로그인해주세요.'
+              : '타이밍 제주와 함께 즐거운 여행되세요.'}
           </Text>
         </View>
       </View>
@@ -462,29 +471,11 @@ const styles = StyleSheet.create({
   checkField: {
     gap: spacing['2xs'],
   },
-  checkRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing['2xs'],
-  },
-  checkInput: {
-    flex: 1,
-  },
-  checkButton: {
-    width: 82,
-    height: 44,
-  },
   errorText: {
     fontFamily: fontFamily.regular,
     fontSize: fontSize.xs,
     lineHeight: 19,
     color: colors.warning,
-  },
-  correctText: {
-    fontFamily: fontFamily.medium,
-    fontSize: fontSize.xs,
-    lineHeight: lineHeight.xs,
-    color: colors.correct,
   },
   conditionList: {
     flexDirection: 'row',

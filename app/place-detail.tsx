@@ -1,6 +1,13 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  Alert,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -70,6 +77,8 @@ export default function PlaceDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
+    /** 백엔드 장소 식별자 — 찜하기에 반드시 필요하다 */
+    placeId?: string;
     name?: string;
     address?: string;
     latitude?: string;
@@ -79,12 +88,15 @@ export default function PlaceDetailScreen() {
   const [memoModalVisible, setMemoModalVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
 
+  const placeId = params.placeId ?? null;
   const name = params.name ?? '함덕해수욕장';
   const address =
     params.address ?? '제주특별자치도 제주시 조천읍 조함해안로 525';
 
   const favorite = useFavoriteStore((state) =>
-    state.favorites.find((place) => place.name === name),
+    placeId
+      ? state.favorites.find((place) => place.placeId === placeId)
+      : undefined,
   );
 
   // 찜해둔 장소를 일정에 담았을 때 지도에 찍으려면 좌표를 같이 저장해야 한다
@@ -101,6 +113,18 @@ export default function PlaceDetailScreen() {
 
   // 찜 안 한 상태면 메모 모달로 찜하기, 찜한 상태면 삭제 확인 모달을 띄운다
   const handleToggleFavorite = () => {
+    /*
+     * 찜은 백엔드 placeId로만 저장할 수 있다. 외부 검색 결과로 들어온 장소는
+     * placeId가 없어서 찜할 수 없다. (홈 화면 지도 검색 → 장소 상세 경로)
+     */
+    if (!placeId) {
+      Alert.alert(
+        '찜할 수 없어요',
+        '검색 결과에서 바로 찜하는 기능은 준비 중이에요.',
+      );
+      return;
+    }
+
     if (liked) {
       setDeleteModalVisible(true);
     } else {
@@ -240,16 +264,9 @@ export default function PlaceDetailScreen() {
         visible={memoModalVisible}
         onClose={() => setMemoModalVisible(false)}
         onSave={(visitType, memo) => {
-          addFavorite({
-            name,
-            category: MOCK_DETAIL.category,
-            address,
-            visitType,
-            memo,
-            stayMinutes: MOCK_DETAIL.stayMinutes,
-            direction: MOCK_DETAIL.direction,
-            coord,
-          });
+          // 이름 / 분류 / 추천 체류 시간은 서버 응답에서 채운다
+          if (placeId)
+            addFavorite({ placeId, visitType, memo, address, coord });
           setMemoModalVisible(false);
         }}
       />
@@ -261,7 +278,7 @@ export default function PlaceDetailScreen() {
         description="찜 목록에서 삭제되며 저장한 메모도 함께 사라져요"
         onCancel={() => setDeleteModalVisible(false)}
         onConfirm={() => {
-          removeFavorite(name);
+          if (placeId) removeFavorite(placeId);
           setDeleteModalVisible(false);
         }}
       />

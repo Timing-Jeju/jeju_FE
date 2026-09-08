@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -50,11 +50,13 @@ export default function FavoriteScreen() {
   const router = useRouter();
 
   const favorites = useFavoriteStore((state) => state.favorites);
+  const favoriteError = useFavoriteStore((state) => state.error);
+  const loadFavorites = useFavoriteStore((state) => state.loadFavorites);
   const updateFavorite = useFavoriteStore((state) => state.updateFavorite);
   const removeFavorite = useFavoriteStore((state) => state.removeFavorite);
 
   const [filter, setFilter] = useState<FavoriteFilter>('전체');
-  const [selectedNames, setSelectedNames] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [memoTarget, setMemoTarget] = useState<FavoritePlace | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<FavoritePlace | null>(null);
 
@@ -62,16 +64,34 @@ export default function FavoriteScreen() {
     matchesFavoriteFilter(place, filter),
   );
 
-  const toggleSelect = (name: string) => {
-    setSelectedNames((prev) =>
-      prev.includes(name)
-        ? prev.filter((item) => item !== name)
-        : [...prev, name],
+  // 화면에 들어올 때마다 서버 찜 목록을 다시 받아온다
+  useEffect(() => {
+    loadFavorites();
+  }, [loadFavorites]);
+
+  const toggleSelect = (placeId: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(placeId)
+        ? prev.filter((item) => item !== placeId)
+        : [...prev, placeId],
     );
   };
 
   const openPlaceDetail = (place: FavoritePlace) => {
-    router.push({ pathname: '/place-detail', params: { name: place.name } });
+    router.push({
+      pathname: '/place-detail',
+      params: {
+        placeId: place.placeId,
+        name: place.name,
+        address: place.address,
+        ...(place.coord
+          ? {
+              latitude: String(place.coord.latitude),
+              longitude: String(place.coord.longitude),
+            }
+          : {}),
+      },
+    });
   };
 
   return (
@@ -96,18 +116,21 @@ export default function FavoriteScreen() {
 
       <FlatList
         data={visiblePlaces}
-        keyExtractor={(item) => item.name}
+        keyExtractor={(item) => item.placeId}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <Text style={styles.emptyText}>찜한 장소가 없어요</Text>
+          // 불러오기에 실패했으면 "없다"가 아니라 실패 사유를 보여준다
+          <Text style={styles.emptyText}>
+            {favoriteError ?? '찜한 장소가 없어요'}
+          </Text>
         }
         renderItem={({ item }) => {
-          const isSelected = selectedNames.includes(item.name);
+          const isSelected = selectedIds.includes(item.placeId);
           return (
             <Pressable
               style={[styles.card, isSelected && styles.cardSelected]}
-              onPress={() => toggleSelect(item.name)}
+              onPress={() => toggleSelect(item.placeId)}
             >
               <View style={styles.cardTop}>
                 <View style={styles.cardInfo}>
@@ -147,7 +170,7 @@ export default function FavoriteScreen() {
         }}
       />
 
-      {selectedNames.length > 0 && (
+      {selectedIds.length > 0 && (
         <View style={styles.floatingArea}>
           <FloatingButton
             title="선택 장소로 일정 생성"
@@ -166,7 +189,7 @@ export default function FavoriteScreen() {
         tabLabels={MEMO_EDIT_TAB_LABELS}
         onClose={() => setMemoTarget(null)}
         onSave={(visitType, memo) => {
-          if (memoTarget) updateFavorite(memoTarget.name, visitType, memo);
+          if (memoTarget) updateFavorite(memoTarget.placeId, visitType, memo);
           setMemoTarget(null);
         }}
       />
@@ -179,9 +202,9 @@ export default function FavoriteScreen() {
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => {
           if (deleteTarget) {
-            removeFavorite(deleteTarget.name);
-            setSelectedNames((prev) =>
-              prev.filter((name) => name !== deleteTarget.name),
+            removeFavorite(deleteTarget.placeId);
+            setSelectedIds((prev) =>
+              prev.filter((placeId) => placeId !== deleteTarget.placeId),
             );
           }
           setDeleteTarget(null);

@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   FlatList,
   Image,
@@ -60,22 +60,27 @@ export default function ScheduleFavoritesScreen() {
   const day = Number(params.day) || 1;
 
   const favorites = useFavoriteStore((state) => state.favorites);
+  const loadFavorites = useFavoriteStore((state) => state.loadFavorites);
   const updateFavorite = useFavoriteStore((state) => state.updateFavorite);
   const addPlaces = useScheduleStore((state) => state.addPlaces);
 
   const [filter, setFilter] = useState<FavoriteFilter>('전체');
-  const [selectedNames, setSelectedNames] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [memoTarget, setMemoTarget] = useState<FavoritePlace | null>(null);
 
   const visiblePlaces = favorites.filter((place) =>
     matchesFavoriteFilter(place, filter),
   );
 
-  const toggleSelect = (name: string) => {
-    setSelectedNames((prev) =>
-      prev.includes(name)
-        ? prev.filter((item) => item !== name)
-        : [...prev, name],
+  useEffect(() => {
+    loadFavorites();
+  }, [loadFavorites]);
+
+  const toggleSelect = (placeId: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(placeId)
+        ? prev.filter((item) => item !== placeId)
+        : [...prev, placeId],
     );
   };
 
@@ -83,7 +88,7 @@ export default function ScheduleFavoritesScreen() {
     addPlaces(
       day,
       favorites
-        .filter((place) => selectedNames.includes(place.name))
+        .filter((place) => selectedIds.includes(place.placeId))
         .map(
           (place): SchedulePlace => ({
             name: place.name,
@@ -125,7 +130,7 @@ export default function ScheduleFavoritesScreen() {
 
       <FlatList
         data={visiblePlaces}
-        keyExtractor={(item) => item.name}
+        keyExtractor={(item) => item.placeId}
         contentContainerStyle={[
           styles.listContent,
           { paddingBottom: insets.bottom + 106 },
@@ -135,17 +140,17 @@ export default function ScheduleFavoritesScreen() {
           <Text style={styles.emptyText}>찜한 장소가 없어요</Text>
         }
         renderItem={({ item }) => {
-          const isSelected = selectedNames.includes(item.name);
+          const isSelected = selectedIds.includes(item.placeId);
           return (
             <Pressable
               style={[styles.card, isSelected && styles.cardSelected]}
-              onPress={() => toggleSelect(item.name)}
+              onPress={() => toggleSelect(item.placeId)}
             >
               <View style={styles.cardTop}>
                 <View style={styles.cardInfo}>
                   <Checkbox
                     checked={isSelected}
-                    onPress={() => toggleSelect(item.name)}
+                    onPress={() => toggleSelect(item.placeId)}
                   />
                   <View style={styles.cardTextGroup}>
                     <View style={styles.nameRow}>
@@ -182,11 +187,11 @@ export default function ScheduleFavoritesScreen() {
       >
         <Button
           title={
-            selectedNames.length > 0
-              ? `선택한 ${selectedNames.length}개의 장소 추가`
+            selectedIds.length > 0
+              ? `선택한 ${selectedIds.length}개의 장소 추가`
               : '선택 장소 추가'
           }
-          disabled={selectedNames.length === 0}
+          disabled={selectedIds.length === 0}
           onPress={handleAdd}
         />
       </View>
@@ -198,7 +203,7 @@ export default function ScheduleFavoritesScreen() {
         tabLabels={MEMO_EDIT_TAB_LABELS}
         onClose={() => setMemoTarget(null)}
         onSave={(visitType, memo) => {
-          if (memoTarget) updateFavorite(memoTarget.name, visitType, memo);
+          if (memoTarget) updateFavorite(memoTarget.placeId, visitType, memo);
           setMemoTarget(null);
         }}
       />

@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -35,7 +35,14 @@ import {
   radius,
   spacing,
 } from '@/constants';
-import { searchPlaces, type Coord } from '@/services/naverApi';
+import {
+  categoryCode,
+  categoryLabel,
+  fetchPlaces,
+  isApiError,
+  type PlaceListItem,
+} from '@/services/api';
+import type { Coord } from '@/services/naverApi';
 import {
   dayOrdinal,
   useScheduleStore,
@@ -55,46 +62,40 @@ const SORT_OPTIONS = ['인기순', '정확도', '최신순'] as const;
 
 type SortOption = (typeof SORT_OPTIONS)[number];
 
-const SEARCH_FILTERS = ['전체', '관광지', '식당', '카페'] as const;
+// '카페'는 대응하는 TourAPI 분류 코드가 없어 서버로 걸러낼 수 없다
+const SEARCH_FILTERS = ['전체', '관광지', '식당'] as const;
 
 type SearchFilter = (typeof SEARCH_FILTERS)[number];
 
 interface SearchPlace {
+  /** 백엔드 장소 식별자 — 찜하기 / 일정 생성에 그대로 쓴다 */
+  placeId: string;
   name: string;
   /** 관광지 / 식당 / 카페 */
   category: string;
   address: string;
   coord: Coord | null;
+  /** 서버가 내려주는 추천 체류 시간 (분) */
+  stayMinutes: number;
+  thumbnailUrl: string | null;
 }
 
-// TODO: 추천 장소 API 연동 전 임시 데이터
-// 좌표가 없으면 지도에 마커가 찍히지 않으므로 네이버 지역 검색 결과값을 넣어둔다
-const MOCK_RECOMMENDED: SearchPlace[] = [
-  {
-    name: '성산일출봉',
-    category: '관광지',
-    address: '제주 서귀포시 성산읍 성산리 1',
-    coord: { latitude: 33.458883, longitude: 126.940823 },
-  },
-  {
-    name: '9.81파크 제주',
-    category: '관광지',
-    address: '제주 제주시 애월읍 천덕로 880-24',
-    coord: { latitude: 33.390037, longitude: 126.366509 },
-  },
-  {
-    name: '함덕해수욕장',
-    category: '관광지',
-    address: '제주 제주시 조천읍 조함해안로 525',
-    coord: { latitude: 33.543108, longitude: 126.669692 },
-  },
-  {
-    name: '새물',
-    category: '카페',
-    address: '제주 제주시 애월읍 애월해안로 620 1.2.3층',
-    coord: { latitude: 33.47854, longitude: 126.36967 },
-  },
-];
+/** 추천 체류 시간이 없는 장소에 쓰는 기본값 (분) */
+const DEFAULT_STAY_MINUTES = 60;
+
+/** 목록 API 응답을 화면이 쓰는 모양으로 바꾼다 */
+const toSearchPlace = (item: PlaceListItem): SearchPlace => ({
+  placeId: item.placeId,
+  name: item.name,
+  category: categoryLabel(item.category),
+  address: item.address ?? item.regionLabel ?? '',
+  coord: { latitude: item.location.lat, longitude: item.location.lng },
+  stayMinutes: item.recommendedStayMinutes ?? DEFAULT_STAY_MINUTES,
+  thumbnailUrl: item.thumbnailUrl,
+});
+
+const errorMessage = (error: unknown) =>
+  isApiError(error) ? error.detail : '알 수 없는 오류';
 
 export default function ScheduleSearchScreen() {
   const router = useRouter();
@@ -107,22 +108,41 @@ export default function ScheduleSearchScreen() {
   const [query, setQuery] = useState('');
   /** null이면 아직 검색 전 (가볼 만한 장소를 보여준다) */
   const [results, setResults] = useState<SearchPlace[] | null>(null);
+  /** 검색 전에 보여주는 추천 목록 */
+  const [recommended, setRecommended] = useState<SearchPlace[]>([]);
   const [loading, setLoading] = useState(false);
   const [sort, setSort] = useState<SortOption>('인기순');
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
   const [filter, setFilter] = useState<SearchFilter>('전체');
   const [selected, setSelected] = useState<SearchPlace[]>([]);
 
-  const visiblePlaces =
-    results ??
-    MOCK_RECOMMENDED.filter(
-      (place) => filter === '전체' || place.category === filter,
-    );
+  const visiblePlaces = results ?? recommended;
+
+  /*
+   * 가볼 만한 장소는 목록 API로 받아온다. 분류 필터는 서버 query로 넘기므로
+   * 필터를 바꿀 때마다 다시 조회한다. (검색 결과를 보고 있을 때는 건드리지 않는다)
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchPlaces({ category: categoryCode(filter), size: 20 })
+      .then((page) => {
+        if (!cancelled) setRecommended(page.items.map(toSearchPlace));
+      })
+      .catch(() => {
+        // 추천 목록은 실패해도 검색은 쓸 수 있어야 하므로 화면을 막지 않는다
+        if (!cancelled) setRecommended([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [filter]);
 
   const toggleSelect = (place: SearchPlace) => {
     setSelected((prev) =>
-      prev.some((item) => item.name === place.name)
-        ? prev.filter((item) => item.name !== place.name)
+      prev.some((item) => item.placeId === place.placeId)
+        ? prev.filter((item) => item.placeId !== place.placeId)
         : [...prev, place],
     );
   };
@@ -134,21 +154,10 @@ export default function ScheduleSearchScreen() {
     Keyboard.dismiss();
     setLoading(true);
     try {
-      const places = await searchPlaces(trimmed);
-      setResults(
-        // TODO: 장소 분류 API 연동 전에는 관광지로 표시한다
-        places.map((place) => ({
-          name: place.name,
-          category: '관광지',
-          address: place.roadAddress,
-          coord: place.coord,
-        })),
-      );
+      const page = await fetchPlaces({ query: trimmed, size: 20 });
+      setResults(page.items.map(toSearchPlace));
     } catch (error) {
-      Alert.alert(
-        '검색 실패',
-        error instanceof Error ? error.message : '알 수 없는 오류',
-      );
+      Alert.alert('검색 실패', errorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -163,7 +172,7 @@ export default function ScheduleSearchScreen() {
           category: place.category,
           address: place.address,
           visitType: '선택방문',
-          stayMinutes: 60,
+          stayMinutes: place.stayMinutes,
           coord: place.coord,
         }),
       ),
@@ -234,7 +243,7 @@ export default function ScheduleSearchScreen() {
 
       <FlatList
         data={visiblePlaces}
-        keyExtractor={(item) => item.name}
+        keyExtractor={(item) => item.placeId}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[
           styles.listContent,
@@ -247,7 +256,9 @@ export default function ScheduleSearchScreen() {
           </Text>
         }
         renderItem={({ item }) => {
-          const isSelected = selected.some((place) => place.name === item.name);
+          const isSelected = selected.some(
+            (place) => place.placeId === item.placeId,
+          );
           return (
             <Pressable
               style={[styles.card, isSelected && styles.cardSelected]}
@@ -268,7 +279,14 @@ export default function ScheduleSearchScreen() {
                   </Text>
                 </View>
               </View>
-              <Image source={placeholderPlace} style={styles.cardImage} />
+              <Image
+                source={
+                  item.thumbnailUrl
+                    ? { uri: item.thumbnailUrl }
+                    : placeholderPlace
+                }
+                style={styles.cardImage}
+              />
             </Pressable>
           );
         }}
@@ -302,7 +320,7 @@ export default function ScheduleSearchScreen() {
         }))}
         selectedKey={sort}
         onSelect={(key) => {
-          // TODO: 정렬 기준은 추천 장소 API 연동 시 파라미터로 넘긴다
+          // TODO: 목록 API에 아직 정렬 query가 없어 화면 표기만 바꾼다
           setSort(key as SortOption);
           setSortSheetOpen(false);
         }}

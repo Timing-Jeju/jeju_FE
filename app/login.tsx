@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
+  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -22,7 +23,8 @@ import {
   letterSpacing,
   spacing,
 } from '@/constants';
-import { useUserStore } from '@/store/useUserStore';
+import { fetchSocialProviders, type SocialProviderId } from '@/services/api';
+import { signInWithEmail, signInWithProvider } from '@/services/auth';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
 const BACKGROUND = '#FAFAFA';
@@ -33,27 +35,81 @@ const kakaoIcon = require('../assets/images/sns-kakao.png');
 const googleIcon = require('../assets/images/sns-google.png');
 const naverIcon = require('../assets/images/sns-naver.png');
 
+/** 디자인상 노출 순서 — 서버가 지원한다고 알려준 공급자만 이 순서로 그린다 */
+const PROVIDER_ORDER: SocialProviderId[] = ['kakao', 'google', 'custom:naver'];
+
+const PROVIDER_ICONS: Record<SocialProviderId, number> = {
+  kakao: kakaoIcon,
+  google: googleIcon,
+  'custom:naver': naverIcon,
+};
+
+/** 이메일 형식만 거른다. 실제 계정 확인은 Supabase가 한다. */
+const isEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
 export default function LoginScreen() {
   const router = useRouter();
-  const login = useUserStore((state) => state.login);
 
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
   const [idError, setIdError] = useState(false);
   const [passwordError, setPasswordError] = useState(false);
+  const [loading, setLoading] = useState(false);
+  /** 서버가 알려준 지원 공급자. 조회 전/실패 시에는 디자인대로 셋 다 보여준다. */
+  const [providers, setProviders] =
+    useState<SocialProviderId[]>(PROVIDER_ORDER);
 
-  const canSubmit = id.trim().length > 0 && password.length > 0;
+  const canSubmit = id.trim().length > 0 && password.length > 0 && !loading;
 
-  const handleLogin = () => {
-    // TODO: 로그인 API 연동 전 임시 검증
-    const isIdValid = id.trim().length >= 4;
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchSocialProviders()
+      .then(({ providers: supported }) => {
+        if (cancelled) return;
+        const ids = supported.map((provider) => provider.id);
+        setProviders(
+          PROVIDER_ORDER.filter((provider) => ids.includes(provider)),
+        );
+      })
+      .catch(() => {
+        // 목록을 못 받아도 로그인은 시도할 수 있어야 한다
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /*
+   * 로그인은 Supabase Auth가 처리한다. 성공하면 세션이 store에 반영되고
+   * _layout의 Stack.Protected 가드가 (tabs)로 전환한다.
+   */
+  const handleLogin = async () => {
+    const email = id.trim();
+    const isIdValid = isEmail(email);
     const isPasswordValid = password.length >= 6;
     setIdError(!isIdValid);
     setPasswordError(!isPasswordValid);
     if (!isIdValid || !isPasswordValid) return;
 
-    // 로그인 상태가 되면 _layout의 Stack.Protected 가드가 (tabs)로 전환한다
-    login({ id: id.trim() });
+    setLoading(true);
+    const result = await signInWithEmail(email, password);
+    setLoading(false);
+
+    if (!result.ok && result.message) {
+      Alert.alert('로그인 실패', result.message);
+    }
+  };
+
+  const handleSocialLogin = async (provider: SocialProviderId) => {
+    setLoading(true);
+    const result = await signInWithProvider(provider);
+    setLoading(false);
+
+    if (!result.ok && result.message) {
+      Alert.alert('로그인 실패', result.message);
+    }
   };
 
   return (
@@ -73,12 +129,12 @@ export default function LoginScreen() {
 
           <View style={styles.form}>
             <InputField
-              label="아이디"
-              placeholder="아이디를 입력해주세요."
+              label="이메일"
+              placeholder="이메일을 입력해주세요."
               value={id}
               onChangeText={setId}
               isError={idError}
-              errorMessage="아이디가 올바르지 않아요."
+              errorMessage="이메일 형식이 올바르지 않아요."
             />
             <InputField
               label="비밀번호"
@@ -114,24 +170,30 @@ export default function LoginScreen() {
             style={styles.loginButton}
           />
 
-          <View style={styles.snsSection}>
-            <View style={styles.snsHeader}>
-              <View style={styles.snsLine} />
-              <Text style={styles.snsTitle}>SNS계정으로 로그인</Text>
-              <View style={styles.snsLine} />
+          {/* 서버가 켜 둔 공급자가 하나도 없으면 영역째 감춘다 */}
+          {providers.length > 0 && (
+            <View style={styles.snsSection}>
+              <View style={styles.snsHeader}>
+                <View style={styles.snsLine} />
+                <Text style={styles.snsTitle}>SNS계정으로 로그인</Text>
+                <View style={styles.snsLine} />
+              </View>
+              <View style={styles.snsButtons}>
+                {providers.map((provider) => (
+                  <Pressable
+                    key={provider}
+                    disabled={loading}
+                    onPress={() => handleSocialLogin(provider)}
+                  >
+                    <Image
+                      source={PROVIDER_ICONS[provider]}
+                      style={styles.snsIcon}
+                    />
+                  </Pressable>
+                ))}
+              </View>
             </View>
-            <View style={styles.snsButtons}>
-              <Pressable>
-                <Image source={kakaoIcon} style={styles.snsIcon} />
-              </Pressable>
-              <Pressable>
-                <Image source={googleIcon} style={styles.snsIcon} />
-              </Pressable>
-              <Pressable>
-                <Image source={naverIcon} style={styles.snsIcon} />
-              </Pressable>
-            </View>
-          </View>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
