@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 import type { BusTagColor } from '@/components/ui';
 import type { Coord } from '@/services/naverApi';
+import { unsupportedPlannerAction } from '@/services/plannerAvailability';
 import { rechainLegs, recheckReview } from '@/utils/schedule';
 import type { VisitType } from './useFavoriteStore';
 
@@ -202,12 +203,5 @@ export const useScheduleStore = create<ScheduleState>((set) => ({
         reviews: { ...state.reviews, [day]: recheckReview(review) },
       };
     }),
-  confirmDay: (day) =>
-    set((state) => {
-      const review = state.reviews[day];
-      if (!review) return state;
-      return {
-        reviews: { ...state.reviews, [day]: { ...review, confirmed: true } },
-      };
-    }),
+  confirmDay: unsupportedPlannerAction,
 }));

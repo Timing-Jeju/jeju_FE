@@ -1,20 +1,18 @@
 import { create } from 'zustand';
 
 interface UserState {
+  authReady: boolean;
   isLoggedIn: boolean;
-  /** 로그인 아이디 */
+  /** 인증 서버가 확인한 사용자 식별자 */
   userId: string | null;
-  /** 화면에 노출되는 닉네임 (프로필 조회 API에서 내려준다) */
+  /** BE 프로필 응답에서만 설정한다. */
   userName: string | null;
-  login: (user: { id: string; name?: string }) => void;
-  logout: () => void;
 }
 
-export const useUserStore = create<UserState>((set) => ({
+// Token과 비밀번호는 Zustand에 복제하거나 persist하지 않는다.
+export const useUserStore = create<UserState>(() => ({
+  authReady: false,
   isLoggedIn: false,
   userId: null,
   userName: null,
-  login: ({ id, name }) =>
-    set({ isLoggedIn: true, userId: id, userName: name ?? null }),
-  logout: () => set({ isLoggedIn: false, userId: null, userName: null }),
 }));

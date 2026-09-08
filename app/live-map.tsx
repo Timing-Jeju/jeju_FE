@@ -1,3 +1,5 @@
+import { PlannerUnavailable } from '@/components/PlannerUnavailable';
+import { PLANNER_AVAILABLE } from '@/services/plannerAvailability';
 import {
   NaverMapMarkerOverlay,
   NaverMapView,
@@ -142,7 +144,7 @@ function LiveLegCard({ leg, current, expanded, onToggle }: LiveLegCardProps) {
 
 /* ------------------------------------ 화면 ----------------------------------- */
 
-export default function LiveMapScreen() {
+function LiveMapScreenContent() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -491,3 +493,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+export default function LiveMapScreen() {
+  return PLANNER_AVAILABLE ? <LiveMapScreenContent /> : <PlannerUnavailable />;
+}

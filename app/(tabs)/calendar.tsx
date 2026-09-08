@@ -1,6 +1,13 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Fragment, useCallback, useMemo, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  Alert,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
@@ -26,9 +33,9 @@ import {
   spacing,
 } from '@/constants';
 import { useScheduleStore, type SchedulePlace } from '@/store/useScheduleStore';
-import { lodgingOf, useTripStore } from '@/store/useTripStore';
+import { useTripStore } from '@/store/useTripStore';
 import { datesBetween } from '@/utils/date';
-import { buildDayReview, type DayEndpoint } from '@/utils/schedule';
+import { PLANNER_UNAVAILABLE_MESSAGE } from '@/services/plannerAvailability';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
 const CARD_BORDER = '#E9EAED';
@@ -46,9 +53,6 @@ const STAY_OPTIONS = [30, 60, 90, 120, 150, 180];
 /** 플로팅 버튼(44) + 위아래 여백 — 목록 마지막 항목이 가리지 않게 띄운다 */
 const FLOATING_AREA_HEIGHT = 44 + spacing.md + spacing.xl;
 
-/** 여행 시작 / 종료 지점으로 쓰는 제주국제공항 좌표 */
-const JEJU_AIRPORT = { latitude: 33.5066, longitude: 126.4931 };
-
 const PLACE_MENU = [
   { key: 'stay', label: '체류시간 변경하기' },
   { key: 'reorder', label: '일정 순서 변경하기' },
@@ -60,19 +64,15 @@ const PLACE_MENU = [
 export default function CalendarScreen() {
   const router = useRouter();
 
-  const tripSaved = useTripStore((state) => state.saved);
+  const tripSaved = useTripStore((state) => state.draftSaved);
   const startDate = useTripStore((state) => state.startDate);
   const endDate = useTripStore((state) => state.endDate);
-  const dayTimes = useTripStore((state) => state.dayTimes);
-  const arrivalTime = useTripStore((state) => state.arrivalTime);
-  const departureTime = useTripStore((state) => state.departureTime);
 
   const removePlace = useScheduleStore((state) => state.removePlace);
   const movePlace = useScheduleStore((state) => state.movePlace);
   const updateStayMinutes = useScheduleStore(
     (state) => state.updateStayMinutes,
   );
-  const setReview = useScheduleStore((state) => state.setReview);
 
   const [selectedDay, setSelectedDay] = useState(1);
   const [addSheetOpen, setAddSheetOpen] = useState(false);
@@ -112,60 +112,8 @@ export default function CalendarScreen() {
     [places],
   );
 
-  /** 여행 조건(도착 시간 / 활동 시간 / 숙소)으로 해당 Day의 출발지·도착지를 만든다 */
-  const endpointsOf = useCallback(() => {
-    const date = tripDates[selectedDay - 1];
-    const dayTime = date ? dayTimes[date] : undefined;
-    const trip = useTripStore.getState();
-    const lodging = lodgingOf(trip, date);
-    const lodgingName = lodging?.name ?? '숙소';
-    const lodgingCoord = lodging?.coord ?? null;
-
-    const start: DayEndpoint =
-      selectedDay === 1
-        ? {
-            name: '제주국제공항',
-            time: arrivalTime ?? dayTime?.start ?? '9:00',
-            coord: JEJU_AIRPORT,
-          }
-        : {
-            name: lodgingName,
-            time: dayTime?.start ?? '9:00',
-            coord: lodgingCoord,
-          };
-
-    const end: DayEndpoint =
-      selectedDay === dayCount
-        ? {
-            name: '제주국제공항',
-            time: departureTime ?? dayTime?.end ?? '21:00',
-            coord: JEJU_AIRPORT,
-          }
-        : {
-            name: lodgingName,
-            time: dayTime?.end ?? '21:00',
-            coord: lodgingCoord,
-          };
-
-    return { start, end };
-  }, [arrivalTime, dayCount, dayTimes, departureTime, selectedDay, tripDates]);
-
   const handleGenerate = () => {
-    const { start, end } = endpointsOf();
-    setReview(
-      selectedDay,
-      buildDayReview(
-        useScheduleStore.getState().places[selectedDay] ?? [],
-        start,
-        end,
-        'ai',
-      ),
-    );
-    // 로딩 화면이 생성 연출을 보여준 뒤 검토 화면으로 replace 한다
-    router.push({
-      pathname: '/schedule-loading',
-      params: { day: String(selectedDay) },
-    });
+    Alert.alert('일정 서비스 준비 중', PLANNER_UNAVAILABLE_MESSAGE);
   };
 
   const handleAddPlace = (key: string) => {

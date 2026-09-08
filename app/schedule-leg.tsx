@@ -1,3 +1,5 @@
+import { PlannerUnavailable } from '@/components/PlannerUnavailable';
+import { PLANNER_AVAILABLE } from '@/services/plannerAvailability';
 import {
   NaverMapMarkerOverlay,
   NaverMapPathOverlay,
@@ -92,7 +94,7 @@ function ProgressTrack() {
 
 /* ------------------------------------ 화면 ----------------------------------- */
 
-export default function ScheduleLegScreen() {
+function ScheduleLegScreenContent() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ day?: string; legId?: string }>();
@@ -578,3 +580,11 @@ const styles = StyleSheet.create({
     color: colors.grey[500],
   },
 });
+
+export default function ScheduleLegScreen() {
+  return PLANNER_AVAILABLE ? (
+    <ScheduleLegScreenContent />
+  ) : (
+    <PlannerUnavailable />
+  );
+}

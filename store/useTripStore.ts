@@ -39,7 +39,9 @@ export interface TripConditions {
 }
 
 interface TripState extends TripConditions {
+  /** 서버 저장 여부. 현재 로컬 입력은 이 값을 변경하지 않는다. */
   saved: boolean;
+  draftSaved: boolean;
   saveConditions: (conditions: TripConditions) => void;
 }
 
@@ -57,7 +59,9 @@ export const useTripStore = create<TripState>((set) => ({
   styles: [],
   transport: [],
   saved: false,
-  saveConditions: (conditions) => set({ ...conditions, saved: true }),
+  draftSaved: false,
+  saveConditions: (conditions) =>
+    set({ ...conditions, draftSaved: true, saved: false }),
 }));
 
 type LodgingFields = Pick<

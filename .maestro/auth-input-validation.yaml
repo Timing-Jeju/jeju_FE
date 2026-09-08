@@ -1,0 +1,13 @@
+# APP_ID=com.jeju.tourist (Android) or com.yonghyeog.tourist (iOS)
+# Syntax validation only: no account or network credentials required.
+appId: ${APP_ID}
+---
+- launchApp:
+    clearState: true
+- tapOn: '이메일'
+- inputText: 'invalid-email'
+- tapOn: '비밀번호'
+- inputText: 'synthetic-password'
+- hideKeyboard
+- tapOn: '로그인'
+- assertVisible: '이메일 형식을 확인해 주세요.'

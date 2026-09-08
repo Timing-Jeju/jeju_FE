@@ -1,3 +1,5 @@
+import { PlannerUnavailable } from '@/components/PlannerUnavailable';
+import { PLANNER_AVAILABLE } from '@/services/plannerAvailability';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Fragment, useCallback, useMemo, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -290,7 +292,7 @@ function FillSheet({ leg, onClose, onConfirm }: FillSheetProps) {
 
 /* ------------------------------------ 화면 ----------------------------------- */
 
-export default function ScheduleReviewScreen() {
+function ScheduleReviewScreenContent() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ day?: string }>();
@@ -825,3 +827,11 @@ const fillStyles = StyleSheet.create({
     paddingTop: spacing.lg,
   },
 });
+
+export default function ScheduleReviewScreen() {
+  return PLANNER_AVAILABLE ? (
+    <ScheduleReviewScreenContent />
+  ) : (
+    <PlannerUnavailable />
+  );
+}

@@ -713,8 +713,9 @@ export default function TripConditionsScreen() {
       </ScrollView>
 
       <View style={styles.footer}>
+        <Text>서버에 저장되지 않으며 앱을 종료하면 입력이 사라져요.</Text>
         <Button
-          title="기본 조건 저장"
+          title="기본 조건 임시 보관"
           disabled={!canSave}
           onPress={handleSave}
         />

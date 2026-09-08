@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Image,
   KeyboardAvoidingView,
@@ -22,7 +22,7 @@ import {
   letterSpacing,
   spacing,
 } from '@/constants';
-import { useUserStore } from '@/store/useUserStore';
+import { signIn } from '@/services/auth';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
 const BACKGROUND = '#FAFAFA';
@@ -35,7 +35,9 @@ const naverIcon = require('../assets/images/sns-naver.png');
 
 export default function LoginScreen() {
   const router = useRouter();
-  const login = useUserStore((state) => state.login);
+  const submitting = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
@@ -44,16 +46,23 @@ export default function LoginScreen() {
 
   const canSubmit = id.trim().length > 0 && password.length > 0;
 
-  const handleLogin = () => {
-    // TODO: 로그인 API 연동 전 임시 검증
-    const isIdValid = id.trim().length >= 4;
-    const isPasswordValid = password.length >= 6;
+  const handleLogin = async () => {
+    if (submitting.current) return;
+    const isIdValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(id.trim());
     setIdError(!isIdValid);
-    setPasswordError(!isPasswordValid);
-    if (!isIdValid || !isPasswordValid) return;
-
-    // 로그인 상태가 되면 _layout의 Stack.Protected 가드가 (tabs)로 전환한다
-    login({ id: id.trim() });
+    setPasswordError(!password);
+    if (!isIdValid || !password) return;
+    submitting.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      await signIn(id, password);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : '로그인하지 못했어요.');
+    } finally {
+      submitting.current = false;
+      setBusy(false);
+    }
   };
 
   return (
@@ -73,16 +82,23 @@ export default function LoginScreen() {
 
           <View style={styles.form}>
             <InputField
-              label="아이디"
-              placeholder="아이디를 입력해주세요."
+              label="이메일"
+              placeholder="이메일을 입력해주세요."
+              accessibilityLabel="이메일"
+              keyboardType="email-address"
+              autoComplete="email"
+              editable={!busy}
               value={id}
               onChangeText={setId}
               isError={idError}
-              errorMessage="아이디가 올바르지 않아요."
+              errorMessage="이메일 형식을 확인해 주세요."
             />
             <InputField
               label="비밀번호"
               placeholder="비밀번호를 입력해주세요."
+              accessibilityLabel="비밀번호"
+              autoComplete="current-password"
+              editable={!busy}
               value={password}
               onChangeText={setPassword}
               isError={passwordError}
@@ -107,9 +123,10 @@ export default function LoginScreen() {
             </Pressable>
           </View>
 
+          {error && <Text accessibilityRole="alert">{error}</Text>}
           <Button
-            title="로그인"
-            disabled={!canSubmit}
+            title={busy ? '로그인 중...' : '로그인'}
+            disabled={!canSubmit || busy}
             onPress={handleLogin}
             style={styles.loginButton}
           />
