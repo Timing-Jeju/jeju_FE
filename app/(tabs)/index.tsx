@@ -49,6 +49,7 @@ const sunIcon = require('../../assets/images/icon-sun.png');
 const utensilsIcon = require('../../assets/images/icon-utensils.png');
 const coffeeIcon = require('../../assets/images/icon-coffee.png');
 const targetIcon = require('../../assets/images/icon-target.png');
+const placeholderPlace = require('../../assets/images/placeholder-place.png');
 const pinMarker = require('../../assets/images/pin-marker.png');
 
 /** 지도 마커 크기 (UpcomingScheduleCard의 핀과 같은 크기로 맞춘다) */
@@ -104,6 +105,7 @@ export default function HomeScreen() {
   const { selectedPlace, distance, liked, selectPlace } =
     useMapPlaceSelection();
   const removeFavorite = useFavoriteStore((state) => state.removeFavorite);
+  const addFavorite = useFavoriteStore((state) => state.addFavorite);
 
   // 여행 중이면 지도 아래에 다가오는 일정 카드를 띄운다
   const reviews = useScheduleStore((state) => state.reviews);
@@ -372,7 +374,18 @@ export default function HomeScreen() {
                   liked={liked}
                   onPress={() => {
                     if (liked) removeFavorite(selectedPlace.placeId);
-                    else openPlaceDetail();
+                    else
+                      addFavorite({
+                        placeId: selectedPlace.placeId,
+                        name: selectedPlace.name,
+                        category: selectedPlace.categoryLabel,
+                        address: selectedPlace.roadAddress,
+                        visitType: '선택방문',
+                        memo: '',
+                        stayMinutes: selectedPlace.recommendedStayMinutes ?? 60,
+                        direction: '',
+                        coord: selectedPlace.coord,
+                      });
                   }}
                 />
               </View>
@@ -401,7 +414,35 @@ export default function HomeScreen() {
             <Text style={styles.nearbyTitle}>
               {selectedPlace.name}의 주변 식당/카페
             </Text>
-            <Text>주변 장소 추천은 준비 중이에요.</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={styles.nearbyCards}>
+                {['식당', '카페'].map((categoryLabel) => (
+                  <View key={categoryLabel} style={styles.nearbyCard}>
+                    <View style={styles.nearbyImageWrap}>
+                      <Image
+                        source={placeholderPlace}
+                        style={styles.nearbyImage}
+                      />
+                      <View style={styles.nearbyImageOverlay} />
+                      <View style={styles.nearbyCaption}>
+                        <Text style={styles.nearbyName}>추천 준비 중</Text>
+                        <Text style={styles.nearbyCategory}>
+                          {categoryLabel}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.nearbyDistanceRow}>
+                      <Text style={styles.nearbyDistanceLabel}>
+                        {selectedPlace.name}에서{' '}
+                      </Text>
+                      <Text style={styles.nearbyDistanceValue}>
+                        거리 미제공
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
           </View>
         </Animated.View>
       )}

@@ -2,6 +2,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Pressable,
   ScrollView,
@@ -17,6 +18,7 @@ import {
   ConfirmModal,
   Divider,
   FavoriteMemoModal,
+  IndicatorDot,
   LikeIcon,
   PlaceTag,
   Text,
@@ -119,7 +121,10 @@ function PlaceDetailContent({ placeId }: { placeId: string }) {
     { label: '운영시간', value: detail.operations.operatingHoursText },
     { label: '휴무일', value: detail.operations.closedDaysText },
     { label: '주차', value: detail.operations.parkingText },
+    { label: '반려동물', value: null },
     { label: '입장료', value: detail.operations.admissionFeeText },
+    { label: '부대시설', value: null },
+    { label: '기타 안내', value: null },
   ];
 
   return (
@@ -138,6 +143,16 @@ function PlaceDetailContent({ placeId }: { placeId: string }) {
             }
             style={styles.heroImage}
           />
+          <View
+            style={styles.heroIndicator}
+            accessible
+            accessibilityLabel="추가 사진 준비 중"
+          >
+            <IndicatorDot selected />
+            <IndicatorDot selected={false} />
+            <IndicatorDot selected={false} />
+            <IndicatorDot selected={false} />
+          </View>
         </View>
 
         <View style={styles.body}>
@@ -180,11 +195,33 @@ function PlaceDetailContent({ placeId }: { placeId: string }) {
               <Text style={styles.infoText}>
                 {detail.contact.phone ?? '미제공'}
               </Text>
+              <Text
+                style={styles.copyText}
+                onPress={() =>
+                  Alert.alert(
+                    '준비 중이에요',
+                    '전화번호 복사는 아직 지원하지 않아요.',
+                  )
+                }
+              >
+                복사
+              </Text>
             </View>
             <View style={styles.infoRow}>
               <Image source={mapIcon} style={styles.infoIcon} />
               <Text style={styles.infoText} numberOfLines={1}>
                 {address}
+              </Text>
+              <Text
+                style={styles.copyText}
+                onPress={() =>
+                  Alert.alert(
+                    '준비 중이에요',
+                    '주소 복사는 아직 지원하지 않아요.',
+                  )
+                }
+              >
+                복사
               </Text>
             </View>
             <View style={styles.infoRow}>
@@ -195,10 +232,46 @@ function PlaceDetailContent({ placeId }: { placeId: string }) {
             </View>
           </View>
 
-          <Text style={styles.infoSub}>
-            체류 시간이 미제공되면 기본 60분으로 담겨요. 일정에서 변경할 수
-            있어요.
-          </Text>
+          <View style={styles.actionBar}>
+            <Pressable
+              style={styles.actionItem}
+              onPress={() =>
+                Alert.alert(
+                  '준비 중이에요',
+                  '전화 연결은 아직 지원하지 않아요.',
+                )
+              }
+            >
+              <Image source={callIcon} style={styles.infoIcon} />
+              <Text style={styles.infoText}>전화하기</Text>
+            </Pressable>
+            <VerticalDivider />
+            <Pressable
+              style={styles.actionItem}
+              onPress={() =>
+                Alert.alert(
+                  '준비 중이에요',
+                  '상세 화면에서 지도 열기는 아직 지원하지 않아요.',
+                )
+              }
+            >
+              <Image source={mapIcon} style={styles.infoIcon} />
+              <Text style={styles.infoText}>지도보기</Text>
+            </Pressable>
+            <VerticalDivider />
+            <Pressable
+              style={styles.actionItem}
+              onPress={() =>
+                Alert.alert(
+                  '준비 중이에요',
+                  '홈페이지 열기는 아직 지원하지 않아요.',
+                )
+              }
+            >
+              <Image source={linkIcon} style={styles.infoIcon} />
+              <Text style={styles.infoText}>홈페이지</Text>
+            </Pressable>
+          </View>
 
           <Divider size="small" />
 
@@ -246,7 +319,7 @@ function PlaceDetailContent({ placeId }: { placeId: string }) {
           onPress={handleToggleFavorite}
         >
           <Text style={styles.likeButtonLabel}>
-            {liked ? '찜하기 취소' : '장소 찜하기 (앱 내 임시)'}
+            {liked ? '찜하기 취소' : '장소 찜하기'}
           </Text>
         </Pressable>
       </View>

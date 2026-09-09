@@ -2,10 +2,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   Keyboard,
   Pressable,
+  ScrollView,
   StyleSheet,
   TextInput,
   View,
@@ -18,6 +20,8 @@ import {
 import {
   Button,
   Checkbox,
+  FilterChip,
+  OptionSheet,
   PlaceTag,
   ScreenHeader,
   Text,
@@ -45,7 +49,11 @@ const CARD_BORDER = '#F5F6F9';
 const SUB_TEXT = '#747476';
 
 const searchIcon = require('../assets/images/icon-search.png');
+const chevronDownIcon = require('../assets/images/icon-chevron-down.png');
 const placeholderPlace = require('../assets/images/placeholder-place.png');
+
+const SORT_OPTIONS = ['인기순', '정확도', '최신순'] as const;
+const SEARCH_FILTERS = ['전체', '관광지', '식당', '카페'] as const;
 
 export default function ScheduleSearchScreen() {
   const router = useRouter();
@@ -59,6 +67,7 @@ export default function ScheduleSearchScreen() {
   const { results, loading, error, searched, hasMore, search, more, clear } =
     usePlaceSearch();
   const [selected, setSelected] = useState<Place[]>([]);
+  const [sortSheetOpen, setSortSheetOpen] = useState(false);
   const visiblePlaces = results;
 
   const toggleSelect = (place: Place) => {
@@ -120,13 +129,42 @@ export default function ScheduleSearchScreen() {
         </View>
       </View>
 
-      <Text style={styles.resultTitle}>
-        {searched ? '검색 결과' : '장소 이름으로 검색해 주세요'}
-      </Text>
-      <Text style={styles.address}>
-        체류 시간이 미제공된 장소는 기본 60분으로 담겨요. 일정에서 변경할 수
-        있어요.
-      </Text>
+      {searched ? (
+        <Text style={styles.resultTitle}>검색 결과</Text>
+      ) : (
+        <View style={styles.recommendArea}>
+          <View style={styles.recommendTitleRow}>
+            <Text style={styles.title}>가볼 만한 장소</Text>
+            <Pressable
+              style={styles.sortButton}
+              onPress={() => setSortSheetOpen(true)}
+            >
+              <Text style={styles.sortLabel}>인기순</Text>
+              <Image source={chevronDownIcon} style={styles.sortIcon} />
+            </Pressable>
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterRow}
+          >
+            {SEARCH_FILTERS.map((item) => (
+              <FilterChip
+                key={item}
+                label={item}
+                variant="outlined"
+                selected={item === '전체'}
+                onPress={() =>
+                  Alert.alert(
+                    '준비 중이에요',
+                    '추천 장소 필터는 아직 지원하지 않아요. 장소 이름으로 검색해 주세요.',
+                  )
+                }
+              />
+            ))}
+          </ScrollView>
+        </View>
+      )}
 
       <FlatList
         data={visiblePlaces}
@@ -140,7 +178,9 @@ export default function ScheduleSearchScreen() {
         ListEmptyComponent={
           <Text style={styles.emptyText}>
             {error ??
-              (searched ? '검색 결과가 없어요' : '장소를 검색해 주세요')}
+              (searched
+                ? '검색 결과가 없어요'
+                : '추천 장소는 준비 중이에요. 장소를 검색해 주세요')}
           </Text>
         }
         ListFooterComponent={
@@ -201,6 +241,19 @@ export default function ScheduleSearchScreen() {
           onPress={handleAdd}
         />
       </View>
+      <OptionSheet
+        visible={sortSheetOpen}
+        options={SORT_OPTIONS.map((option) => ({ key: option, label: option }))}
+        selectedKey="인기순"
+        onSelect={() => {
+          setSortSheetOpen(false);
+          Alert.alert(
+            '준비 중이에요',
+            '추천 장소 정렬은 아직 지원하지 않아요.',
+          );
+        }}
+        onClose={() => setSortSheetOpen(false)}
+      />
     </SafeAreaView>
   );
 }
