@@ -1,4 +1,3 @@
-import { PlannerUnavailable } from '@/components/PlannerUnavailable';
 import { PLANNER_AVAILABLE } from '@/services/plannerAvailability';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Fragment, useMemo, useState } from 'react';
@@ -327,7 +326,7 @@ function ScheduleReviewScreenContent() {
     [startDate, endDate],
   );
 
-  const review = reviews[selectedDay];
+  const review = PLANNER_AVAILABLE ? reviews[selectedDay] : undefined;
   const legs = useMemo(() => review?.legs ?? [], [review]);
 
   // 마지막 날에만 확정하고, 그 전에는 다음 날 검토로 넘어간다
@@ -390,8 +389,9 @@ function ScheduleReviewScreenContent() {
         <ScreenHeader title="일정 검토" />
         <View style={styles.emptyArea}>
           <Text style={styles.emptyText}>
-            아직 생성된 일정이 없어요.{'\n'}Day {selectedDay} 일정을 먼저
-            생성해주세요.
+            {PLANNER_AVAILABLE
+              ? `아직 생성된 일정이 없어요.\nDay ${selectedDay} 일정을 먼저 생성해주세요.`
+              : '일정 서비스 준비 중이에요.\n생성·평가·적용은 아직 지원하지 않아요.'}
           </Text>
         </View>
       </SafeAreaView>
@@ -782,9 +782,5 @@ const fillStyles = StyleSheet.create({
 });
 
 export default function ScheduleReviewScreen() {
-  return PLANNER_AVAILABLE ? (
-    <ScheduleReviewScreenContent />
-  ) : (
-    <PlannerUnavailable />
-  );
+  return <ScheduleReviewScreenContent />;
 }

@@ -1,4 +1,3 @@
-import { PlannerUnavailable } from '@/components/PlannerUnavailable';
 import { PLANNER_AVAILABLE } from '@/services/plannerAvailability';
 import {
   NaverMapMarkerOverlay,
@@ -151,7 +150,10 @@ function LiveMapScreenContent() {
   const reviews = useScheduleStore((state) => state.reviews);
 
   // TODO: 실제 위치 추적 연동 전에는 오늘 일정의 두 번째 구간을 현위치로 본다
-  const legs = useMemo(() => activeReview(reviews)?.legs ?? [], [reviews]);
+  const legs = useMemo(
+    () => (PLANNER_AVAILABLE ? (activeReview(reviews)?.legs ?? []) : []),
+    [reviews],
+  );
 
   const mapRef = useRef<NaverMapViewRef>(null);
 
@@ -160,8 +162,8 @@ function LiveMapScreenContent() {
     currentLeg?.id ?? null,
   );
 
-  const currentPlace = currentLeg?.from ?? '위치 확인 중';
-  const minutesLeft = currentLeg?.slackMinutes ?? 0;
+  const currentPlace = currentLeg?.from ?? '미제공';
+  const minutesLeft = currentLeg?.slackMinutes ?? null;
 
   // 구간 끝점을 모아 지도에 찍는다 (좌표를 아는 장소만)
   const markers = useMemo(() => {
@@ -186,6 +188,7 @@ function LiveMapScreenContent() {
    * 좌표는 지도 SDK가 직접 받으므로 여기서는 권한만 확인한다.
    */
   useEffect(() => {
+    if (!PLANNER_AVAILABLE) return;
     let cancelled = false;
     requestLocationPermission().then((granted) => {
       if (!cancelled && granted) {
@@ -198,6 +201,7 @@ function LiveMapScreenContent() {
   }, []);
 
   const handleRecenter = async () => {
+    if (!PLANNER_AVAILABLE) return;
     if (await requestLocationPermission()) {
       mapRef.current?.setLocationTrackingMode('Follow');
     }
@@ -269,9 +273,20 @@ function LiveMapScreenContent() {
             </View>
             <View style={styles.noticeBox}>
               <Text style={styles.noticeLabel}>
-                {minutesLeft}분 이내에 출발해야해요.
+                {minutesLeft === null
+                  ? '실시간 안내는 준비 중이에요.'
+                  : `${minutesLeft}분 이내에 출발해야해요.`}
               </Text>
-              <Tag status={minutesLeft > 10 ? 'positive' : 'warning'} />
+              <Tag
+                status={
+                  minutesLeft === null
+                    ? 'mono'
+                    : minutesLeft > 10
+                      ? 'positive'
+                      : 'warning'
+                }
+                text={minutesLeft === null ? '미제공' : undefined}
+              />
             </View>
           </View>
 
@@ -495,5 +510,5 @@ const styles = StyleSheet.create({
 });
 
 export default function LiveMapScreen() {
-  return PLANNER_AVAILABLE ? <LiveMapScreenContent /> : <PlannerUnavailable />;
+  return <LiveMapScreenContent />;
 }
