@@ -4,9 +4,10 @@ import {
   type NaverMapViewRef,
 } from '@mj-studio/react-native-naver-map';
 import { useRouter } from 'expo-router';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   FlatList,
   Image,
@@ -101,6 +102,11 @@ export default function HomeScreen() {
     more,
     clear,
   } = usePlaceSearch();
+  useEffect(() => {
+    if (searchError) Alert.alert('검색 실패', searchError);
+    else if (searched && !loading && results.length === 0)
+      Alert.alert('검색 결과 없음', '다른 키워드나 주소로 검색해보세요.');
+  }, [searchError, searched, loading, results.length]);
   const [category, setCategory] = useState<CategoryKey>('all');
   const { selectedPlace, distance, liked, selectPlace } =
     useMapPlaceSelection();
@@ -285,24 +291,16 @@ export default function HomeScreen() {
           })}
         </ScrollView>
 
-        {searched && !loading && !searchError && results.length === 0 && (
-          <Text>검색 결과가 없어요</Text>
-        )}
         {results.length > 0 && (
           <FlatList
             style={styles.resultList}
             data={results}
             keyboardShouldPersistTaps="handled"
             keyExtractor={(item) => item.placeId}
-            ListFooterComponent={
-              hasMore ? (
-                <Button
-                  title="더 보기"
-                  onPress={() => void more()}
-                  disabled={loading}
-                />
-              ) : null
-            }
+            onEndReached={() => {
+              if (hasMore && !searchError) void more();
+            }}
+            onEndReachedThreshold={0.2}
             renderItem={({ item }) => (
               <Pressable
                 style={styles.resultItem}
@@ -360,7 +358,6 @@ export default function HomeScreen() {
       )}
 
       {/* 장소 선택 바텀 패널 (드래그로 확장/축소/닫기) */}
-      {searchError && <Text>{searchError}</Text>}
       {selectedPlace && (
         <Animated.View style={[styles.placeSheet, { height: sheetHeight }]}>
           <View {...panResponder.panHandlers}>

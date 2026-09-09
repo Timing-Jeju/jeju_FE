@@ -1,4 +1,3 @@
-import { PlannerUnavailable } from '@/components/PlannerUnavailable';
 import { PLANNER_AVAILABLE } from '@/services/plannerAvailability';
 import {
   NaverMapMarkerOverlay,
@@ -110,7 +109,7 @@ function ScheduleLegScreenContent() {
   const [deleteVisible, setDeleteVisible] = useState(false);
   const [path, setPath] = useState<Coord[]>([]);
 
-  const review = reviews[day];
+  const review = PLANNER_AVAILABLE ? reviews[day] : undefined;
   const legs = review?.legs ?? [];
   const legIndex = legs.findIndex((item) => item.id === params.legId);
   const leg: RouteLeg | undefined = legs[legIndex];
@@ -147,7 +146,11 @@ function ScheduleLegScreenContent() {
       <SafeAreaView style={styles.container} edges={['top']}>
         <ScreenHeader title="상세 일정" />
         <View style={styles.emptyArea}>
-          <Text style={styles.emptyText}>일정 정보를 찾을 수 없어요.</Text>
+          <Text style={styles.emptyText}>
+            {PLANNER_AVAILABLE
+              ? '일정 정보를 찾을 수 없어요.'
+              : '구간 상세는 준비 중이에요.'}
+          </Text>
         </View>
       </SafeAreaView>
     );
@@ -582,9 +585,5 @@ const styles = StyleSheet.create({
 });
 
 export default function ScheduleLegScreen() {
-  return PLANNER_AVAILABLE ? (
-    <ScheduleLegScreenContent />
-  ) : (
-    <PlannerUnavailable />
-  );
+  return <ScheduleLegScreenContent />;
 }

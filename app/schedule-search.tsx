@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -68,6 +68,9 @@ export default function ScheduleSearchScreen() {
     usePlaceSearch();
   const [selected, setSelected] = useState<Place[]>([]);
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
+  useEffect(() => {
+    if (error) Alert.alert('검색 실패', error);
+  }, [error]);
   const visiblePlaces = results;
 
   const toggleSelect = (place: Place) => {
@@ -183,15 +186,10 @@ export default function ScheduleSearchScreen() {
                 : '추천 장소는 준비 중이에요. 장소를 검색해 주세요')}
           </Text>
         }
-        ListFooterComponent={
-          hasMore ? (
-            <Button
-              title="더 보기"
-              disabled={loading}
-              onPress={() => void more()}
-            />
-          ) : null
-        }
+        onEndReached={() => {
+          if (hasMore && !error) void more();
+        }}
+        onEndReachedThreshold={0.2}
         renderItem={({ item }) => {
           const isSelected = selected.some(
             (place) => place.placeId === item.placeId,

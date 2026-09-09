@@ -81,3 +81,33 @@ test('다음 페이지는 서버 cursor로 조회하고 중복 ID를 추가하�
   ]);
   expect(result.current.hasMore).toBe(false);
 });
+
+test('연속 스크롤 이벤트는 같은 다음 페이지 요청을 중복 전송하지 않는다', async () => {
+  jest.mocked(listPlaces).mockResolvedValueOnce({
+    ...page('첫 장소'),
+    page: { size: 20, hasNext: true, nextCursor: 'next' },
+  } as never);
+  let finish!: (value: never) => void;
+  jest.mocked(listPlaces).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const { result } = await renderHook(() => usePlaceSearch());
+  await act(async () => {
+    await result.current.search('제주');
+  });
+  let pending!: Promise<void>;
+  await act(async () => {
+    pending = result.current.more();
+    void result.current.more();
+    void result.current.more();
+  });
+  expect(listPlaces).toHaveBeenCalledTimes(2);
+  await act(async () => {
+    finish(page('다음') as never);
+    await pending;
+  });
+  expect(result.current.loading).toBe(false);
+});

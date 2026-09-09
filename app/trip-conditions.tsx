@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Image,
   Modal,
   Pressable,
@@ -458,6 +459,10 @@ export default function TripConditionsScreen() {
       styles: styleTags,
       transport: transportModes,
     });
+    Alert.alert(
+      '앱에 임시 보관했어요',
+      '서버에 저장되지 않으며 앱을 종료하면 입력이 사라져요.',
+    );
     router.back();
   };
 
@@ -714,7 +719,6 @@ export default function TripConditionsScreen() {
       </ScrollView>
 
       <View style={styles.footer}>
-        <Text>서버에 저장되지 않으며 앱을 종료하면 입력이 사라져요.</Text>
         <Button
           title="기본 조건 임시 보관"
           disabled={!canSave}
@@ -1438,6 +1442,9 @@ function LodgingSearchSheet({
   const { results, loading, error, searched, hasMore, search, more, clear } =
     usePlaceSearch();
   const [selected, setSelected] = useState<Place | null>(null);
+  useEffect(() => {
+    if (error) Alert.alert('검색 실패', error);
+  }, [error]);
 
   const handleSearch = () => {
     setSelected(null);
@@ -1457,7 +1464,11 @@ function LodgingSearchSheet({
               setSelected(null);
               clear();
             }}
-            placeholder={initialSelected?.name ?? '숙소를 입력해주세요'}
+            placeholder={
+              loading
+                ? '검색 중이에요'
+                : (initialSelected?.name ?? '숙소를 입력해주세요')
+            }
             placeholderTextColor={PLACEHOLDER}
             returnKeyType="search"
             onSubmitEditing={handleSearch}
@@ -1495,19 +1506,25 @@ function LodgingSearchSheet({
           </View>
         )}
 
-        {error && <Text>{error}</Text>}
-        {loading && <Text>검색 중이에요</Text>}
-        {hasMore && (
-          <Button
-            title="더 보기"
-            disabled={loading}
-            onPress={() => void more()}
-          />
-        )}
         {searched && results.length > 0 && (
           <View style={sheetStyles.resultArea}>
             <Text style={sheetStyles.exampleTitle}>검색 결과</Text>
-            <ScrollView style={sheetStyles.resultScroll} nestedScrollEnabled>
+            <ScrollView
+              style={sheetStyles.resultScroll}
+              nestedScrollEnabled
+              scrollEventThrottle={100}
+              onScroll={({
+                nativeEvent: { layoutMeasurement, contentOffset, contentSize },
+              }) => {
+                if (
+                  hasMore &&
+                  !error &&
+                  layoutMeasurement.height + contentOffset.y >=
+                    contentSize.height - 80
+                )
+                  void more();
+              }}
+            >
               <View style={sheetStyles.resultList}>
                 {results.map((place) => (
                   <Pressable

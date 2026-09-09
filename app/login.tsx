@@ -101,8 +101,8 @@ export default function LoginScreen() {
               editable={!busy}
               value={password}
               onChangeText={setPassword}
-              isError={passwordError}
-              errorMessage="비밀번호가 올바르지 않아요."
+              isError={passwordError || error !== null}
+              errorMessage={error ?? '비밀번호가 올바르지 않아요.'}
               secureToggle
             />
           </View>
@@ -123,7 +123,6 @@ export default function LoginScreen() {
             </Pressable>
           </View>
 
-          {error && <Text accessibilityRole="alert">{error}</Text>}
           <Button
             title={busy ? '로그인 중...' : '로그인'}
             disabled={!canSubmit || busy}

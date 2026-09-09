@@ -1,7 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Image,
   Pressable,
@@ -58,7 +57,7 @@ export default function PlaceDetailScreen() {
 function PlaceDetailContent({ placeId }: { placeId: string }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [detail, setDetail] = useState<PlaceDetail | null>(null);
+  const [loadedDetail, setDetail] = useState<PlaceDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [memoModalVisible, setMemoModalVisible] = useState(false);
@@ -86,6 +85,13 @@ function PlaceDetailContent({ placeId }: { placeId: string }) {
 
   // 찜 안 한 상태면 메모 모달로 찜하기, 찜한 상태면 삭제 확인 모달을 띄운다
   const handleToggleFavorite = () => {
+    if (!loadedDetail) {
+      if (error) {
+        setError(null);
+        setAttempt((value) => value + 1);
+      }
+      return;
+    }
     if (liked) {
       setDeleteModalVisible(true);
     } else {
@@ -93,29 +99,25 @@ function PlaceDetailContent({ placeId }: { placeId: string }) {
     }
   };
 
-  if (!detail)
-    return (
-      <SafeAreaView style={styles.container}>
-        <Pressable onPress={() => router.back()}>
-          <Text>뒤로가기</Text>
-        </Pressable>
-        {error ? (
-          <>
-            <Text>{error}</Text>
-            <Pressable
-              onPress={() => {
-                setError(null);
-                setAttempt((value) => value + 1);
-              }}
-            >
-              <Text>다시 시도</Text>
-            </Pressable>
-          </>
-        ) : (
-          <ActivityIndicator />
-        )}
-      </SafeAreaView>
-    );
+  // 로딩/실패에도 기존 상세 레이아웃을 유지한다. 이 표시값은 저장할 수 없다.
+  const detail: PlaceDetail = loadedDetail ?? {
+    placeId: '',
+    name: error ? '장소 정보 미제공' : '불러오는 중',
+    roadAddress: '미제공',
+    coord: null,
+    category: '',
+    categoryLabel: '미제공',
+    recommendedStayMinutes: null,
+    thumbnailUrl: null,
+    overview: error,
+    contact: { phone: null, homepageUrl: null },
+    operations: {
+      operatingHoursText: null,
+      closedDaysText: null,
+      parkingText: null,
+      admissionFeeText: null,
+    },
+  };
   const { name, roadAddress: address, coord } = detail;
   const usageInfo = [
     { label: '운영시간', value: detail.operations.operatingHoursText },
@@ -316,10 +318,17 @@ function PlaceDetailContent({ placeId }: { placeId: string }) {
       >
         <Pressable
           style={[styles.likeButton, liked && styles.likeButtonActive]}
+          disabled={!loadedDetail && !error}
           onPress={handleToggleFavorite}
         >
           <Text style={styles.likeButtonLabel}>
-            {liked ? '찜하기 취소' : '장소 찜하기'}
+            {!loadedDetail
+              ? error
+                ? '다시 시도'
+                : '불러오는 중'
+              : liked
+                ? '찜하기 취소'
+                : '장소 찜하기'}
           </Text>
         </Pressable>
       </View>
@@ -328,6 +337,7 @@ function PlaceDetailContent({ placeId }: { placeId: string }) {
         visible={memoModalVisible}
         onClose={() => setMemoModalVisible(false)}
         onSave={(visitType, memo) => {
+          if (!loadedDetail) return;
           addFavorite({
             placeId: detail.placeId,
             name,

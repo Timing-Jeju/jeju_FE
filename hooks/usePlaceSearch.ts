@@ -10,9 +10,11 @@ export function usePlaceSearch() {
   const [cursor, setCursor] = useState<string | null>(null);
   const controller = useRef<AbortController | null>(null);
   const lastQuery = useRef('');
+  const inFlight = useRef(false);
   useEffect(() => () => controller.current?.abort(), []);
   const clear = () => {
     controller.current?.abort();
+    inFlight.current = false;
     setResults([]);
     setCursor(null);
     setError(null);
@@ -23,6 +25,7 @@ export function usePlaceSearch() {
     controller.current?.abort();
     const active = new AbortController();
     controller.current = active;
+    inFlight.current = true;
     setLoading(true);
     setError(null);
     if (!nextCursor) {
@@ -49,6 +52,7 @@ export function usePlaceSearch() {
         setError('검색하지 못했어요. 연결을 확인하고 다시 시도해 주세요.');
     } finally {
       if (!active.signal.aborted) {
+        inFlight.current = false;
         setLoading(false);
         setSearched(true);
       }
@@ -64,7 +68,7 @@ export function usePlaceSearch() {
     await request(trimmed);
   };
   const more = async () => {
-    if (!cursor || loading) return;
+    if (!cursor || inFlight.current) return;
     await request(lastQuery.current, cursor);
   };
   return {
