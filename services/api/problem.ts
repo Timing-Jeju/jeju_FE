@@ -17,6 +17,7 @@ const messages: Record<string, string> = {
   CLIENT_NOT_CONFIGURED: '서버 연결 설정을 확인해 주세요.',
   CLIENT_NETWORK_ERROR: '서버에 연결하지 못했습니다.',
   CLIENT_LOCATION_DATA_FORBIDDEN: '현재 위치 정보는 서버로 전송할 수 없습니다.',
+  INVALID_API_PAYLOAD: '서버 요청 형식을 확인해 주세요.',
   INVALID_API_TARGET: '서버 연결 대상을 확인해 주세요.',
   INVALID_IDEMPOTENCY_KEY: '요청 식별 키를 확인해 주세요.',
   INVALID_ETAG: '최신 데이터를 다시 불러와 주세요.',

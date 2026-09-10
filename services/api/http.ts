@@ -132,16 +132,36 @@ const LOCATION_FIELD_NAMES = new Set([
   'longitude',
 ]);
 
-/** 공개 selector(regionCode/placeId)는 허용하되 기기·현재 위치는 어떤 깊이에서도 차단한다. */
-const assertNoLocationData = (value: unknown, seen = new WeakSet<object>()) => {
-  if (value === null || typeof value !== 'object') return;
-  if (seen.has(value)) return;
+const invalidPayload = (): never => {
+  throw new ApiError({ status: 0, code: 'INVALID_API_PAYLOAD' });
+};
+
+/** JSON 계약만 허용하고 공개 selector 외 기기·현재 위치 key는 모든 깊이에서 차단한다. */
+const assertSafeJsonValue = (value: unknown, seen = new WeakSet<object>()) => {
+  if (
+    value === null ||
+    value === undefined ||
+    typeof value === 'string' ||
+    typeof value === 'boolean'
+  ) {
+    return;
+  }
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) invalidPayload();
+    return;
+  }
+  if (typeof value !== 'object') invalidPayload();
+  if (seen.has(value)) invalidPayload();
   seen.add(value);
 
   if (Array.isArray(value)) {
-    value.forEach((item) => assertNoLocationData(item, seen));
+    value.forEach((item) => assertSafeJsonValue(item, seen));
+    seen.delete(value);
     return;
   }
+
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) invalidPayload();
 
   for (const [key, item] of Object.entries(value)) {
     const normalized = key.toLowerCase().replace(/[_-]/g, '');
@@ -151,8 +171,26 @@ const assertNoLocationData = (value: unknown, seen = new WeakSet<object>()) => {
         code: CLIENT_LOCATION_DATA_FORBIDDEN,
       });
     }
-    assertNoLocationData(item, seen);
+    assertSafeJsonValue(item, seen);
   }
+  seen.delete(value);
+};
+
+const assertSafeJsonBody = (body: unknown) => {
+  if (body === undefined) return;
+  if (typeof body === 'string') {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      invalidPayload();
+    }
+    if (parsed === null || typeof parsed !== 'object') invalidPayload();
+    assertSafeJsonValue(parsed);
+    return;
+  }
+  if (body === null || typeof body !== 'object') invalidPayload();
+  assertSafeJsonValue(body);
 };
 
 const toApiError = (error: unknown): ApiError => {
@@ -204,8 +242,8 @@ export function createApiTransport(
   ): Promise<ApiResponse<T>> => {
     const url = assertPath(origin, options.path);
     assertRequestHeaders(options.headers);
-    assertNoLocationData(options.params);
-    assertNoLocationData(options.body);
+    assertSafeJsonValue(options.params);
+    assertSafeJsonBody(options.body);
 
     let authorization: string | null = null;
     if (options.auth === 'naver') {

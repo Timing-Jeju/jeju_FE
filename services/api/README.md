@@ -10,6 +10,8 @@
 - 공개 endpoint의 인증 모드는 `none`, `optional`, `required`, Naver provider token으로 구분한다.
 - cursor는 opaque 값으로 그대로 전달하며 필터가 바뀌면 처음부터 조회한다.
 - 변경 요청은 자동 재시도하지 않는다. 재시도하는 호출자가 같은 `Idempotency-Key`와 서버에서 다시 얻은 최신 ETag를 관리한다.
+- 요청 body는 JSON object/array 계약만 지원한다. 문자열 body는 JSON으로 parse해 같은 검사를 적용하며 malformed JSON, primitive, `FormData`, `URLSearchParams` 같은 비계약 payload는 전송 전에 거부한다.
+- `latitude`, `longitude`, `lat/lng`, `currentLocation`, `gps` 등 현재·간접 위치 key는 중첩 깊이와 무관하게 거부한다. 공개 계약의 `regionCode`/`placeId`/`tripItemId`와 일반 문자열 값은 허용한다.
 - `Idempotency-Key`는 1~128자 printable ASCII다. 기본 생성값은 UUID지만 호출자 제공값을 UUID로 제한하지 않는다.
 - `If-Match`에는 큰따옴표를 포함한 strong ETag를 그대로 전달한다. 성공 응답의 새 ETag로 다음 변경 전에 갱신한다.
 - 오류 객체에는 검증된 stable code, HTTP status, 안전한 trace ID만 남긴다. access token, axios config/cause, 원문 Problem body·detail·field error는 보존하지 않는다.

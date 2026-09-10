@@ -153,10 +153,71 @@ test('공개 selector는 위치정보로 오인하지 않고 허용한다', asyn
     auth: 'optional',
     params: {
       regionCode: 'jeju-si',
+      regionName: '제주시',
       dateTime: '2026-09-10T17:00:00+09:00',
+      name: 'GPS museum',
     },
   });
 
+  expect(adapter).toHaveBeenCalledTimes(1);
+});
+
+test('문자열 JSON 안의 위치정보도 parse 후 전송 전에 거부한다', async () => {
+  const transport = makeTransport();
+  const adapter = jest.fn();
+  transport.setAdapter(adapter);
+
+  await expect(
+    transport.request({
+      method: 'POST',
+      path: '/trips',
+      auth: 'required',
+      body: JSON.stringify({ latitude: 33.4, longitude: 126.5 }),
+      headers: { 'Idempotency-Key': 'string-location-boundary' },
+    }),
+  ).rejects.toMatchObject({ code: 'CLIENT_LOCATION_DATA_FORBIDDEN' });
+  expect(adapter).not.toHaveBeenCalled();
+});
+
+test.each([
+  ['malformed JSON', '{"title":'],
+  ['URLSearchParams', new URLSearchParams({ latitude: '33.4' })],
+  ['FormData', new FormData()],
+])('비계약 JSON payload를 adapter 전에 거부한다: %s', async (_name, body) => {
+  const transport = makeTransport();
+  const adapter = jest.fn();
+  transport.setAdapter(adapter);
+
+  await expect(
+    transport.request({
+      method: 'POST',
+      path: '/trips',
+      auth: 'required',
+      body,
+      headers: { 'Idempotency-Key': 'invalid-payload-boundary' },
+    }),
+  ).rejects.toMatchObject({ status: 0, code: 'INVALID_API_PAYLOAD' });
+  expect(adapter).not.toHaveBeenCalled();
+});
+
+test('안전한 문자열 JSON은 전송한다', async () => {
+  const transport = makeTransport();
+  const adapter = jest.fn(async (config) => ({
+    data: { ok: true },
+    status: 200,
+    statusText: 'OK',
+    headers: {},
+    config,
+  }));
+  transport.setAdapter(adapter);
+
+  await transport.request({
+    method: 'POST',
+    path: '/trips',
+    auth: 'required',
+    body: JSON.stringify({ regionName: '제주시', name: 'GPS museum' }),
+    headers: { 'Idempotency-Key': 'safe-string-payload' },
+  });
   expect(adapter).toHaveBeenCalledTimes(1);
 });
 

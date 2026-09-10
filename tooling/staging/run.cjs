@@ -41,18 +41,34 @@ function sanitizeResult(value) {
   );
 }
 
-const stableIds = (value, key) => {
-  if (!value || !Array.isArray(value.items)) return null;
-  const ids = value.items.map((item) => item?.[key]);
-  return ids.every((id) => typeof id === 'string') ? ids : null;
-};
+const isRecord = (value) =>
+  value !== null && typeof value === 'object' && !Array.isArray(value);
+const isPage = (value) => isRecord(value) && Array.isArray(value.items);
+const isProfile = (value) =>
+  isRecord(value) && typeof value.userId === 'string';
+const isPreference = (value) =>
+  isRecord(value) &&
+  typeof value.nextDestinationDepartureEnabled === 'boolean' &&
+  Number.isInteger(value.safetyBufferMinutes);
+const isTrip = (value) => isRecord(value) && typeof value.tripId === 'string';
+const isSchedule = (value) =>
+  isRecord(value) &&
+  isRecord(value.scheduleVersion) &&
+  Array.isArray(value.days);
+const pageSnapshot = (value) =>
+  isPage(value) ? JSON.stringify(value.items) : null;
 
 async function runStagingE2E(config, fetchImpl = globalThis.fetch) {
   if (config.status !== 'ready') return config;
   if (typeof fetchImpl !== 'function') throw new Error('fetch unavailable');
 
   const results = [];
-  const request = async (name, path, authenticated = true) => {
+  const request = async (
+    name,
+    path,
+    authenticated = true,
+    validateBody = isRecord,
+  ) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10_000);
     try {
@@ -67,29 +83,56 @@ async function runStagingE2E(config, fetchImpl = globalThis.fetch) {
         redirect: 'error',
         signal: controller.signal,
       });
+      const mediaType = (response.headers.get('content-type') ?? '')
+        .split(';', 1)[0]
+        .trim()
+        .toLowerCase();
+      const jsonMediaType =
+        mediaType === 'application/json' ||
+        /^application\/[a-z0-9.-]+\+json$/.test(mediaType);
       let body = null;
-      try {
-        body = await response.json();
-      } catch {
-        // 204 또는 빈 오류 응답의 원문은 결과에 보존하지 않는다.
+      let parsed = false;
+      if (jsonMediaType) {
+        try {
+          body = await response.json();
+          parsed = true;
+        } catch {
+          // 응답 원문은 결과에 보존하지 않는다.
+        }
       }
       const candidateCode = body?.code;
       const candidateTrace = response.headers.get('x-trace-id');
+      const problemShape =
+        mediaType === 'application/problem+json' ||
+        (isRecord(body) &&
+          typeof candidateCode === 'string' &&
+          SAFE_CODE.test(candidateCode) &&
+          (typeof body.status === 'number' ||
+            typeof body.type === 'string' ||
+            typeof body.title === 'string' ||
+            typeof body.detail === 'string'));
+      const validBody = parsed && validateBody(body);
+      const passed = response.ok && !problemShape && validBody;
+      const boundaryCode = !jsonMediaType
+        ? 'INVALID_RESPONSE_MEDIA_TYPE'
+        : !parsed || (!problemShape && !validBody)
+          ? 'INVALID_RESPONSE_BODY'
+          : undefined;
       const result = sanitizeResult({
         name,
-        outcome: response.ok ? 'passed' : 'failed',
+        outcome: passed ? 'passed' : 'failed',
         status: response.status,
         code:
           typeof candidateCode === 'string' && SAFE_CODE.test(candidateCode)
             ? candidateCode
-            : undefined,
+            : boundaryCode,
         traceId:
           candidateTrace && SAFE_TRACE_ID.test(candidateTrace)
             ? candidateTrace
             : undefined,
       });
       results.push(result);
-      return { response, body };
+      return { response, body, passed };
     } catch (error) {
       results.push(
         sanitizeResult({
@@ -108,60 +151,89 @@ async function runStagingE2E(config, fetchImpl = globalThis.fetch) {
     }
   };
 
-  await request('legal documents screen response', '/legal-documents', false);
-  await request('places screen response', '/places?size=1', false);
-  const profile = await request('profile restart hydration', '/me');
-  const savedFirst = await request(
-    'saved places initial hydration',
-    '/me/saved-places?size=20',
-  );
-  const tripsFirst = await request('trips initial hydration', '/trips?size=20');
   await request(
-    'notification preferences restart hydration',
+    'legal documents screen response',
+    '/legal-documents',
+    false,
+    isPage,
+  );
+  await request('places screen response', '/places?size=1', false, isPage);
+  const profile = await request(
+    'profile screen response',
+    '/me',
+    true,
+    isProfile,
+  );
+  const savedFirst = await request(
+    'saved places initial server read',
+    '/me/saved-places?size=20',
+    true,
+    isPage,
+  );
+  const tripsFirst = await request(
+    'trips initial server read',
+    '/trips?size=20',
+    true,
+    isPage,
+  );
+  await request(
+    'notification preferences screen response',
     '/me/notification-preferences',
+    true,
+    isPreference,
   );
 
   const savedRestart = await request(
-    'saved places restart hydration',
+    'saved places repeated server read',
     '/me/saved-places?size=20',
+    true,
+    isPage,
   );
   const tripsRestart = await request(
-    'trips restart hydration',
+    'trips repeated server read',
     '/trips?size=20',
+    true,
+    isPage,
   );
 
-  const savedBefore = stableIds(savedFirst.body, 'placeId');
-  const savedAfter = stableIds(savedRestart.body, 'placeId');
-  const tripBefore = stableIds(tripsFirst.body, 'tripId');
-  const tripAfter = stableIds(tripsRestart.body, 'tripId');
+  const savedBefore = pageSnapshot(savedFirst.body);
+  const savedAfter = pageSnapshot(savedRestart.body);
+  const tripBefore = pageSnapshot(tripsFirst.body);
+  const tripAfter = pageSnapshot(tripsRestart.body);
   for (const [name, before, after] of [
-    ['saved places restart equality', savedBefore, savedAfter],
-    ['trips restart equality', tripBefore, tripAfter],
+    ['saved places server read consistency', savedBefore, savedAfter],
+    ['trips server read consistency', tripBefore, tripAfter],
   ]) {
     results.push(
       sanitizeResult({
         name,
         outcome:
-          before && after && JSON.stringify(before) === JSON.stringify(after)
+          before !== null && after !== null && before === after
             ? 'passed'
             : 'failed',
         reason:
-          before && after
+          before !== null && after !== null
             ? undefined
-            : '응답 page의 canonical ID 배열을 확인할 수 없습니다.',
+            : '응답 page의 전체 item 배열을 확인할 수 없습니다.',
       }),
     );
   }
 
-  const tripId = tripBefore?.[0];
+  const tripId = isPage(tripsFirst.body)
+    ? tripsFirst.body.items[0]?.tripId
+    : null;
   if (tripId) {
     await request(
       'trip detail response',
       `/trips/${encodeURIComponent(tripId)}`,
+      true,
+      isTrip,
     );
     await request(
-      'schedule restart hydration',
+      'schedule server response',
       `/trips/${encodeURIComponent(tripId)}/schedule`,
+      true,
+      isSchedule,
     );
   } else {
     results.push(
@@ -173,7 +245,7 @@ async function runStagingE2E(config, fetchImpl = globalThis.fetch) {
     );
   }
 
-  if (!profile.response?.ok) {
+  if (!profile.passed) {
     results.push(
       sanitizeResult({
         name: 'authenticated account boundary',
