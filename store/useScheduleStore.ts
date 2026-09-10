@@ -99,7 +99,8 @@ interface ScheduleState {
   /** 이미 담긴 장소는 건너뛰고 뒤에 이어 붙인다 */
   addPlaces: (day: number, places: SchedulePlace[]) => void;
   removePlace: (day: number, name: string) => void;
-  movePlace: (day: number, from: number, to: number) => void;
+  /** 이름 순서대로 Day 장소 목록을 다시 배열한다 (목록에 없는 이름은 무시한다) */
+  reorderPlaces: (day: number, names: string[]) => void;
   updateStayMinutes: (day: number, name: string, stayMinutes: number) => void;
   setReview: (day: number, review: DayReview) => void;
   /** 검토 화면에서 구간 순서를 바꾸거나 대체 경로를 반영한다 */
@@ -154,15 +155,19 @@ export const useScheduleStore = create<ScheduleState>((set) => ({
         [day]: (state.places[day] ?? []).filter((place) => place.name !== name),
       },
     })),
-  movePlace: (day, from, to) =>
+  reorderPlaces: (day, names) =>
     set((state) => {
       const current = state.places[day] ?? [];
-      if (from === to || from < 0 || from >= current.length) return state;
-
-      const next = [...current];
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
-      return { places: { ...state.places, [day]: next } };
+      const placed = new Set<string>();
+      const ordered = names.flatMap((name) => {
+        const place = current.find((item) => item.name === name);
+        if (!place || placed.has(name)) return [];
+        placed.add(name);
+        return [place];
+      });
+      // 순서 목록에 빠진 장소는 원래 순서대로 뒤에 남긴다
+      const rest = current.filter((place) => !placed.has(place.name));
+      return { places: { ...state.places, [day]: [...ordered, ...rest] } };
     }),
   updateStayMinutes: (day, name, stayMinutes) =>
     set((state) => ({
@@ -187,11 +192,15 @@ export const useScheduleStore = create<ScheduleState>((set) => ({
       const review = state.reviews[day];
       if (!review) return state;
       // 가운데를 지우면 경유지가 끊기므로 남은 구간을 다시 이어 붙인다
+      // (시작 시각과 체류 시간은 지우기 전 목록에서 읽는다)
       return applyLegs(
         state,
         day,
         review,
-        rechainLegs(review.legs.filter((leg) => !ids.includes(leg.id))),
+        rechainLegs(
+          review.legs.filter((leg) => !ids.includes(leg.id)),
+          review.legs,
+        ),
       );
     }),
   recheck: (day) =>

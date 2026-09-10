@@ -7,6 +7,8 @@ import 'react-native-reanimated';
 import { SplashView } from '@/components/ui';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAuthSession } from '@/hooks/useAuthSession';
+import { usePushNotification } from '@/hooks/usePushNotification';
+import { setupPushNotifications } from '@/services/pushNotification';
 import { useUserStore } from '@/store/useUserStore';
 
 export {
@@ -21,6 +23,9 @@ export const unstable_settings = {
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
+
+// 알림 표시 방식 · Android 채널 · 백그라운드 메시지 핸들러를 앱 시작 시 한 번 준비한다
+setupPushNotifications();
 
 /** 브랜드 스플래시를 보여주는 시간 (폰트 로딩 완료 후 기준) */
 const SPLASH_DURATION_MS = 1500;
@@ -69,6 +74,8 @@ function RootLayoutNav() {
 
   // Supabase 세션을 store에 붙인다 (로그인 상태와 access token의 출처)
   useAuthSession();
+  // 로그인하면 FCM 토큰을 서버에 등록하고, 알림을 탭하면 지정된 화면으로 보낸다
+  usePushNotification();
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>

@@ -1,5 +1,6 @@
-import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import Constants from 'expo-constants';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
   Alert,
   Image,
@@ -30,7 +31,8 @@ const BADGE_BACKGROUND = '#F5F6F9';
 const BADGE_BORDER = '#D0D1D4';
 const SUB_TEXT = '#747476';
 
-const APP_VERSION = 'v1.0.0';
+// 앱정보에 보여줄 버전 — app.json 의 version 을 따른다 (services/pushNotification 과 같은 출처)
+const APP_VERSION = `v${Constants.expoConfig?.version ?? '1.0.0'}`;
 
 const avatarIllust = require('../../assets/images/illust-avatar.png');
 const warningIllust = require('../../assets/images/illust-warning.png');
@@ -97,12 +99,14 @@ export default function MypageScreen() {
   const [logoutVisible, setLogoutVisible] = useState(false);
 
   /*
-   * 화면에 들어올 때마다 프로필을 다시 받아 닉네임 변경을 반영한다.
-   * 실패하면 store가 기존 값을 유지하므로 별도 처리는 하지 않는다.
+   * 탭에 들어올 때마다 프로필을 다시 받아 닉네임 변경을 반영한다.
+   * (탭 화면은 마운트가 유지되므로 focus 기준) 실패하면 store가 기존 값을 유지한다.
    */
-  useEffect(() => {
-    loadProfile();
-  }, [loadProfile]);
+  useFocusEffect(
+    useCallback(() => {
+      loadProfile();
+    }, [loadProfile]),
+  );
 
   // TODO: 준비 중인 메뉴는 화면 연동 전까지 안내만 띄운다
   const showPreparing = () =>

@@ -177,18 +177,25 @@ export const buildDayReview = (
   };
 };
 
-/** 구간 목록에서 경유지 순서를 도로 뽑아낸다 */
-const stopsOf = (legs: RouteLeg[]): Stop[] => [
+/** 장소별 체류 시간 — 구간의 출발 체류 시간이 곧 출발 장소에 머무는 시간이다 */
+const stayMinutesByName = (legs: RouteLeg[]) =>
+  new Map(legs.map((leg) => [leg.from, leg.departStayMinutes]));
+
+/**
+ * 구간 목록에서 경유지 순서를 도로 뽑아낸다.
+ * 체류 시간은 위치가 아니라 장소 이름으로 찾는다 — 순서를 바꾸거나 가운데를 지워
+ * 구간이 끊겨 있어도 한 장소의 체류 시간이 다른 장소로 옮겨 붙지 않는다.
+ */
+const stopsOf = (legs: RouteLeg[], stayOf: Map<string, number>): Stop[] => [
   {
     name: legs[0].from,
     coord: legs[0].fromCoord,
-    stayMinutes: legs[0].departStayMinutes,
+    stayMinutes: stayOf.get(legs[0].from) ?? 0,
   },
-  ...legs.map((leg, index) => ({
+  ...legs.map((leg) => ({
     name: leg.to,
     coord: leg.toCoord,
-    // 다음 구간의 출발 체류 시간이 곧 이 장소에 머무는 시간이다
-    stayMinutes: legs[index + 1]?.departStayMinutes ?? 0,
+    stayMinutes: stayOf.get(leg.to) ?? 0,
   })),
 ];
 
@@ -199,9 +206,21 @@ const startMinutesOf = (legs: RouteLeg[]) =>
 /**
  * 순서를 바꾸거나 중간 구간을 지우면 경유지가 끊기므로 다시 이어 붙인다.
  * 앞 구간의 도착지가 다음 구간의 출발지가 되도록 맞추고 시간도 다시 배분한다.
+ *
+ * `source`는 바꾸기 전의 구간 목록이다. 하루의 시작 시각과 장소별 체류 시간은
+ * 여기서 읽어야 첫 구간이 바뀌거나 지워져도 값이 흔들리지 않는다.
  */
-export const rechainLegs = (legs: RouteLeg[]): RouteLeg[] =>
-  legs.length === 0 ? legs : buildLegs(stopsOf(legs), startMinutesOf(legs));
+export const rechainLegs = (
+  legs: RouteLeg[],
+  source: RouteLeg[] = legs,
+): RouteLeg[] => {
+  if (legs.length === 0) return legs;
+  const base = source.length > 0 ? source : legs;
+  return buildLegs(
+    stopsOf(legs, stayMinutesByName(base)),
+    startMinutesOf(base),
+  );
+};
 
 /** 마지막 도착지(숙소 / 공항) 바로 앞에 장소를 끼워 넣는다 */
 export const insertPlacesBeforeEnd = (
@@ -210,7 +229,7 @@ export const insertPlacesBeforeEnd = (
 ): RouteLeg[] => {
   if (legs.length === 0 || places.length === 0) return legs;
 
-  const stops = stopsOf(legs);
+  const stops = stopsOf(legs, stayMinutesByName(legs));
   const end = stops[stops.length - 1];
   const extras: Stop[] = places.map((place) => ({
     name: place.name,

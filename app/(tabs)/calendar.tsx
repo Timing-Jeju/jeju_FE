@@ -68,7 +68,7 @@ export default function CalendarScreen() {
   const departureTime = useTripStore((state) => state.departureTime);
 
   const removePlace = useScheduleStore((state) => state.removePlace);
-  const movePlace = useScheduleStore((state) => state.movePlace);
+  const reorderPlaces = useScheduleStore((state) => state.reorderPlaces);
   const updateStayMinutes = useScheduleStore(
     (state) => state.updateStayMinutes,
   );
@@ -188,14 +188,7 @@ export default function CalendarScreen() {
 
   const handleReorder = (keys: string[]) => {
     setReorderOpen(false);
-    // 앞에서부터 원하는 자리로 하나씩 끌어다 놓는다
-    keys.forEach((name, target) => {
-      const current = useScheduleStore.getState().places[selectedDay] ?? [];
-      const from = current.findIndex((place) => place.name === name);
-      if (from !== -1 && from !== target) {
-        movePlace(selectedDay, from, target);
-      }
-    });
+    reorderPlaces(selectedDay, keys);
   };
 
   return (

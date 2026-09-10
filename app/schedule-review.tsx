@@ -362,7 +362,7 @@ export default function ScheduleReviewScreen() {
     const ordered = keys
       .map((id) => legs.find((leg) => leg.id === id))
       .filter((leg): leg is RouteLeg => !!leg);
-    setLegs(selectedDay, rechainLegs(ordered));
+    setLegs(selectedDay, rechainLegs(ordered, legs));
   };
 
   const handleFill = (suggestion: FillSuggestion) => {
@@ -381,16 +381,19 @@ export default function ScheduleReviewScreen() {
     };
     addPlaces(selectedDay, [place]);
 
+    // 좌표는 rechainLegs가 구간에서 도로 읽어 가므로 새 장소 쪽은 그 장소의 좌표로 둔다
     const inserted: RouteLeg[] = [
       {
         ...target,
         id: `${target.from}→${suggestion.name}`,
         to: suggestion.name,
+        toCoord: place.coord,
       },
       {
         ...target,
         id: `${suggestion.name}→${target.to}`,
         from: suggestion.name,
+        fromCoord: place.coord,
         departStayMinutes: place.stayMinutes,
       },
     ];

@@ -21,6 +21,7 @@ import {
   radius,
   spacing,
 } from '@/constants';
+import { signOut } from '@/services/auth';
 import { useUserStore } from '@/store/useUserStore';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
@@ -54,6 +55,8 @@ export default function WithdrawScreen() {
 
   const handleWithdraw = () => {
     // TODO: 회원 탈퇴 API 연동
+    // 세션을 끊지 않으면 다음 token 갱신 때 다시 로그인 상태가 된다 (마이페이지 로그아웃과 같은 처리)
+    signOut();
     logout();
   };
 

@@ -316,7 +316,8 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
       if (!latest) return;
 
       try {
-        await apply(latest);
+        // 다시 불러와도 들고 있던 ETag 는 그대로 남으므로, 낡은 값을 버리고 서버의 현재 값으로 다시 읽는다
+        await apply({ ...latest, etag: null });
       } catch (retryError) {
         set({ error: messageOf(retryError) });
       }

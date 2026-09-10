@@ -6,6 +6,7 @@ import {
   getFcmToken,
   getInitialPushRoute,
   getPushRoute,
+  isPushConfigured,
   registerPushToken,
   requestNotificationPermission,
   subscribeForegroundMessage,
@@ -71,6 +72,9 @@ export function usePushNotification() {
     let cancelled = false;
 
     const register = async () => {
+      // Firebase 설정이 없으면 토큰을 받을 수 없으므로 권한도 묻지 않는다
+      if (!isPushConfigured()) return;
+
       const granted = await requestNotificationPermission();
       if (!granted || cancelled) return;
 

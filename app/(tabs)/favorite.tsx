@@ -1,5 +1,5 @@
-import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -64,10 +64,12 @@ export default function FavoriteScreen() {
     matchesFavoriteFilter(place, filter),
   );
 
-  // 화면에 들어올 때마다 서버 찜 목록을 다시 받아온다
-  useEffect(() => {
-    loadFavorites();
-  }, [loadFavorites]);
+  // 탭에 들어올 때마다 서버 찜 목록을 다시 받아온다 (탭 화면은 마운트가 유지되므로 focus 기준)
+  useFocusEffect(
+    useCallback(() => {
+      loadFavorites();
+    }, [loadFavorites]),
+  );
 
   const toggleSelect = (placeId: string) => {
     setSelectedIds((prev) =>

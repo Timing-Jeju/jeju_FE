@@ -32,8 +32,9 @@ import {
   spacing,
 } from '@/constants';
 import { getCurrentLocation } from '@/services/location';
-import { searchPlaces, type Coord, type Place } from '@/services/naverApi';
+import { searchPlaces, type Place } from '@/services/naverApi';
 import { useScheduleStore } from '@/store/useScheduleStore';
+import { formatDistance, haversine } from '@/utils/geo';
 import { activeReview } from '@/utils/schedule';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
@@ -86,22 +87,6 @@ const MOCK_NEARBY = [
   { name: '소심한 브런치', category: '카페', distance: '25m' },
   { name: '오른', category: '카페', distance: '130m' },
 ];
-
-const formatDistance = (meters: number) =>
-  meters >= 1000 ? `${(meters / 1000).toFixed(1)}km` : `${Math.round(meters)}m`;
-
-const haversine = (a: Coord, b: Coord) => {
-  const R = 6371000;
-  const toRad = (deg: number) => (deg * Math.PI) / 180;
-  const dLat = toRad(b.latitude - a.latitude);
-  const dLng = toRad(b.longitude - a.longitude);
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(a.latitude)) *
-      Math.cos(toRad(b.latitude)) *
-      Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-};
 
 export default function HomeScreen() {
   const router = useRouter();

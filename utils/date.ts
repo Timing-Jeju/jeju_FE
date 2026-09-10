@@ -52,9 +52,17 @@ export const toMinutes = (time: string) => {
   return hour * 60 + minute;
 };
 
-/** 자정부터의 분 → 'H:MM' (24시를 넘기면 다음 날로 넘어간다) */
-export const toTime = (minutes: number) =>
-  `${Math.floor(minutes / 60) % 24}:${String(minutes % 60).padStart(2, '0')}`;
+const MINUTES_PER_DAY = 24 * 60;
+
+/**
+ * 자정부터의 분 → 'H:MM'
+ * 24시를 넘기면 다음 날로, 음수면 전날로 넘어간다. (1500 → '1:00', -10 → '23:50')
+ */
+export const toTime = (minutes: number) => {
+  const normalized =
+    ((minutes % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY;
+  return `${Math.floor(normalized / 60)}:${String(normalized % 60).padStart(2, '0')}`;
+};
 
 /** 'H:MM' → '15:24' (24시간 두 자리 표기로 통일한다) */
 export const formatTime = (time: string) => {
