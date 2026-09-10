@@ -22,6 +22,7 @@ jest.mock(
 beforeEach(() => {
   useFavoriteStore.setState(useFavoriteStore.getInitialState(), true);
   useUserStore.setState({
+    authGeneration: 1,
     authReady: true,
     isLoggedIn: true,
     userId: 'favorite-screen-owner',

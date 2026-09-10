@@ -54,12 +54,16 @@ export interface SavedPlacesListQuery {
  * 오류 code: INVALID_QUERY_PARAMETER / INVALID_CURSOR /
  * CURSOR_CONTEXT_MISMATCH (400).
  */
-export const fetchSavedPlaces = (query: SavedPlacesListQuery = {}) =>
+export const fetchSavedPlaces = (
+  query: SavedPlacesListQuery = {},
+  authContextIsCurrent?: () => boolean,
+) =>
   requestData<SavedPlacesListResponse>({
     method: 'GET',
     path: '/me/saved-places',
     auth: 'required',
     params: { ...query },
+    ...(authContextIsCurrent ? { authContextIsCurrent } : {}),
   });
 
 /**
@@ -95,6 +99,7 @@ export interface SavedPlaceCreateRequest {
 export const createSavedPlace = (
   body: SavedPlaceCreateRequest,
   idempotencyKey: string = createIdempotencyKey(),
+  authContextIsCurrent?: () => boolean,
 ): Promise<ApiResponse<SavedPlace>> =>
   request<SavedPlace>({
     method: 'POST',
@@ -102,6 +107,7 @@ export const createSavedPlace = (
     auth: 'required',
     body,
     headers: { 'Idempotency-Key': idempotencyKey },
+    ...(authContextIsCurrent ? { authContextIsCurrent } : {}),
   });
 
 /**
@@ -130,6 +136,7 @@ export const updateSavedPlace = (
   placeId: string,
   body: SavedPlaceUpdateRequest,
   etag: string,
+  authContextIsCurrent?: () => boolean,
 ): Promise<ApiResponse<SavedPlace>> =>
   request<SavedPlace>({
     method: 'PATCH',
@@ -137,17 +144,22 @@ export const updateSavedPlace = (
     auth: 'required',
     body,
     headers: { 'If-Match': etag },
+    ...(authContextIsCurrent ? { authContextIsCurrent } : {}),
   });
 
 /**
  * 찜 삭제. 고정 BE 계약상 body와 If-Match가 없고 성공은 204다.
  * 이미 지웠거나 남의 것이면 404 SAVED_PLACE_NOT_FOUND로 숨긴다.
  */
-export const deleteSavedPlace = async (placeId: string): Promise<void> => {
+export const deleteSavedPlace = async (
+  placeId: string,
+  authContextIsCurrent?: () => boolean,
+): Promise<void> => {
   await request<void>({
     method: 'DELETE',
     path: `/me/saved-places/${encodeURIComponent(placeId)}`,
     auth: 'required',
+    ...(authContextIsCurrent ? { authContextIsCurrent } : {}),
   });
 };
 
@@ -155,9 +167,15 @@ export const deleteSavedPlace = async (placeId: string): Promise<void> => {
  * 찜 목록을 끝까지 모아 온다. 조건은 페이지마다 그대로 유지한다.
  * 목록 화면처럼 전체가 필요할 때 쓴다.
  */
-export const fetchAllSavedPlaces = (query: SavedPlacesListQuery = {}) =>
+export const fetchAllSavedPlaces = (
+  query: SavedPlacesListQuery = {},
+  authContextIsCurrent?: () => boolean,
+) =>
   collectPages<SavedPlace>((cursor) =>
-    fetchSavedPlaces({ ...query, size: query.size ?? 100, cursor }),
+    fetchSavedPlaces(
+      { ...query, size: query.size ?? 100, cursor },
+      authContextIsCurrent,
+    ),
   );
 
 /**

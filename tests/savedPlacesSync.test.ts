@@ -64,6 +64,7 @@ const favoriteInput = {
 
 beforeEach(() => {
   useUserStore.setState({
+    authGeneration: 1,
     authReady: true,
     isLoggedIn: true,
     userId: ownerA,
@@ -80,7 +81,7 @@ test('로그인 사용자의 실제 목록과 item strong ETag를 hydrate한다'
 
   await useFavoriteStore.getState().hydrate(ownerA);
 
-  expect(fetchAllSavedPlaces).toHaveBeenCalledWith();
+  expect(fetchAllSavedPlaces).toHaveBeenCalledWith({}, expect.any(Function));
   expect(useFavoriteStore.getState()).toMatchObject({
     ownerId: ownerA,
     status: 'ready',
@@ -106,7 +107,7 @@ test('계정 generation이 바뀐 뒤 끝난 이전 GET은 새 사용자 상태�
     .mockResolvedValueOnce([serverPlace({ name: 'B의 장소' })]);
 
   const hydrationA = useFavoriteStore.getState().hydrate(ownerA);
-  useUserStore.setState({ userId: ownerB });
+  useUserStore.setState({ userId: ownerB, authGeneration: 2 });
   const hydrationB = useFavoriteStore.getState().hydrate(ownerB);
   await hydrationB;
   resolveA([serverPlace({ name: 'A의 장소' })]);
@@ -155,6 +156,7 @@ test('불확실한 생성 실패는 durable key를 보존하고 사용자의 명
     1,
     expect.not.objectContaining({ coord: expect.anything() }),
     expect.any(String),
+    expect.any(Function),
   );
 });
 
@@ -186,6 +188,7 @@ test.each([
       placeId,
       { memo: '내 충돌 메모', priority: 5 },
       etag1,
+      expect.any(Function),
     );
     expect(fetchAllSavedPlaces).toHaveBeenCalledTimes(2);
     expect(useFavoriteStore.getState()).toMatchObject({
@@ -217,6 +220,6 @@ test('삭제는 서버 204 뒤에만 화면에서 제거하며 실패를 성공�
   expect(useFavoriteStore.getState().favorites).toHaveLength(1);
 
   await useFavoriteStore.getState().removeFavorite(placeId);
-  expect(deleteSavedPlace).toHaveBeenCalledWith(placeId);
+  expect(deleteSavedPlace).toHaveBeenCalledWith(placeId, expect.any(Function));
   expect(useFavoriteStore.getState().favorites).toEqual([]);
 });

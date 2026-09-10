@@ -5,6 +5,8 @@
 - 최초 FE base: `origin/main f55830212775bce1c6df88681fa2bd63aaee08e8`
 - 고정 BE 계약: `Timing-Jeju/jeju_BE d1fa8184bb56b60febd483ad82d8ea16b5bb4774`
 - 브랜치: `feat/12-saved-places-api`
+- 최초 #12 commit: `c554bec`
+- 통합 FE base: `origin/main f3af3d340ec216fcec02413abf80435857fa8951`
 
 ## Red
 
@@ -42,6 +44,18 @@ npm test -- --no-watchman --runTestsByPath \
 - `npm run api:check`: Green
 - `npm run ui:check`: 기존 58개 StyleSheet 일치
 - Expo web static export: 23 routes Green
+
+## #11 main 통합
+
+#12 단독 Green commit 뒤 갱신된 `origin/main`을 merge했다. 충돌은 공용
+`services/api/http.ts` 한 파일뿐이었다. #11의 `authGeneration`, 전송 직전
+`authContextIsCurrent`, `getAccessToken(true)` 강제 갱신을 보존하고 #12의 인증 필수
+GET 401 단일 재요청 제한을 결합했다. saved-place wrapper와 store도 같은 auth context를
+모든 요청에 전달한다.
+
+- #11 + #12 전체 Jest: 160/160 Green
+- typecheck, lint, api:check, ui:check: Green
+- merge 뒤 Expo web static export: 23 routes Green
 
 ## 계약 blocker
 

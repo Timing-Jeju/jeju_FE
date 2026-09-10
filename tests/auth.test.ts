@@ -19,6 +19,7 @@ let changed: (event: string, value: typeof session | null) => void;
 const unsubscribe = jest.fn();
 const mockAuth = {
   getSession: jest.fn(),
+  refreshSession: jest.fn(),
   getUser: jest.fn(),
   signInWithPassword: jest.fn(),
   signOut: jest.fn(),
@@ -35,12 +36,17 @@ jest.mock('@/services/supabase', () => ({
 
 beforeEach(() => {
   useUserStore.setState({
+    authGeneration: 0,
     isLoggedIn: false,
     userId: null,
     userName: null,
     authReady: false,
   });
   mockAuth.getSession.mockResolvedValue({ data: { session }, error: null });
+  mockAuth.refreshSession.mockResolvedValue({
+    data: { session },
+    error: null,
+  });
   mockAuth.getUser.mockResolvedValue({
     data: { user: session.user },
     error: null,
@@ -112,6 +118,17 @@ test('세션 확인 중 로그아웃한 사용자를 늦은 응답으로 복원�
   stop();
 });
 
+test('인증 세대는 사용자 주체가 바뀔 때만 증가한다', () => {
+  const stop = startAuthSession();
+  changed('SIGNED_IN', session);
+  expect(useUserStore.getState().authGeneration).toBe(1);
+  changed('TOKEN_REFRESHED', session);
+  expect(useUserStore.getState().authGeneration).toBe(1);
+  changed('SIGNED_OUT', null);
+  expect(useUserStore.getState().authGeneration).toBe(2);
+  stop();
+});
+
 test('백그라운드에서 갱신을 멈추고 복귀하면 다시 시작한다', async () => {
   let onState!: (state: AppStateStatus) => void;
   const remove = jest.fn();
@@ -144,6 +161,17 @@ test('BE 요청에는 현재 사용자 access token만 제공한다', async () =
     error: null,
   });
   await expect(getAccessToken()).rejects.toThrow('다시 로그인');
+});
+
+test('401 복구 요청은 Supabase 세션을 강제 갱신해 새 토큰만 제공한다', async () => {
+  mockAuth.refreshSession.mockResolvedValueOnce({
+    data: {
+      session: { ...session, access_token: 'rotated-access' },
+    },
+    error: null,
+  });
+  await expect(getAccessToken(true)).resolves.toBe('rotated-access');
+  expect(mockAuth.refreshSession).toHaveBeenCalledTimes(1);
 });
 
 test('진행 중인 로그인 요청을 중복 실행하지 않는다', async () => {

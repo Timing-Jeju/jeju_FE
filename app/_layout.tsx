@@ -6,7 +6,8 @@ import 'react-native-reanimated';
 
 import { SplashView } from '@/components/ui';
 import { useColorScheme } from '@/components/useColorScheme';
-import { startAuthSession } from '@/services/auth';
+import { startAppSession } from '@/services/appSession';
+import { useProfileLegalStore } from '@/store/useProfileLegalStore';
 import { useUserStore } from '@/store/useUserStore';
 
 export {
@@ -35,7 +36,7 @@ export default function RootLayout() {
     'FugazOne-Regular': require('../assets/fonts/FugazOne-Regular.ttf'),
   });
   const authReady = useUserStore((state) => state.authReady);
-  useEffect(() => startAuthSession(), []);
+  useEffect(() => startAppSession(), []);
   const [splashVisible, setSplashVisible] = useState(true);
 
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.
@@ -65,15 +66,21 @@ export default function RootLayout() {
   return <RootLayoutNav />;
 }
 
-function RootLayoutNav() {
+export function RootLayoutNav() {
   const colorScheme = useColorScheme();
   const isLoggedIn = useUserStore((state) => state.isLoggedIn);
+  const consentRecoveryActive = useProfileLegalStore(
+    (state) =>
+      state.consentStatus === 'error' || state.consentStatus === 'saving',
+  );
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>
         <Stack.Protected guard={!isLoggedIn}>
           <Stack.Screen name="login" options={{ headerShown: false }} />
+        </Stack.Protected>
+        <Stack.Protected guard={!isLoggedIn || consentRecoveryActive}>
           <Stack.Screen name="signup" options={{ headerShown: false }} />
         </Stack.Protected>
         <Stack.Protected guard={isLoggedIn}>

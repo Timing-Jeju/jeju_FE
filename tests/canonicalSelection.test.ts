@@ -32,6 +32,7 @@ beforeEach(() => {
   useFavoriteStore.setState(useFavoriteStore.getInitialState(), true);
   useScheduleStore.setState({ places: {}, reviews: {} });
   useUserStore.setState({
+    authGeneration: 1,
     authReady: true,
     isLoggedIn: true,
     userId: 'canonical-test-owner',

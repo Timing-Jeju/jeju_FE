@@ -2,10 +2,7 @@ import { AxiosError, AxiosHeaders } from 'axios';
 
 import { createApiTransport } from '@/services/api/http';
 
-jest.mock('@/services/api/session', () => ({
-  getAccessToken: jest.fn(),
-  refreshAccessToken: jest.fn(),
-}));
+jest.mock('@/services/auth', () => ({ getAccessToken: jest.fn() }));
 
 const unauthorized = (config: Record<string, unknown>) =>
   new AxiosError(
@@ -23,11 +20,12 @@ const unauthorized = (config: Record<string, unknown>) =>
   );
 
 test('GET 401만 토큰을 한 번 갱신하고 새 토큰으로 한 번 재요청한다', async () => {
-  const refresh = jest.fn(async () => 'fresh-token');
+  const accessToken = jest.fn(async (forceRefresh = false) =>
+    forceRefresh ? 'fresh-token' : 'expired-token',
+  );
   const transport = createApiTransport(
     'https://backend.example.invalid',
-    async () => 'expired-token',
-    refresh,
+    accessToken,
   );
   const adapter = jest
     .fn()
@@ -49,7 +47,8 @@ test('GET 401만 토큰을 한 번 갱신하고 새 토큰으로 한 번 재요�
     auth: 'required',
   });
 
-  expect(refresh).toHaveBeenCalledTimes(1);
+  expect(accessToken).toHaveBeenNthCalledWith(1, false);
+  expect(accessToken).toHaveBeenNthCalledWith(2, true);
   expect(adapter).toHaveBeenCalledTimes(2);
   expect(adapter.mock.calls[0][0].headers.get('Authorization')).toBe(
     'Bearer expired-token',
@@ -60,11 +59,10 @@ test('GET 401만 토큰을 한 번 갱신하고 새 토큰으로 한 번 재요�
 });
 
 test('mutation 401은 토큰 갱신이나 자동 재시도를 하지 않는다', async () => {
-  const refresh = jest.fn(async () => 'fresh-token');
+  const accessToken = jest.fn(async () => 'expired-token');
   const transport = createApiTransport(
     'https://backend.example.invalid',
-    async () => 'expired-token',
-    refresh,
+    accessToken,
   );
   const adapter = jest.fn(async (config) => {
     throw unauthorized(config);
@@ -80,6 +78,6 @@ test('mutation 401은 토큰 갱신이나 자동 재시도를 하지 않는다',
       headers: { 'Idempotency-Key': 'saved-place-key' },
     }),
   ).rejects.toMatchObject({ status: 401 });
-  expect(refresh).not.toHaveBeenCalled();
+  expect(accessToken).toHaveBeenCalledTimes(1);
   expect(adapter).toHaveBeenCalledTimes(1);
 });

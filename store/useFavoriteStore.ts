@@ -159,13 +159,24 @@ async function durableCreate(
 }
 
 let generation = 0;
-let hydration: { ownerId: string; promise: Promise<void> } | null = null;
+let hydration: {
+  ownerId: string;
+  authGeneration: number;
+  promise: Promise<void>;
+} | null = null;
 
-const currentOwner = () => {
-  const ownerId = useUserStore.getState().userId;
+const currentAuth = () => {
+  const { userId: ownerId, authGeneration } = useUserStore.getState();
   if (!ownerId)
     throw new ApiError({ status: 401, code: 'AUTHENTICATION_REQUIRED' });
-  return ownerId;
+  return { ownerId, authGeneration };
+};
+
+const authContext = (ownerId: string, authGeneration: number) => () => {
+  const current = useUserStore.getState();
+  return (
+    current.userId === ownerId && current.authGeneration === authGeneration
+  );
 };
 
 const isConflict = (error: unknown) =>
@@ -181,8 +192,13 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
   notice: null,
   conflictDrafts: {},
   hydrate: async (ownerId) => {
+    const active = currentAuth();
+    if (active.ownerId !== ownerId)
+      throw new ApiError({ status: 401, code: 'AUTHENTICATION_REQUIRED' });
+    const { authGeneration } = active;
     if (
       hydration?.ownerId === ownerId &&
+      hydration.authGeneration === authGeneration &&
       get().ownerId === ownerId &&
       get().status === 'loading'
     )
@@ -196,12 +212,13 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
         ? {}
         : { favorites: [], conflictDrafts: {}, notice: null }),
     }));
-    const promise = fetchAllSavedPlaces()
+    const authContextIsCurrent = authContext(ownerId, authGeneration);
+    const promise = fetchAllSavedPlaces({}, authContextIsCurrent)
       .then((places) => {
         if (
           currentGeneration === generation &&
           get().ownerId === ownerId &&
-          useUserStore.getState().userId === ownerId
+          authContextIsCurrent()
         )
           set({ favorites: places.map(fromServer), status: 'ready' });
       })
@@ -209,7 +226,7 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
         if (
           currentGeneration === generation &&
           get().ownerId === ownerId &&
-          useUserStore.getState().userId === ownerId
+          authContextIsCurrent()
         )
           set({ status: 'error' });
         throw error;
@@ -217,7 +234,7 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
       .finally(() => {
         if (hydration?.promise === promise) hydration = null;
       });
-    hydration = { ownerId, promise };
+    hydration = { ownerId, authGeneration, promise };
     return promise;
   },
   reset: () => {
@@ -236,15 +253,20 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
     get().favorites.some((place) => place.placeId === placeId),
   addFavorite: async (place) => {
     requireCanonicalPlaceId(place.placeId);
-    const ownerId = currentOwner();
+    const { ownerId, authGeneration } = currentAuth();
+    const authContextIsCurrent = authContext(ownerId, authGeneration);
     const body = createBody(place);
     const pending = await durableCreate(ownerId, body);
     try {
-      const response = await createSavedPlace(body, pending.value.key);
+      const response = await createSavedPlace(
+        body,
+        pending.value.key,
+        authContextIsCurrent,
+      );
       if (response.etag && response.etag !== response.data.etag)
         throw new ApiError({ status: 0, code: 'INVALID_ETAG' });
       await AsyncStorage.removeItem(pending.storageKey);
-      if (useUserStore.getState().userId !== ownerId) return;
+      if (!authContextIsCurrent()) return;
       set((state) => ({
         ownerId,
         status: 'ready',
@@ -256,7 +278,7 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
     } catch (error) {
       if (isApiError(error) && error.status > 0 && error.status < 500)
         await AsyncStorage.removeItem(pending.storageKey);
-      if (isConflict(error) && useUserStore.getState().userId === ownerId) {
+      if (isConflict(error) && authContextIsCurrent()) {
         await get().hydrate(ownerId);
         set({ notice: conflictNotice });
       }
@@ -264,7 +286,8 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
     }
   },
   updateFavorite: async (placeId, visitType, memo) => {
-    const ownerId = currentOwner();
+    const { ownerId, authGeneration } = currentAuth();
+    const authContextIsCurrent = authContext(ownerId, authGeneration);
     const current = get().favorites.find((place) => place.placeId === placeId);
     if (!current?.etag) throw new ApiError({ status: 0, code: 'INVALID_ETAG' });
     try {
@@ -272,10 +295,11 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
         placeId,
         { memo, priority: visitType === '필수방문' ? 5 : 0 },
         current.etag,
+        authContextIsCurrent,
       );
       if (response.etag && response.etag !== response.data.etag)
         throw new ApiError({ status: 0, code: 'INVALID_ETAG' });
-      if (useUserStore.getState().userId !== ownerId) return;
+      if (!authContextIsCurrent()) return;
       set((state) => ({
         favorites: state.favorites.map((place) =>
           place.placeId === placeId ? fromServer(response.data) : place,
@@ -283,7 +307,7 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
         conflictDrafts: { ...state.conflictDrafts, [placeId]: undefined },
       }));
     } catch (error) {
-      if (isConflict(error) && useUserStore.getState().userId === ownerId) {
+      if (isConflict(error) && authContextIsCurrent()) {
         await get().hydrate(ownerId);
         set((state) => ({
           notice: conflictNotice,
@@ -297,17 +321,18 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
     }
   },
   removeFavorite: async (placeId) => {
-    const ownerId = currentOwner();
+    const { ownerId, authGeneration } = currentAuth();
+    const authContextIsCurrent = authContext(ownerId, authGeneration);
     const current = get().favorites.find((place) => place.placeId === placeId);
     if (!current?.etag) throw new ApiError({ status: 0, code: 'INVALID_ETAG' });
     try {
-      await deleteSavedPlace(placeId);
-      if (useUserStore.getState().userId !== ownerId) return;
+      await deleteSavedPlace(placeId, authContextIsCurrent);
+      if (!authContextIsCurrent()) return;
       set((state) => ({
         favorites: state.favorites.filter((place) => place.placeId !== placeId),
       }));
     } catch (error) {
-      if (isConflict(error) && useUserStore.getState().userId === ownerId) {
+      if (isConflict(error) && authContextIsCurrent()) {
         await get().hydrate(ownerId);
         set({ notice: conflictNotice });
       }

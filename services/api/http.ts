@@ -5,6 +5,7 @@ import axios, {
   type Method,
 } from 'axios';
 
+import { getAccessToken } from '../auth';
 import { serverOrigin } from '../environment';
 import {
   STABLE_PROBLEM_CODES,
@@ -17,7 +18,6 @@ import {
   CLIENT_NETWORK_ERROR,
   CLIENT_NOT_CONFIGURED,
 } from './problem';
-import { getAccessToken, refreshAccessToken } from './session';
 
 export type AuthMode = 'none' | 'optional' | 'required' | 'naver';
 
@@ -30,6 +30,8 @@ export interface RequestOptions {
   headers?: Record<string, string>;
   naverAccessToken?: string;
   signal?: AbortSignal;
+  /** 토큰 조회 뒤 실제 전송 직전에 인증 주체가 그대로인지 확인한다. */
+  authContextIsCurrent?: () => boolean;
 }
 
 export interface ApiResponse<T> {
@@ -41,7 +43,7 @@ export interface ApiResponse<T> {
   traceId: string | null;
 }
 
-type AccessTokenProvider = () => Promise<string | null>;
+type AccessTokenProvider = (forceRefresh?: boolean) => Promise<string | null>;
 
 const fallbackCode = (status: number) => {
   if (status === 401) return 'AUTHENTICATION_REQUIRED';
@@ -138,12 +140,12 @@ export interface ApiTransport {
   setAdapter(adapter: AxiosAdapter): void;
 }
 
-const defaultAccessToken: AccessTokenProvider = async () => getAccessToken();
+const defaultAccessToken: AccessTokenProvider = async (forceRefresh = false) =>
+  getAccessToken(forceRefresh);
 
 export function createApiTransport(
   baseURL: string | undefined,
   accessToken: AccessTokenProvider = defaultAccessToken,
-  refreshToken: AccessTokenProvider = refreshAccessToken,
 ): ApiTransport {
   let origin: string;
   try {
@@ -169,7 +171,7 @@ export function createApiTransport(
         : null;
     } else if (options.auth !== 'none') {
       try {
-        const token = await accessToken();
+        const token = await accessToken(false);
         authorization = token ? `Bearer ${token}` : null;
       } catch {
         authorization = null;
@@ -182,8 +184,14 @@ export function createApiTransport(
       throw new ApiError({ status: 401, code: 'AUTHENTICATION_REQUIRED' });
     }
 
-    const send = (token: string | null) =>
-      client.request<T>({
+    const execute = async (bearer: string | null) => {
+      if (options.authContextIsCurrent && !options.authContextIsCurrent()) {
+        throw new ApiError({
+          status: 401,
+          code: 'AUTHENTICATION_REQUIRED',
+        });
+      }
+      return client.request<T>({
         method: options.method,
         url,
         params: compactParams(options.params),
@@ -194,32 +202,32 @@ export function createApiTransport(
           ...(options.body === undefined
             ? {}
             : { 'Content-Type': 'application/json' }),
-          ...(token ? { Authorization: token } : {}),
+          ...(bearer ? { Authorization: bearer } : {}),
           ...options.headers,
         },
       });
+    };
 
     try {
       let response: AxiosResponse<T>;
       try {
-        response = await send(authorization);
+        response = await execute(authorization);
       } catch (error) {
-        const status = axios.isAxiosError(error)
-          ? error.response?.status
-          : null;
-        const canRefresh =
-          status === 401 &&
-          options.method.toUpperCase() === 'GET' &&
-          options.auth === 'required';
-        if (!canRefresh) throw error;
+        const normalized = toApiError(error);
+        const method = options.method.toUpperCase();
+        const safelyRetryable = method === 'GET' && options.auth === 'required';
+        if (normalized.status !== 401 || !safelyRetryable) throw normalized;
+
         let refreshed: string | null = null;
         try {
-          refreshed = await refreshToken();
+          refreshed = await accessToken(true);
         } catch {
-          throw error;
+          // 최종 오류는 Spring의 안전한 401만 유지한다.
         }
-        if (!refreshed) throw error;
-        response = await send(`Bearer ${refreshed}`);
+        if (!refreshed || `Bearer ${refreshed}` === authorization) {
+          throw normalized;
+        }
+        response = await execute(`Bearer ${refreshed}`);
       }
       const replayed = headerOf(response, 'idempotency-replayed');
       return {
