@@ -1,0 +1,191 @@
+{
+  "sourceFrontendCommit": "1530d5db614ad7a7e1681e45fd271c69dd2a7b28",
+  "stagingVerification": {
+    "serverReadConsistency": "blocked: STAGING_API_BASE_URL and STAGING_ACCESS_TOKEN are missing",
+    "appRestartHydration": "blocked: no staging account/session and native or browser runtime were supplied"
+  },
+  "domains": [
+    {
+      "surface": "social authentication",
+      "screenState": "deferred",
+      "operations": [
+        "GET /api/v1/auth/social/providers",
+        "GET /api/v1/auth/social/naver/userinfo"
+      ],
+      "callEvidence": "services/api/authSocial.ts#fetchSocialProviders",
+      "responseEvidence": "tests/apiLayerContract.test.ts#필수 인증 요청만",
+      "errorEvidence": "tests/apiLayerContract.test.ts#Problem은 stable code만",
+      "restartHydration": "blocked: provider configuration and provider token are not supplied"
+    },
+    {
+      "surface": "signup and my page profile/legal",
+      "screenState": "connected",
+      "operations": [
+        "GET /api/v1/me",
+        "PATCH /api/v1/me",
+        "GET /api/v1/legal-documents",
+        "PUT /api/v1/me/consents"
+      ],
+      "callEvidence": "store/useProfileLegalStore.ts#fetchProfile",
+      "operationEvidence": {
+        "GET /api/v1/me": "store/useProfileLegalStore.ts#await fetchProfile()",
+        "PATCH /api/v1/me": "store/useProfileLegalStore.ts#await updateProfile(",
+        "GET /api/v1/legal-documents": "store/useProfileLegalStore.ts#fetchLegalDocuments('ko-KR')",
+        "PUT /api/v1/me/consents": "store/useProfileLegalStore.ts#await updateLegalConsents("
+      },
+      "responseEvidence": "tests/mypage.test.tsx#새 닉네임",
+      "errorEvidence": "app/(tabs)/mypage.tsx#retryProfile",
+      "restartHydration": "store/useProfileLegalStore.ts#loadProfile"
+    },
+    {
+      "surface": "profile image",
+      "screenState": "deferred",
+      "operations": [
+        "GET /api/v1/me/profile-image",
+        "PUT /api/v1/me/profile-image"
+      ],
+      "callEvidence": "services/api/profileImage.ts#fetchProfileImage",
+      "responseEvidence": "tests/backendOpenApiContract.test.js#OpenAPI와 runtime manifest",
+      "errorEvidence": "services/api/profileImage.ts#If-Match",
+      "restartHydration": "blocked: storage object and screen binding are not available"
+    },
+    {
+      "surface": "home search and place detail",
+      "screenState": "connected",
+      "operations": ["GET /api/v1/places", "GET /api/v1/places/{placeId}"],
+      "callEvidence": "services/places.ts#fetchCanonicalPlaces",
+      "operationEvidence": {
+        "GET /api/v1/places": "services/places.ts#fetchCanonicalPlaces(params, signal)",
+        "GET /api/v1/places/{placeId}": "services/places.ts#fetchCanonicalPlace(placeId, signal)"
+      },
+      "responseEvidence": "tests/placeDetail.test.tsx#장소",
+      "errorEvidence": "app/place-detail.tsx#장소 정보 미제공",
+      "restartHydration": "not-applicable: public canonical queries are fetched per screen"
+    },
+    {
+      "surface": "saved places across home/detail/favorites/schedule favorites",
+      "screenState": "connected",
+      "operations": [
+        "GET /api/v1/me/saved-places",
+        "POST /api/v1/me/saved-places",
+        "PATCH /api/v1/me/saved-places/{placeId}",
+        "DELETE /api/v1/me/saved-places/{placeId}"
+      ],
+      "callEvidence": "store/useFavoriteStore.ts#hydrate: async",
+      "operationEvidence": {
+        "GET /api/v1/me/saved-places": "store/useFavoriteStore.ts#fetchAllSavedPlaces({}, authContextIsCurrent)",
+        "POST /api/v1/me/saved-places": "store/useFavoriteStore.ts#await createSavedPlace(",
+        "PATCH /api/v1/me/saved-places/{placeId}": "store/useFavoriteStore.ts#await updateSavedPlace(",
+        "DELETE /api/v1/me/saved-places/{placeId}": "store/useFavoriteStore.ts#await deleteSavedPlace(placeId, current.etag, authContextIsCurrent)"
+      },
+      "responseEvidence": "tests/savedPlacesSync.test.ts#hydrate",
+      "errorEvidence": "hooks/useFavoriteSync.ts#favoriteMutationErrorMessage",
+      "restartHydration": "hooks/useFavoriteSync.ts#void hydrate"
+    },
+    {
+      "surface": "trip conditions and calendar trip root",
+      "screenState": "connected",
+      "operations": [
+        "GET /api/v1/trips",
+        "POST /api/v1/trips",
+        "GET /api/v1/trips/{tripId}",
+        "PATCH /api/v1/trips/{tripId}",
+        "DELETE /api/v1/trips/{tripId}"
+      ],
+      "operationEvidence": {
+        "GET /api/v1/trips": "services/tripPersistence.ts#await fetchTrips({ size: 20 })",
+        "POST /api/v1/trips": "services/tripPersistence.ts#await createTrip(body, attempt.key)",
+        "GET /api/v1/trips/{tripId}": "services/tripPersistence.ts#await fetchTrip(list.items[0].tripId)",
+        "PATCH /api/v1/trips/{tripId}": "services/tripPersistence.ts#await updateTrip(",
+        "DELETE /api/v1/trips/{tripId}": "services/tripPersistence.ts#await deleteTripApi(tripId)"
+      },
+      "callEvidence": "app/trip-conditions.tsx#saveTrip",
+      "responseEvidence": "tests/tripPersistence.test.ts#hydrateLatestTrip",
+      "errorEvidence": "services/tripPersistence.ts#refreshOnConflict",
+      "restartHydration": "app/(tabs)/calendar.tsx#hydrateLatestTrip"
+    },
+    {
+      "surface": "trip and place preferences",
+      "screenState": "deferred",
+      "operations": [
+        "PUT /api/v1/trips/{tripId}/preferences",
+        "PUT /api/v1/trips/{tripId}/place-preferences"
+      ],
+      "callEvidence": "services/api/trips.ts#replaceTripPreferences",
+      "responseEvidence": "tests/backendOpenApiContract.test.js#runtime 37개 operation",
+      "errorEvidence": "tests/apiLayerContract.test.ts#Problem은 stable code만",
+      "restartHydration": "blocked: wrappers have no screen or store invocation"
+    },
+    {
+      "surface": "calendar manual schedule",
+      "screenState": "connected",
+      "operations": [
+        "GET /api/v1/trips/{tripId}/schedule",
+        "POST /api/v1/trips/{tripId}/schedule-items",
+        "PATCH /api/v1/trips/{tripId}/schedule-items/{itemId}",
+        "DELETE /api/v1/trips/{tripId}/schedule-items/{itemId}",
+        "PUT /api/v1/trips/{tripId}/schedule-order",
+        "POST /api/v1/trips/{tripId}/schedule-items/{itemId}/move"
+      ],
+      "callEvidence": "app/(tabs)/calendar.tsx#hydrateSchedule",
+      "operationEvidence": {
+        "GET /api/v1/trips/{tripId}/schedule": "services/schedulePersistence.ts#await fetchSchedule(tripId)",
+        "POST /api/v1/trips/{tripId}/schedule-items": "services/schedulePersistence.ts#createScheduleItem(tripId, body, locks, key)",
+        "PATCH /api/v1/trips/{tripId}/schedule-items/{itemId}": "services/schedulePersistence.ts#updateScheduleItem(tripId, itemId, patch, locks, key)",
+        "DELETE /api/v1/trips/{tripId}/schedule-items/{itemId}": "services/schedulePersistence.ts#deleteScheduleItem(tripId, itemId, locks, key)",
+        "PUT /api/v1/trips/{tripId}/schedule-order": "services/schedulePersistence.ts#reorderSchedule(tripId, order, locks, key)",
+        "POST /api/v1/trips/{tripId}/schedule-items/{itemId}/move": "services/schedulePersistence.ts#moveScheduleItem(tripId, itemId, target, locks, key)"
+      },
+      "responseEvidence": "tests/schedulePersistence.test.ts#scheduleToPlaces",
+      "errorEvidence": "app/(tabs)/calendar.tsx#retryPendingMutation",
+      "restartHydration": "services/schedulePersistence.ts#hydrateSchedule"
+    },
+    {
+      "surface": "accommodation and arrival/departure projections",
+      "screenState": "deferred",
+      "operations": [
+        "POST /api/v1/trips/{tripId}/accommodations",
+        "PATCH /api/v1/trips/{tripId}/accommodations/{accommodationId}",
+        "DELETE /api/v1/trips/{tripId}/accommodations/{accommodationId}",
+        "PUT /api/v1/trips/{tripId}/transport-event",
+        "DELETE /api/v1/trips/{tripId}/transport-event"
+      ],
+      "callEvidence": "services/tripPersistence.ts#updateAccommodation",
+      "responseEvidence": "tests/tripPersistence.test.ts#scheduledAt",
+      "errorEvidence": "services/tripPersistence.ts#refreshOnConflict",
+      "restartHydration": "blocked: issue #13 projection files and seeded aggregate are pending"
+    },
+    {
+      "surface": "home weather",
+      "screenState": "connected",
+      "operations": ["GET /api/v1/weather/forecast"],
+      "callEvidence": "hooks/useWeatherForecast.ts#fetchWeatherForecast",
+      "operationEvidence": {
+        "GET /api/v1/weather/forecast": "hooks/useWeatherForecast.ts#fetchWeatherForecast("
+      },
+      "responseEvidence": "tests/weatherApi.test.ts#regionCode",
+      "errorEvidence": "hooks/useWeatherForecast.ts#weatherErrorMessage",
+      "restartHydration": "not-applicable: forecast is refetched from an explicit public selector"
+    },
+    {
+      "surface": "push device and notification preferences",
+      "screenState": "connected",
+      "operations": [
+        "PUT /api/v1/me/push-devices/{deviceId}",
+        "DELETE /api/v1/me/push-devices/{deviceId}",
+        "GET /api/v1/me/notification-preferences",
+        "PATCH /api/v1/me/notification-preferences"
+      ],
+      "callEvidence": "hooks/usePushRegistration.ts#registerPushDevice",
+      "operationEvidence": {
+        "PUT /api/v1/me/push-devices/{deviceId}": "hooks/usePushRegistration.ts#register: registerPushDevice",
+        "DELETE /api/v1/me/push-devices/{deviceId}": "hooks/usePushRegistration.ts#remove: deletePushDevice",
+        "GET /api/v1/me/notification-preferences": "services/notificationPreferences.ts#fetch: fetchNotificationPreference",
+        "PATCH /api/v1/me/notification-preferences": "services/notificationPreferences.ts#update: updateNotificationPreference"
+      },
+      "responseEvidence": "tests/notificationPreferencesHook.test.ts#useNotificationPreferences",
+      "errorEvidence": "services/notificationPreferences.ts#PRECONDITION_FAILED",
+      "restartHydration": "services/notificationPreferences.ts#fetch: fetchNotificationPreference"
+    }
+  ]
+}

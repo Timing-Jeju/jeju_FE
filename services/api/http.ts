@@ -15,6 +15,7 @@ import { API_PREFIX, API_TIMEOUT_MS } from './config';
 import { assertIdempotencyKey } from './idempotency';
 import {
   ApiError,
+  CLIENT_LOCATION_DATA_FORBIDDEN,
   CLIENT_NETWORK_ERROR,
   CLIENT_NOT_CONFIGURED,
 } from './problem';
@@ -114,6 +115,84 @@ const assertRequestHeaders = (headers: Record<string, string> | undefined) => {
   }
 };
 
+const LOCATION_FIELD_NAMES = new Set([
+  'coordinate',
+  'coordinates',
+  'currentlatitude',
+  'currentlocation',
+  'currentlongitude',
+  'devicelocation',
+  'geolocation',
+  'gps',
+  'lat',
+  'latitude',
+  'lng',
+  'location',
+  'lon',
+  'longitude',
+]);
+
+const invalidPayload = (): never => {
+  throw new ApiError({ status: 0, code: 'INVALID_API_PAYLOAD' });
+};
+
+/** JSON 계약만 허용하고 공개 selector 외 기기·현재 위치 key는 모든 깊이에서 차단한다. */
+const assertSafeJsonValue = (value: unknown, seen = new WeakSet<object>()) => {
+  if (
+    value === null ||
+    value === undefined ||
+    typeof value === 'string' ||
+    typeof value === 'boolean'
+  ) {
+    return;
+  }
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) invalidPayload();
+    return;
+  }
+  if (typeof value !== 'object') invalidPayload();
+  if (seen.has(value)) invalidPayload();
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    value.forEach((item) => assertSafeJsonValue(item, seen));
+    seen.delete(value);
+    return;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) invalidPayload();
+
+  for (const [key, item] of Object.entries(value)) {
+    const normalized = key.toLowerCase().replace(/[_-]/g, '');
+    if (LOCATION_FIELD_NAMES.has(normalized)) {
+      throw new ApiError({
+        status: 0,
+        code: CLIENT_LOCATION_DATA_FORBIDDEN,
+      });
+    }
+    assertSafeJsonValue(item, seen);
+  }
+  seen.delete(value);
+};
+
+const assertSafeJsonBody = (body: unknown) => {
+  if (body === undefined) return;
+  if (typeof body === 'string') {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      invalidPayload();
+    }
+    if (parsed === null || typeof parsed !== 'object') invalidPayload();
+    assertSafeJsonValue(parsed);
+    return;
+  }
+  if (body === null || typeof body !== 'object') invalidPayload();
+  assertSafeJsonValue(body);
+};
+
 const toApiError = (error: unknown): ApiError => {
   if (error instanceof ApiError) return error;
   if (!axios.isAxiosError(error) || !error.response) {
@@ -163,6 +242,8 @@ export function createApiTransport(
   ): Promise<ApiResponse<T>> => {
     const url = assertPath(origin, options.path);
     assertRequestHeaders(options.headers);
+    assertSafeJsonValue(options.params);
+    assertSafeJsonBody(options.body);
 
     let authorization: string | null = null;
     if (options.auth === 'naver') {
