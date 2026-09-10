@@ -8,6 +8,7 @@ import { AppState, Platform } from 'react-native';
 import { useFavoriteStore } from '@/store/useFavoriteStore';
 import { useScheduleStore } from '@/store/useScheduleStore';
 import { useTripStore } from '@/store/useTripStore';
+import { useProfileLegalStore } from '@/store/useProfileLegalStore';
 import { useUserStore } from '@/store/useUserStore';
 import { runAfterSignOutFailure, runBeforeSignOut } from './authLifecycle';
 import { getSupabase } from './supabase';
@@ -19,12 +20,16 @@ const valid = (session: Session | null) =>
 
 function acceptSession(session: Session | null) {
   const userId = valid(session) ? session!.user.id : null;
-  if (useUserStore.getState().userId !== userId || !userId) {
+  const previous = useUserStore.getState();
+  if (previous.userId !== userId || !userId) {
     useTripStore.setState(useTripStore.getInitialState(), true);
     useScheduleStore.setState(useScheduleStore.getInitialState(), true);
     useFavoriteStore.setState({ favorites: [] });
+    useProfileLegalStore.getState().resetForUser(userId);
   }
   useUserStore.setState({
+    authGeneration:
+      previous.authGeneration + (previous.userId === userId ? 0 : 1),
     authReady: true,
     isLoggedIn: !!userId,
     userId,
@@ -156,9 +161,12 @@ export async function signOut(): Promise<void> {
   }
 }
 
-export async function getAccessToken(): Promise<string> {
+export async function getAccessToken(forceRefresh = false): Promise<string> {
   try {
-    const { data, error } = await getSupabase().auth.getSession();
+    const auth = getSupabase().auth;
+    const { data, error } = forceRefresh
+      ? await auth.refreshSession()
+      : await auth.getSession();
     if (error || !valid(data.session)) throw new Error();
     return data.session!.access_token;
   } catch {
