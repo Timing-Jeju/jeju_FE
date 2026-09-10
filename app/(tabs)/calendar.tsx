@@ -36,6 +36,7 @@ import { useScheduleStore, type SchedulePlace } from '@/store/useScheduleStore';
 import { useTripStore } from '@/store/useTripStore';
 import { datesBetween } from '@/utils/date';
 import { PLANNER_UNAVAILABLE_MESSAGE } from '@/services/plannerAvailability';
+import { useTripPersistence } from '@/hooks/useTripPersistence';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
 const CARD_BORDER = '#E9EAED';
@@ -63,6 +64,7 @@ const PLACE_MENU = [
 
 export default function CalendarScreen() {
   const router = useRouter();
+  const { hydrateLatestTrip } = useTripPersistence();
 
   const tripSaved = useTripStore((state) => state.draftSaved);
   const startDate = useTripStore((state) => state.startDate);
@@ -88,7 +90,8 @@ export default function CalendarScreen() {
   useFocusEffect(
     useCallback(() => {
       setConditionNoticeVisible(!tripSaved);
-    }, [tripSaved]),
+      if (!tripSaved) void hydrateLatestTrip().catch(() => undefined);
+    }, [hydrateLatestTrip, tripSaved]),
   );
 
   /** 여행 기본 조건이 없으면 안내 모달을 띄우고 true를 돌려준다 */
