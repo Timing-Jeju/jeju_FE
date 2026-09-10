@@ -30,6 +30,7 @@ import {
   radius,
   spacing,
 } from '@/constants';
+import { useWeatherForecast } from '@/hooks/useWeatherForecast';
 import { getPlace, type PlaceDetail } from '@/services/places';
 import { useFavoriteStore } from '@/store/useFavoriteStore';
 import {
@@ -47,6 +48,7 @@ const mapIcon = require('../assets/images/icon-map.png');
 const linkIcon = require('../assets/images/icon-link.png');
 const placeholderPlace = require('../assets/images/placeholder-place.png');
 const trashIllust = require('../assets/images/illust-trash.png');
+const sunIcon = require('../assets/images/icon-sun.png');
 
 function VerticalDivider() {
   return <View style={styles.verticalDivider} />;
@@ -67,6 +69,7 @@ function PlaceDetailContent({ placeId }: { placeId: string }) {
   const [attempt, setAttempt] = useState(0);
   const [memoModalVisible, setMemoModalVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const weather = useWeatherForecast(loadedDetail?.placeId ?? null);
   useEffect(() => {
     const controller = new AbortController();
     getPlace(placeId, controller.signal)
@@ -281,6 +284,18 @@ function PlaceDetailContent({ placeId }: { placeId: string }) {
           </View>
 
           <Divider size="small" />
+
+          {loadedDetail && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>날씨</Text>
+              <View style={styles.infoRow}>
+                <Image source={sunIcon} style={styles.infoIcon} />
+                <Text style={styles.sectionBody}>{weather.message}</Text>
+              </View>
+            </View>
+          )}
+
+          {loadedDetail && <Divider size="small" />}
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>소개</Text>

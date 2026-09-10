@@ -6,6 +6,7 @@ import 'react-native-reanimated';
 
 import { SplashView } from '@/components/ui';
 import { useColorScheme } from '@/components/useColorScheme';
+import { usePushRegistration } from '@/hooks/usePushRegistration';
 import { startAppSession } from '@/services/appSession';
 import { useProfileLegalStore } from '@/store/useProfileLegalStore';
 import { useUserStore } from '@/store/useUserStore';
@@ -69,6 +70,8 @@ export default function RootLayout() {
 export function RootLayoutNav() {
   const colorScheme = useColorScheme();
   const isLoggedIn = useUserStore((state) => state.isLoggedIn);
+  const userId = useUserStore((state) => state.userId);
+  usePushRegistration(userId);
   const consentRecoveryActive = useProfileLegalStore(
     (state) =>
       state.consentStatus === 'error' || state.consentStatus === 'saving',
