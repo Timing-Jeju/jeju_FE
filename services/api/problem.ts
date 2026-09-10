@@ -1,0 +1,53 @@
+/** 앱 경계 밖의 원문 Problem/config/token을 보존하지 않는 오류 모델. */
+
+export const CLIENT_NETWORK_ERROR = 'CLIENT_NETWORK_ERROR';
+export const CLIENT_NOT_CONFIGURED = 'CLIENT_NOT_CONFIGURED';
+
+export interface ProblemDetails {
+  code: string;
+  status: number;
+}
+
+const messages: Record<string, string> = {
+  AUTHENTICATION_REQUIRED: '로그인이 필요합니다.',
+  INVALID_ACCESS_TOKEN: '로그인 정보를 다시 확인해 주세요.',
+  AUTH_ACCESS_DENIED: '이 요청을 수행할 권한이 없습니다.',
+  RATE_LIMITED: '요청이 많습니다. 잠시 뒤 다시 시도해 주세요.',
+  CLIENT_NOT_CONFIGURED: '서버 연결 설정을 확인해 주세요.',
+  CLIENT_NETWORK_ERROR: '서버에 연결하지 못했습니다.',
+  INVALID_API_TARGET: '서버 연결 대상을 확인해 주세요.',
+  INVALID_IDEMPOTENCY_KEY: '요청 식별 키를 확인해 주세요.',
+  INVALID_ETAG: '최신 데이터를 다시 불러와 주세요.',
+  PRECONDITION_FAILED:
+    '데이터가 변경되었습니다. 최신 데이터를 다시 불러와 주세요.',
+  SERVICE_UNAVAILABLE:
+    '요청을 완료하지 못했습니다. 잠시 뒤 다시 시도해 주세요.',
+  REQUEST_FAILED: '요청을 완료하지 못했습니다. 다시 시도해 주세요.',
+};
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string;
+  readonly traceId: string | null;
+
+  constructor(params: {
+    status: number;
+    code: string;
+    traceId?: string | null;
+  }) {
+    super(messages[params.code] ?? messages.REQUEST_FAILED);
+    this.name = 'ApiError';
+    this.status = params.status;
+    this.code = params.code;
+    this.traceId = params.traceId ?? null;
+  }
+}
+
+export const isApiError = (error: unknown): error is ApiError =>
+  error instanceof ApiError;
+
+export const hasCode = (error: unknown, ...codes: string[]) =>
+  isApiError(error) && codes.includes(error.code);
+
+export const isAuthError = (error: unknown) =>
+  hasCode(error, 'AUTHENTICATION_REQUIRED', 'INVALID_ACCESS_TOKEN');

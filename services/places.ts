@@ -1,4 +1,7 @@
-import api from './apiClient';
+import {
+  fetchPlace as fetchCanonicalPlace,
+  fetchPlaces as fetchCanonicalPlaces,
+} from './api/places';
 import { isCanonicalPlaceId, requireCanonicalPlaceId } from './canonicalId';
 import type { components, operations } from './generated/places';
 import type { Coord } from './naverApi';
@@ -90,8 +93,7 @@ export async function listPlaces(
     cursor: input.cursor,
     size: 20,
   };
-  const { data } = await api.get<unknown>('/api/v1/places', { params, signal });
-  const response = record(data);
+  const response = record(await fetchCanonicalPlaces(params, signal));
   if (!Array.isArray(response.items)) throw invalid();
   const items = response.items.map(adapt);
   if (new Set(items.map((item) => item.placeId)).size !== items.length)
@@ -123,10 +125,7 @@ export async function getPlace(
   signal?: AbortSignal,
 ): Promise<PlaceDetail> {
   requireCanonicalPlaceId(placeId);
-  const { data } = await api.get<unknown>(`/api/v1/places/${placeId}`, {
-    signal,
-  });
-  const row = record(data);
+  const row = record(await fetchCanonicalPlace(placeId, signal));
   const place = adapt(row);
   if (place.placeId !== placeId) throw invalid();
   const contact = record(row.contact);
