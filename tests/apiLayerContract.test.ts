@@ -80,6 +80,81 @@ test('실패한 mutation도 자동 재시도하지 않는다', async () => {
   expect(adapter).toHaveBeenCalledTimes(1);
 });
 
+test('GET 401은 세션을 한 번 갱신하고 회전된 토큰으로 한 번만 복구한다', async () => {
+  const accessToken = jest
+    .fn<Promise<string | null>, [boolean?]>()
+    .mockResolvedValueOnce('expired-access')
+    .mockResolvedValueOnce('rotated-access');
+  const transport = makeTransport(accessToken);
+  const adapter = jest
+    .fn()
+    .mockImplementationOnce(async (config) => {
+      throw new AxiosError(
+        'expired',
+        'ERR_BAD_RESPONSE',
+        config,
+        {},
+        {
+          status: 401,
+          statusText: 'Unauthorized',
+          config,
+          headers: new AxiosHeaders(),
+          data: { code: 'INVALID_ACCESS_TOKEN' },
+        },
+      );
+    })
+    .mockImplementationOnce(async (config) => ({
+      data: { ok: true },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config,
+    }));
+  transport.setAdapter(adapter);
+
+  await expect(
+    transport.request({ method: 'GET', path: '/me', auth: 'required' }),
+  ).resolves.toMatchObject({ data: { ok: true } });
+  expect(accessToken).toHaveBeenNthCalledWith(1, false);
+  expect(accessToken).toHaveBeenNthCalledWith(2, true);
+  expect(adapter.mock.calls[1][0].headers.get('Authorization')).toBe(
+    'Bearer rotated-access',
+  );
+  expect(adapter).toHaveBeenCalledTimes(2);
+});
+
+test('PATCH 401은 세션을 임의 갱신하거나 mutation을 재전송하지 않는다', async () => {
+  const accessToken = jest.fn(async () => 'expired-access');
+  const transport = makeTransport(accessToken);
+  const adapter = jest.fn(async (config) => {
+    throw new AxiosError(
+      'expired',
+      'ERR_BAD_RESPONSE',
+      config,
+      {},
+      {
+        status: 401,
+        statusText: 'Unauthorized',
+        config,
+        headers: new AxiosHeaders(),
+        data: { code: 'INVALID_ACCESS_TOKEN' },
+      },
+    );
+  });
+  transport.setAdapter(adapter);
+
+  await expect(
+    transport.request({
+      method: 'PATCH',
+      path: '/me',
+      auth: 'required',
+      body: { nickname: '새 닉네임' },
+    }),
+  ).rejects.toMatchObject({ status: 401, code: 'INVALID_ACCESS_TOKEN' });
+  expect(accessToken).toHaveBeenCalledTimes(1);
+  expect(adapter).toHaveBeenCalledTimes(1);
+});
+
 test('401/403/409/412/429/5xx Problem은 stable code만 남긴다', async () => {
   for (const [status, code] of [
     [401, 'INVALID_ACCESS_TOKEN'],

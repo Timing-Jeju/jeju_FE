@@ -1,4 +1,5 @@
 import { requestData } from './http';
+import { ApiError } from './problem';
 
 /** 약관 / 개인정보 / 위치기반 서비스 동의 문서 */
 export type LegalDocumentType = 'terms' | 'privacy' | 'location';
@@ -21,6 +22,20 @@ export interface LegalDocumentsResponse {
   /** 비어 있을 수 있다 */
   items: LegalDocument[];
 }
+
+export const isSafeLegalContentUrl = (value: string) => {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === 'https:' &&
+      !url.username &&
+      !url.password &&
+      !!url.hostname
+    );
+  } catch {
+    return false;
+  }
+};
 
 /**
  * 현재 시행 중인 법정 문서 목록. 인증 선택.
@@ -58,10 +73,34 @@ export interface LegalConsentsResponse {
  * 오류 code: INVALID_PROFILE_LEGAL_REQUEST (400), PROFILE_CONFLICT (409),
  * LEGAL_CONSENT_REQUIRED (422 — 필수 동의가 빠졌을 때), PROFILE_DATA_UNAVAILABLE (503).
  */
-export const updateLegalConsents = (consents: LegalConsent[]) =>
-  requestData<LegalConsentsResponse>({
+export const updateLegalConsents = (consents: LegalConsent[]) => {
+  if (consents.length === 0) {
+    return Promise.reject(
+      new ApiError({ status: 422, code: 'LEGAL_CONSENT_REQUIRED' }),
+    );
+  }
+  const documentIds = new Set(consents.map(({ documentId }) => documentId));
+  if (
+    consents.length > 20 ||
+    documentIds.size !== consents.length ||
+    consents.some(
+      ({ documentId, agreed }) =>
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          documentId,
+        ) || typeof agreed !== 'boolean',
+    )
+  ) {
+    return Promise.reject(
+      new ApiError({
+        status: 400,
+        code: 'INVALID_PROFILE_LEGAL_REQUEST',
+      }),
+    );
+  }
+  return requestData<LegalConsentsResponse>({
     method: 'PUT',
     path: '/me/consents',
     auth: 'required',
     body: { consents },
   });
+};

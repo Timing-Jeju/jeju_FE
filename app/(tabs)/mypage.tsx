@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Image,
@@ -11,7 +11,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ConfirmModal, Text } from '@/components/ui';
+import {
+  BottomSheet,
+  Button,
+  ConfirmModal,
+  InputField,
+  Text,
+} from '@/components/ui';
 import {
   colors,
   fontFamily,
@@ -22,6 +28,7 @@ import {
   spacing,
 } from '@/constants';
 import { signOut } from '@/services/auth';
+import { useProfileLegalStore } from '@/store/useProfileLegalStore';
 import { useUserStore } from '@/store/useUserStore';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
@@ -88,10 +95,48 @@ function MenuRow({ icon, label, value, onPress }: MenuRowProps) {
 export default function MypageScreen() {
   const router = useRouter();
 
-  const userName = useUserStore((state) => state.userName);
   const userId = useUserStore((state) => state.userId);
+  const profile = useProfileLegalStore((state) => state.profile);
+  const profileStatus = useProfileLegalStore((state) => state.profileStatus);
+  const profileError = useProfileLegalStore((state) => state.profileError);
+  const loadProfile = useProfileLegalStore((state) => state.loadProfile);
+  const saveNickname = useProfileLegalStore((state) => state.saveNickname);
+  const consentStatus = useProfileLegalStore((state) => state.consentStatus);
+  const consentError = useProfileLegalStore((state) => state.consentError);
 
   const [logoutVisible, setLogoutVisible] = useState(false);
+  const [editVisible, setEditVisible] = useState(false);
+  const [nicknameDraft, setNicknameDraft] = useState('');
+  const [editOwnerUserId, setEditOwnerUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!userId) return;
+    void loadProfile(userId).catch(() => undefined);
+  }, [loadProfile, userId]);
+
+  const retryProfile = () => {
+    if (userId) void loadProfile(userId).catch(() => undefined);
+  };
+
+  const openProfileEdit = () => {
+    if (!userId || profile?.userId !== userId) return;
+    setNicknameDraft(profile?.nickname ?? '');
+    setEditOwnerUserId(userId);
+    setEditVisible(true);
+  };
+
+  const submitProfile = () => {
+    const currentUserId = useUserStore.getState().userId;
+    if (!currentUserId || editOwnerUserId !== currentUserId) {
+      setEditVisible(false);
+      setNicknameDraft('');
+      setEditOwnerUserId(null);
+      return;
+    }
+    void saveNickname(currentUserId, nicknameDraft)
+      .then(() => setEditVisible(false))
+      .catch(() => undefined);
+  };
 
   // TODO: 준비 중인 메뉴는 화면 연동 전까지 안내만 띄운다
   const showPreparing = () =>
@@ -106,11 +151,41 @@ export default function MypageScreen() {
         <View style={styles.profile}>
           <Image source={avatarIllust} style={styles.avatar} />
           <View style={styles.profileText}>
-            <Text style={styles.nickname}>{userName ?? '제주도굿'}</Text>
-            <Text style={styles.userId}>{userId ?? 'jejujoa123'}</Text>
-            <Pressable style={styles.editBadge} onPress={showPreparing}>
+            <Text style={styles.nickname}>
+              {profile?.nickname ??
+                (profileStatus === 'loading'
+                  ? '프로필을 불러오는 중이에요.'
+                  : '닉네임 미설정')}
+            </Text>
+            <Text style={styles.userId}>
+              {profile?.email ??
+                profile?.userId ??
+                userId ??
+                '로그인이 필요합니다.'}
+            </Text>
+            {profileStatus === 'error' && profileError && (
+              <View style={styles.profileText}>
+                <Text style={styles.userId}>{profileError}</Text>
+                <Pressable onPress={retryProfile}>
+                  <Text style={styles.editBadgeLabel}>다시 시도</Text>
+                </Pressable>
+              </View>
+            )}
+            <Pressable
+              style={styles.editBadge}
+              onPress={openProfileEdit}
+              disabled={!profile}
+            >
               <Text style={styles.editBadgeLabel}>정보 수정</Text>
             </Pressable>
+            {consentStatus === 'error' && consentError && (
+              <View style={styles.profileText}>
+                <Text style={styles.userId}>{consentError}</Text>
+                <Pressable onPress={() => router.push('/signup')}>
+                  <Text style={styles.editBadgeLabel}>약관 다시 확인</Text>
+                </Pressable>
+              </View>
+            )}
           </View>
         </View>
 
@@ -189,6 +264,32 @@ export default function MypageScreen() {
           );
         }}
       />
+      <BottomSheet
+        visible={editVisible && editOwnerUserId === userId}
+        onClose={() => setEditVisible(false)}
+      >
+        <View style={{ gap: spacing.md, paddingHorizontal: spacing.lg }}>
+          <Text style={styles.nickname}>프로필 정보 수정</Text>
+          <InputField
+            accessibilityLabel="닉네임"
+            label="닉네임"
+            value={nicknameDraft}
+            onChangeText={setNicknameDraft}
+            maxLength={50}
+            isError={profileStatus === 'error'}
+          />
+          {profileStatus === 'error' && profileError && (
+            <Text style={styles.userId}>{profileError}</Text>
+          )}
+          <Button
+            title="저장"
+            disabled={
+              profileStatus === 'loading' || nicknameDraft.trim().length === 0
+            }
+            onPress={submitProfile}
+          />
+        </View>
+      </BottomSheet>
     </SafeAreaView>
   );
 }

@@ -1,6 +1,8 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import * as WebBrowser from 'expo-web-browser';
+import { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -28,6 +30,14 @@ import {
   lineHeight,
   spacing,
 } from '@/constants';
+import { isSafeLegalContentUrl } from '@/services/api/legal';
+import { hasCode } from '@/services/api/problem';
+import {
+  clearPendingConsentIntent,
+  savePendingConsentIntent,
+} from '@/services/pendingConsent';
+import { useProfileLegalStore } from '@/store/useProfileLegalStore';
+import { useUserStore } from '@/store/useUserStore';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
 const BACKGROUND = '#FAFAFA';
@@ -36,30 +46,12 @@ const doneIllust = require('../assets/images/illust-signup-done.png');
 
 type Step = 'terms' | 'credentials' | 'profile' | 'done';
 
-const AGREEMENTS = [
+const LOCAL_AGREEMENTS = [
   {
     key: 'age',
     label: '[필수] 만 14세 이상입니다.',
     required: true,
     viewable: false,
-  },
-  {
-    key: 'terms',
-    label: '[필수] 서비스 이용약관에 동의',
-    required: true,
-    viewable: true,
-  },
-  {
-    key: 'privacy',
-    label: '[필수] 개인정보 처리방침 동의',
-    required: true,
-    viewable: true,
-  },
-  {
-    key: 'location',
-    label: '[필수] 위치 정보 수집 및 이용 동의',
-    required: true,
-    viewable: true,
   },
   {
     key: 'marketing',
@@ -68,8 +60,6 @@ const AGREEMENTS = [
     viewable: true,
   },
 ] as const;
-
-type AgreementKey = (typeof AGREEMENTS)[number]['key'];
 
 interface ConditionItemProps {
   label: string;
@@ -90,17 +80,48 @@ function ConditionItem({ label, satisfied }: ConditionItemProps) {
 
 export default function SignupScreen() {
   const router = useRouter();
+  const userId = useUserStore((state) => state.userId);
+  const legalDocuments = useProfileLegalStore((state) => state.legalDocuments);
+  const legalStatus = useProfileLegalStore((state) => state.legalStatus);
+  const legalError = useProfileLegalStore((state) => state.legalError);
+  const consentStatus = useProfileLegalStore((state) => state.consentStatus);
+  const consentError = useProfileLegalStore((state) => state.consentError);
+  const loadLegalDocuments = useProfileLegalStore(
+    (state) => state.loadLegalDocuments,
+  );
+  const saveRequiredConsents = useProfileLegalStore(
+    (state) => state.saveRequiredConsents,
+  );
 
   const [step, setStep] = useState<Step>('terms');
 
   // 약관 동의
-  const [agreed, setAgreed] = useState<Set<AgreementKey>>(new Set());
-  const isAllAgreed = agreed.size === AGREEMENTS.length;
-  const isRequiredAgreed = AGREEMENTS.filter((item) => item.required).every(
-    (item) => agreed.has(item.key),
+  const agreements = useMemo(
+    () => [
+      LOCAL_AGREEMENTS[0],
+      ...legalDocuments.map((document) => ({
+        key: document.documentId,
+        label: `${document.required ? '[필수]' : '[선택]'} ${document.title}`,
+        required: document.required,
+        viewable: true,
+        contentUrl: document.contentUrl,
+      })),
+      LOCAL_AGREEMENTS[1],
+    ],
+    [legalDocuments],
   );
+  const [agreed, setAgreed] = useState<Set<string>>(new Set());
+  const isAllAgreed =
+    agreements.length > 0 && agreed.size === agreements.length;
+  const isRequiredAgreed = agreements
+    .filter((item) => item.required)
+    .every((item) => agreed.has(item.key));
 
-  const toggleAgreement = (key: AgreementKey) => {
+  useEffect(() => {
+    void loadLegalDocuments().catch(() => undefined);
+  }, [loadLegalDocuments]);
+
+  const toggleAgreement = (key: string) => {
     setAgreed((prev) => {
       const next = new Set(prev);
       if (next.has(key)) {
@@ -114,8 +135,39 @@ export default function SignupScreen() {
 
   const toggleAllAgreements = () => {
     setAgreed(
-      isAllAgreed ? new Set() : new Set(AGREEMENTS.map((item) => item.key)),
+      isAllAgreed ? new Set() : new Set(agreements.map((item) => item.key)),
     );
+  };
+
+  const openLegalDocument = (contentUrl: string | undefined) => {
+    if (!contentUrl || !isSafeLegalContentUrl(contentUrl)) {
+      Alert.alert('약관을 열 수 없어요', '안전한 약관 주소를 확인해 주세요.');
+      return;
+    }
+    void WebBrowser.openBrowserAsync(contentUrl);
+  };
+
+  const handleTermsContinue = () => {
+    if (!userId) {
+      const selectedDocuments = legalDocuments
+        .filter((document) => agreed.has(document.documentId))
+        .map(({ documentId, version }) => ({ documentId, version }));
+      void savePendingConsentIntent(selectedDocuments)
+        .then(() => setStep('credentials'))
+        .catch(() => undefined);
+      return;
+    }
+    void saveRequiredConsents(userId, agreed)
+      .then(async () => {
+        await clearPendingConsentIntent();
+        router.back();
+      })
+      .catch(async (error) => {
+        if (hasCode(error, 'PROFILE_CONFLICT')) {
+          setAgreed(new Set(['age']));
+          await loadLegalDocuments().catch(() => undefined);
+        }
+      });
   };
 
   // 1단계: 아이디/비밀번호
@@ -163,8 +215,7 @@ export default function SignupScreen() {
   };
 
   const handleComplete = () => {
-    // TODO: 회원가입 API 연동
-    setStep('done');
+    Alert.alert('회원가입 준비 중', '회원가입 기능을 준비하고 있어요.');
   };
 
   const renderTermsStep = () => (
@@ -182,7 +233,24 @@ export default function SignupScreen() {
           </View>
           <Divider size="small" />
           <View style={styles.agreementList}>
-            {AGREEMENTS.map((item) => (
+            {legalStatus === 'loading' && legalDocuments.length === 0 && (
+              <Text style={styles.agreementLabel}>
+                약관을 불러오는 중이에요.
+              </Text>
+            )}
+            {legalStatus === 'error' && legalError && (
+              <View style={styles.agreementList}>
+                <Text style={styles.errorText}>{legalError}</Text>
+                <Pressable
+                  onPress={() =>
+                    void loadLegalDocuments().catch(() => undefined)
+                  }
+                >
+                  <Text style={styles.agreementView}>다시 시도</Text>
+                </Pressable>
+              </View>
+            )}
+            {agreements.map((item) => (
               <View key={item.key} style={styles.agreementItem}>
                 <View style={styles.agreementRow}>
                   <Checkbox
@@ -190,24 +258,39 @@ export default function SignupScreen() {
                     checked={agreed.has(item.key)}
                     onPress={() => toggleAgreement(item.key)}
                   />
-                  <Text style={styles.agreementLabel}>{item.label}</Text>
+                  <Pressable onPress={() => toggleAgreement(item.key)}>
+                    <Text style={styles.agreementLabel}>{item.label}</Text>
+                  </Pressable>
                 </View>
                 {item.viewable && (
-                  <Pressable hitSlop={spacing.xs}>
-                    {/* TODO: 약관 상세 화면/웹뷰 연결 */}
+                  <Pressable
+                    hitSlop={spacing.xs}
+                    onPress={() =>
+                      openLegalDocument(
+                        'contentUrl' in item ? item.contentUrl : undefined,
+                      )
+                    }
+                  >
                     <Text style={styles.agreementView}>보기</Text>
                   </Pressable>
                 )}
               </View>
             ))}
+            {consentStatus === 'error' && consentError && (
+              <Text style={styles.errorText}>{consentError}</Text>
+            )}
           </View>
         </View>
       </View>
       <View style={styles.footer}>
         <Button
           title="회원가입"
-          disabled={!isRequiredAgreed}
-          onPress={() => setStep('credentials')}
+          disabled={
+            legalStatus !== 'ready' ||
+            consentStatus === 'saving' ||
+            !isRequiredAgreed
+          }
+          onPress={handleTermsContinue}
         />
       </View>
     </>

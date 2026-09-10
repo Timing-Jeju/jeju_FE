@@ -19,6 +19,7 @@ let changed: (event: string, value: typeof session | null) => void;
 const unsubscribe = jest.fn();
 const mockAuth = {
   getSession: jest.fn(),
+  refreshSession: jest.fn(),
   getUser: jest.fn(),
   signInWithPassword: jest.fn(),
   signOut: jest.fn(),
@@ -41,6 +42,10 @@ beforeEach(() => {
     authReady: false,
   });
   mockAuth.getSession.mockResolvedValue({ data: { session }, error: null });
+  mockAuth.refreshSession.mockResolvedValue({
+    data: { session },
+    error: null,
+  });
   mockAuth.getUser.mockResolvedValue({
     data: { user: session.user },
     error: null,
@@ -144,6 +149,17 @@ test('BE 요청에는 현재 사용자 access token만 제공한다', async () =
     error: null,
   });
   await expect(getAccessToken()).rejects.toThrow('다시 로그인');
+});
+
+test('401 복구 요청은 Supabase 세션을 강제 갱신해 새 토큰만 제공한다', async () => {
+  mockAuth.refreshSession.mockResolvedValueOnce({
+    data: {
+      session: { ...session, access_token: 'rotated-access' },
+    },
+    error: null,
+  });
+  await expect(getAccessToken(true)).resolves.toBe('rotated-access');
+  expect(mockAuth.refreshSession).toHaveBeenCalledTimes(1);
 });
 
 test('진행 중인 로그인 요청을 중복 실행하지 않는다', async () => {

@@ -1,4 +1,5 @@
 import { requestData } from './http';
+import { ApiError } from './problem';
 import type { SocialProviderId } from './authSocial';
 
 /** 내 프로필 — 모든 key가 항상 존재하고 일부만 nullable이다 */
@@ -47,10 +48,27 @@ export interface ProfileUpdateRequest {
  * 오류 code: INVALID_PROFILE_LEGAL_REQUEST (400, fieldErrors 참고),
  * PROFILE_CONFLICT (409), PROFILE_DATA_UNAVAILABLE (503).
  */
-export const updateProfile = (body: ProfileUpdateRequest) =>
-  requestData<Profile>({
+export const updateProfile = (body: ProfileUpdateRequest) => {
+  const nickname = body.nickname?.trim();
+  if (
+    (body.nickname !== undefined && (!nickname || nickname.length > 50)) ||
+    (body.locale !== undefined && body.locale !== 'ko-KR') ||
+    (body.nickname === undefined && body.locale === undefined)
+  ) {
+    return Promise.reject(
+      new ApiError({
+        status: 400,
+        code: 'INVALID_PROFILE_LEGAL_REQUEST',
+      }),
+    );
+  }
+  return requestData<Profile>({
     method: 'PATCH',
     path: '/me',
     auth: 'required',
-    body,
+    body: {
+      ...(nickname === undefined ? {} : { nickname }),
+      ...(body.locale === undefined ? {} : { locale: body.locale }),
+    },
   });
+};

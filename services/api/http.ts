@@ -41,7 +41,7 @@ export interface ApiResponse<T> {
   traceId: string | null;
 }
 
-type AccessTokenProvider = () => Promise<string | null>;
+type AccessTokenProvider = (forceRefresh?: boolean) => Promise<string | null>;
 
 const fallbackCode = (status: number) => {
   if (status === 401) return 'AUTHENTICATION_REQUIRED';
@@ -138,7 +138,8 @@ export interface ApiTransport {
   setAdapter(adapter: AxiosAdapter): void;
 }
 
-const defaultAccessToken: AccessTokenProvider = async () => getAccessToken();
+const defaultAccessToken: AccessTokenProvider = async (forceRefresh = false) =>
+  getAccessToken(forceRefresh);
 
 export function createApiTransport(
   baseURL: string | undefined,
@@ -168,7 +169,7 @@ export function createApiTransport(
         : null;
     } else if (options.auth !== 'none') {
       try {
-        const token = await accessToken();
+        const token = await accessToken(false);
         authorization = token ? `Bearer ${token}` : null;
       } catch {
         authorization = null;
@@ -181,8 +182,8 @@ export function createApiTransport(
       throw new ApiError({ status: 401, code: 'AUTHENTICATION_REQUIRED' });
     }
 
-    try {
-      const response = await client.request<T>({
+    const execute = async (bearer: string | null) =>
+      client.request<T>({
         method: options.method,
         url,
         params: compactParams(options.params),
@@ -193,10 +194,32 @@ export function createApiTransport(
           ...(options.body === undefined
             ? {}
             : { 'Content-Type': 'application/json' }),
-          ...(authorization ? { Authorization: authorization } : {}),
+          ...(bearer ? { Authorization: bearer } : {}),
           ...options.headers,
         },
       });
+
+    try {
+      let response: AxiosResponse<T>;
+      try {
+        response = await execute(authorization);
+      } catch (error) {
+        const normalized = toApiError(error);
+        const method = options.method.toUpperCase();
+        const safelyRetryable = method === 'GET' || method === 'HEAD';
+        if (normalized.status !== 401 || !safelyRetryable) throw normalized;
+
+        let refreshed: string | null = null;
+        try {
+          refreshed = await accessToken(true);
+        } catch {
+          // 최종 오류는 Spring의 안전한 401만 유지한다.
+        }
+        if (!refreshed || `Bearer ${refreshed}` === authorization) {
+          throw normalized;
+        }
+        response = await execute(`Bearer ${refreshed}`);
+      }
       const replayed = headerOf(response, 'idempotency-replayed');
       return {
         data: response.data,
