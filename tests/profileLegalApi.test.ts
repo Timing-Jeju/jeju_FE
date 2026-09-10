@@ -32,6 +32,19 @@ test('프로필 GET/PATCH는 공개 계약 필드만 전송한다', async () => 
   );
 });
 
+test('프로필 PATCH는 전송 직전 인증 세대 guard를 transport에 전달한다', async () => {
+  const authContextIsCurrent = jest.fn(() => true);
+  await updateProfile({ nickname: '여행자' }, authContextIsCurrent);
+
+  expect(requestData).toHaveBeenCalledWith({
+    method: 'PATCH',
+    path: '/me',
+    auth: 'required',
+    body: { nickname: '여행자' },
+    authContextIsCurrent,
+  });
+});
+
 test.each(['', ' ', '가'.repeat(51)])(
   '닉네임 validation 경계는 외부 요청 전에 거부한다: %s',
   async (nickname) => {

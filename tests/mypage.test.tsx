@@ -65,7 +65,10 @@ test('정보 수정은 PATCH 응답으로 화면과 캐시를 갱신한다', asy
   await fireEvent.press(screen.getByText('저장'));
 
   await waitFor(() => expect(screen.getByText('새 닉네임')).toBeTruthy());
-  expect(updateProfile).toHaveBeenCalledWith({ nickname: '새 닉네임' });
+  expect(updateProfile).toHaveBeenCalledWith(
+    { nickname: '새 닉네임' },
+    expect.any(Function),
+  );
   expect(useProfileLegalStore.getState().profile?.nickname).toBe('새 닉네임');
 });
 

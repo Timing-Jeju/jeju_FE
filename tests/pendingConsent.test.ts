@@ -92,7 +92,7 @@ test('409는 자동 재시도하지 않고 검토 상태로 남겨 명시적 재
     'needs_review',
   );
   expect(updateLegalConsents).toHaveBeenCalledTimes(1);
-  await clearPendingConsentIntent();
+  await clearPendingConsentIntent('user-a');
 });
 
 test('storage read 중 인증 계정이 바뀌면 계정별 작업으로 분리한다', async () => {
@@ -132,11 +132,36 @@ test('PUT dispatch 전에 durable attempted 상태로 바꿔 재시작 자동 �
     'simulated process loss',
   );
   expect(intentAtDispatch).toMatchObject({
-    status: 'needs_review',
-    ownerUserId: 'user-a',
+    schemaVersion: 2,
+    byOwner: {
+      'user-a': {
+        status: 'needs_review',
+      },
+    },
   });
   await expect(submitPendingConsentIntent('user-a')).resolves.toBe(
     'needs_review',
   );
   expect(updateLegalConsents).toHaveBeenCalledTimes(1);
+});
+
+test('A에게 귀속된 검토 intent는 B가 조회하거나 삭제할 수 없다', async () => {
+  jest
+    .mocked(updateLegalConsents)
+    .mockRejectedValueOnce(new Error('leave durable review'));
+  await savePendingConsentIntent(documents);
+  await expect(submitPendingConsentIntent('user-a')).rejects.toThrow();
+  const ownedRaw = [...mockStorage.values()][0];
+
+  useUserStore.setState({ userId: 'user-b', authGeneration: 2 });
+  await expect(submitPendingConsentIntent('user-b')).resolves.toBe('none');
+  await clearPendingConsentIntent('user-b');
+  expect([...mockStorage.values()][0]).toBe(ownedRaw);
+
+  useUserStore.setState({ userId: 'user-a', authGeneration: 3 });
+  await expect(submitPendingConsentIntent('user-a')).resolves.toBe(
+    'needs_review',
+  );
+  await clearPendingConsentIntent('user-a');
+  expect(mockStorage.size).toBe(0);
 });

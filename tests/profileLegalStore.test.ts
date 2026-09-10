@@ -2,6 +2,7 @@ import { useProfileLegalStore } from '@/store/useProfileLegalStore';
 import { fetchProfile, updateProfile } from '@/services/api/profile';
 import { fetchLegalDocuments, updateLegalConsents } from '@/services/api/legal';
 import { ApiError } from '@/services/api/problem';
+import { useUserStore } from '@/store/useUserStore';
 
 jest.mock('@/services/api/profile', () => ({
   fetchProfile: jest.fn(),
@@ -24,6 +25,12 @@ const profile = (userId: string, nickname: string) => ({
 });
 
 beforeEach(() => {
+  useUserStore.setState({
+    authGeneration: 1,
+    authReady: true,
+    isLoggedIn: true,
+    userId: 'user-a',
+  });
   useProfileLegalStore.getState().resetForUser(null);
 });
 
@@ -34,13 +41,58 @@ test('프로필 조회와 수정은 Spring 응답으로 같은 사용자 캐시�
   await useProfileLegalStore.getState().loadProfile('user-a');
   await useProfileLegalStore.getState().saveNickname('user-a', ' 변경 ');
 
-  expect(updateProfile).toHaveBeenCalledWith({ nickname: '변경' });
+  expect(updateProfile).toHaveBeenCalledWith(
+    { nickname: '변경' },
+    expect.any(Function),
+  );
   expect(useProfileLegalStore.getState()).toMatchObject({
     ownerUserId: 'user-a',
     profile: { nickname: '변경' },
     profileStatus: 'ready',
   });
 });
+
+test.each([
+  [
+    'A에서 B로 전환',
+    () => useUserStore.setState({ userId: 'user-b', authGeneration: 2 }),
+  ],
+  [
+    'A 로그아웃 뒤 A 재로그인',
+    () => {
+      useUserStore.setState({
+        isLoggedIn: false,
+        userId: null,
+        authGeneration: 2,
+      });
+      useUserStore.setState({
+        isLoggedIn: true,
+        userId: 'user-a',
+        authGeneration: 3,
+      });
+    },
+  ],
+])(
+  '%s 시 이전 프로필 PATCH 인증 guard를 무효화한다',
+  async (_label, transition) => {
+    let finish!: (value: ReturnType<typeof profile>) => void;
+    jest
+      .mocked(updateProfile)
+      .mockImplementationOnce(
+        () => new Promise((resolve) => (finish = resolve)),
+      );
+    const saving = useProfileLegalStore
+      .getState()
+      .saveNickname('user-a', '변경');
+    const authContextIsCurrent = jest.mocked(updateProfile).mock.calls[0][1];
+    expect(authContextIsCurrent?.()).toBe(true);
+
+    transition();
+    expect(authContextIsCurrent?.()).toBe(false);
+    finish(profile('user-a', '변경'));
+    await saving;
+  },
+);
 
 test('사용자 전환 뒤 도착한 이전 사용자의 응답은 새 캐시를 오염시키지 않는다', async () => {
   let resolveOld!: (value: ReturnType<typeof profile>) => void;

@@ -159,7 +159,7 @@ export default function SignupScreen() {
     }
     void saveRequiredConsents(userId, agreed)
       .then(async () => {
-        await clearPendingConsentIntent();
+        await clearPendingConsentIntent(userId);
         router.back();
       })
       .catch(async (error) => {

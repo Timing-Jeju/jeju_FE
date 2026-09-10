@@ -79,9 +79,21 @@ export const useProfileLegalStore = create<ProfileLegalState>((set, get) => ({
   saveNickname: async (userId, nickname) => {
     if (get().ownerUserId !== userId) get().resetForUser(userId);
     const started = epoch;
+    const authGeneration = useUserStore.getState().authGeneration;
+    const authContextIsCurrent = () => {
+      const current = useUserStore.getState();
+      return (
+        current.isLoggedIn &&
+        current.userId === userId &&
+        current.authGeneration === authGeneration
+      );
+    };
     set({ profileStatus: 'loading', profileError: null });
     try {
-      const profile = await updateProfile({ nickname: nickname.trim() });
+      const profile = await updateProfile(
+        { nickname: nickname.trim() },
+        authContextIsCurrent,
+      );
       if (started !== epoch || get().ownerUserId !== userId) return;
       if (profile.userId !== userId) {
         throw new ApiError({ status: 401, code: 'INVALID_ACCESS_TOKEN' });

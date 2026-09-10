@@ -48,7 +48,10 @@ export interface ProfileUpdateRequest {
  * 오류 code: INVALID_PROFILE_LEGAL_REQUEST (400, fieldErrors 참고),
  * PROFILE_CONFLICT (409), PROFILE_DATA_UNAVAILABLE (503).
  */
-export const updateProfile = (body: ProfileUpdateRequest) => {
+export const updateProfile = (
+  body: ProfileUpdateRequest,
+  authContextIsCurrent?: () => boolean,
+) => {
   const nickname = body.nickname?.trim();
   if (
     (body.nickname !== undefined && (!nickname || nickname.length > 50)) ||
@@ -70,5 +73,6 @@ export const updateProfile = (body: ProfileUpdateRequest) => {
       ...(nickname === undefined ? {} : { nickname }),
       ...(body.locale === undefined ? {} : { locale: body.locale }),
     },
+    ...(authContextIsCurrent ? { authContextIsCurrent } : {}),
   });
 };
