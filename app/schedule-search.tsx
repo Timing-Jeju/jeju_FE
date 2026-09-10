@@ -37,6 +37,7 @@ import {
 } from '@/constants';
 import type { Place } from '@/services/places';
 import { usePlaceSearch } from '@/hooks/usePlaceSearch';
+import { useSchedulePersistence } from '@/hooks/useSchedulePersistence';
 import {
   dayOrdinal,
   useScheduleStore,
@@ -61,13 +62,15 @@ export default function ScheduleSearchScreen() {
   const params = useLocalSearchParams<{ day?: string }>();
   const day = Number(params.day) || 1;
 
-  const addPlaces = useScheduleStore((state) => state.addPlaces);
+  const activeVersionId = useScheduleStore((state) => state.activeVersionId);
+  const { createPlace } = useSchedulePersistence();
 
   const [query, setQuery] = useState('');
   const { results, loading, error, searched, hasMore, search, more, clear } =
     usePlaceSearch();
   const [selected, setSelected] = useState<Place[]>([]);
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   useEffect(() => {
     if (error) Alert.alert('검색 실패', error);
   }, [error]);
@@ -86,22 +89,42 @@ export default function ScheduleSearchScreen() {
     void search(query);
   };
 
-  const handleAdd = () => {
-    addPlaces(
-      day,
-      selected.map(
-        (place): SchedulePlace => ({
-          placeId: place.placeId,
-          name: place.name,
-          category: place.categoryLabel,
-          address: place.roadAddress,
-          visitType: '선택방문',
-          stayMinutes: place.recommendedStayMinutes ?? 60,
-          coord: place.coord,
-        }),
-      ),
+  const handleAdd = async () => {
+    const places = selected.map(
+      (place): SchedulePlace => ({
+        placeId: place.placeId,
+        name: place.name,
+        category: place.categoryLabel,
+        address: place.roadAddress,
+        visitType: '선택방문',
+        stayMinutes: place.recommendedStayMinutes ?? 60,
+        coord: place.coord,
+      }),
     );
-    router.back();
+    if (!activeVersionId) {
+      Alert.alert(
+        '활성 일정이 필요해요',
+        '서버 일정을 다시 불러온 뒤 장소를 추가해 주세요.',
+      );
+      return;
+    }
+    setSubmitting(true);
+    try {
+      for (const place of places) {
+        await createPlace(day, place);
+        setSelected((current) =>
+          current.filter((item) => item.placeId !== place.placeId),
+        );
+      }
+      router.back();
+    } catch (error) {
+      Alert.alert(
+        '장소를 추가하지 못했어요',
+        error instanceof Error ? error.message : '다시 시도해 주세요.',
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -235,8 +258,8 @@ export default function ScheduleSearchScreen() {
               ? `선택한 ${selected.length}개의 장소 추가`
               : '선택 장소 추가'
           }
-          disabled={selected.length === 0}
-          onPress={handleAdd}
+          disabled={selected.length === 0 || submitting}
+          onPress={() => void handleAdd()}
         />
       </View>
       <OptionSheet

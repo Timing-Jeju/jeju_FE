@@ -20,6 +20,12 @@ const messages: Record<string, string> = {
   INVALID_ETAG: '최신 데이터를 다시 불러와 주세요.',
   PRECONDITION_FAILED:
     '데이터가 변경되었습니다. 최신 데이터를 다시 불러와 주세요.',
+  TRIP_VERSION_CONFLICT:
+    '여행 정보가 변경되었습니다. 최신 일정을 확인해 주세요.',
+  ACTIVE_SCHEDULE_VERSION_CONFLICT:
+    '일정이 변경되었습니다. 최신 일정을 확인한 뒤 다시 시도해 주세요.',
+  SCHEDULE_ITEM_COMPLETED: '완료된 일정 항목은 변경할 수 없습니다.',
+  SCHEDULE_ORDER_NOT_PERMUTATION: '일정 항목을 빠짐없이 한 번씩 정렬해 주세요.',
   SERVICE_UNAVAILABLE:
     '요청을 완료하지 못했습니다. 잠시 뒤 다시 시도해 주세요.',
   REQUEST_FAILED: '요청을 완료하지 못했습니다. 다시 시도해 주세요.',
