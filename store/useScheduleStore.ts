@@ -15,8 +15,18 @@ export type ScheduleMode = 'manual' | 'ai';
 
 /** Day에 담아둔 방문 예정 장소 */
 export interface SchedulePlace {
+  /** 서버 일정 항목의 opaque ID. 로컬 초안에는 아직 없을 수 있다. */
+  itemId?: string;
   /** 서버의 canonical 장소 ID */
-  placeId: string;
+  placeId: string | null;
+  itemType?:
+    | 'place_visit'
+    | 'meal'
+    | 'accommodation'
+    | 'arrival'
+    | 'departure'
+    | 'free_time'
+    | 'custom';
   name: string;
   /** 관광지 / 식당 / 카페 … */
   category: string;
@@ -25,6 +35,18 @@ export interface SchedulePlace {
   /** 체류 시간 (분) */
   stayMinutes: number;
   coord: Coord | null;
+  plannedStartAt?: string;
+  plannedEndAt?: string;
+  bufferAfterMinutes?: number;
+  required?: boolean;
+  memo?: string | null;
+  progressStatus?:
+    | 'planned'
+    | 'active'
+    | 'arrived'
+    | 'completed'
+    | 'skipped'
+    | 'missed';
 }
 
 export interface RouteBus {
@@ -57,7 +79,8 @@ export interface RouteLeg {
   /** 'H:MM' */
   startTime: string;
   endTime: string;
-  cost: number;
+  /** 서버가 제공하지 않은 요금은 null이며 0원으로 합성하지 않는다. */
+  cost: number | null;
   distanceText: string;
   /** 위험 / 주의 사유 (안전한 구간은 null) */
   reason: string | null;
@@ -79,6 +102,8 @@ export interface DayReview {
   dirty: boolean;
   /** 확정하기를 누른 뒤인지 */
   confirmed: boolean;
+  /** Spring schedule API에서 조회한 검토 데이터인지 여부 */
+  serverBacked?: boolean;
 }
 
 /** 검토 결과 전체의 위험도 (가장 나쁜 구간을 따른다) */
@@ -99,6 +124,12 @@ interface ScheduleState {
   places: Record<number, SchedulePlace[]>;
   /** Day별 일정 검토 결과 */
   reviews: Record<number, DayReview>;
+  activeVersionId: string | null;
+  versionNo: number | null;
+  loading: boolean;
+  mutating: boolean;
+  pendingMutationRecovery: boolean;
+  error: string | null;
   /** 이미 담긴 장소는 건너뛰고 뒤에 이어 붙인다 */
   addPlaces: (day: number, places: SchedulePlace[]) => void;
   removePlace: (day: number, placeId: string) => void;
@@ -140,6 +171,12 @@ const applyLegs = (
 export const useScheduleStore = create<ScheduleState>((set) => ({
   places: {},
   reviews: {},
+  activeVersionId: null,
+  versionNo: null,
+  loading: false,
+  mutating: false,
+  pendingMutationRecovery: false,
+  error: null,
   addPlaces: (day, places) => {
     places.forEach((place) => requireCanonicalPlaceId(place.placeId));
     set((state) => {

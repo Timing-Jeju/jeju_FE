@@ -7,6 +7,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Image,
   Platform,
   Pressable,
@@ -109,7 +110,11 @@ function ScheduleLegScreenContent() {
   const [deleteVisible, setDeleteVisible] = useState(false);
   const [path, setPath] = useState<Coord[]>([]);
 
-  const review = PLANNER_AVAILABLE ? reviews[day] : undefined;
+  const candidateReview = reviews[day];
+  const review =
+    PLANNER_AVAILABLE || candidateReview?.serverBacked
+      ? candidateReview
+      : undefined;
   const legs = review?.legs ?? [];
   const legIndex = legs.findIndex((item) => item.id === params.legId);
   const leg: RouteLeg | undefined = legs[legIndex];
@@ -207,7 +212,16 @@ function ScheduleLegScreenContent() {
             </View>
             <Pressable
               hitSlop={spacing.xs}
-              onPress={() => setDeleteVisible(true)}
+              onPress={() => {
+                if (review?.serverBacked) {
+                  Alert.alert(
+                    '준비 중이에요',
+                    '서버 일정 삭제는 일정 입력 화면에서 진행해 주세요.',
+                  );
+                  return;
+                }
+                setDeleteVisible(true);
+              }}
             >
               <Image source={trashIcon} style={styles.trashIcon} />
             </Pressable>
@@ -215,7 +229,9 @@ function ScheduleLegScreenContent() {
           <MetaRow
             items={[
               `${formatTime(leg.startTime)} - ${formatTime(leg.endTime)}`,
-              `${leg.cost.toLocaleString()}원`,
+              leg.cost === null
+                ? '요금 정보 없음'
+                : `${leg.cost.toLocaleString()}원`,
             ]}
           />
         </View>
@@ -287,7 +303,9 @@ function ScheduleLegScreenContent() {
                               {formatTime(leg.endTime)}
                             </Text>
                             <Text style={styles.connectorLabel}>
-                              {leg.cost.toLocaleString()}원
+                              {leg.cost === null
+                                ? '요금 정보 없음'
+                                : `${leg.cost.toLocaleString()}원`}
                             </Text>
                           </View>
                         ))

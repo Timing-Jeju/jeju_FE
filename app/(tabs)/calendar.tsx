@@ -37,6 +37,7 @@ import { useTripStore } from '@/store/useTripStore';
 import { datesBetween } from '@/utils/date';
 import { PLANNER_UNAVAILABLE_MESSAGE } from '@/services/plannerAvailability';
 import { useTripPersistence } from '@/hooks/useTripPersistence';
+import { useSchedulePersistence } from '@/hooks/useSchedulePersistence';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
 const CARD_BORDER = '#E9EAED';
@@ -57,6 +58,7 @@ const FLOATING_AREA_HEIGHT = 44 + spacing.md + spacing.xl;
 const PLACE_MENU = [
   { key: 'stay', label: '체류시간 변경하기' },
   { key: 'reorder', label: '일정 순서 변경하기' },
+  { key: 'move-day', label: '다른 날짜로 이동하기' },
   { key: 'remove', label: '일정 삭제하기' },
 ];
 
@@ -65,6 +67,15 @@ const PLACE_MENU = [
 export default function CalendarScreen() {
   const router = useRouter();
   const { hydrateLatestTrip } = useTripPersistence();
+  const {
+    hydrateSchedule,
+    updateItem,
+    deleteItem,
+    moveItem,
+    reorderDay,
+    discardPendingMutation,
+    retryPendingMutation,
+  } = useSchedulePersistence();
 
   const tripSaved = useTripStore((state) => state.draftSaved);
   const tripRootSaved = useTripStore((state) => state.saved);
@@ -76,11 +87,16 @@ export default function CalendarScreen() {
   const updateStayMinutes = useScheduleStore(
     (state) => state.updateStayMinutes,
   );
+  const versionNo = useScheduleStore((state) => state.versionNo);
+  const pendingMutationRecovery = useScheduleStore(
+    (state) => state.pendingMutationRecovery,
+  );
 
   const [selectedDay, setSelectedDay] = useState(1);
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [reorderOpen, setReorderOpen] = useState(false);
   const [stayTarget, setStayTarget] = useState<SchedulePlace | null>(null);
+  const [moveTarget, setMoveTarget] = useState<SchedulePlace | null>(null);
   const [menuTarget, setMenuTarget] = useState<{
     place: SchedulePlace;
     top: number;
@@ -91,10 +107,14 @@ export default function CalendarScreen() {
   useFocusEffect(
     useCallback(() => {
       setConditionNoticeVisible(!tripSaved);
-      if (!tripSaved && !tripRootSaved && !useTripStore.getState().loading) {
-        void hydrateLatestTrip().catch(() => undefined);
-      }
-    }, [hydrateLatestTrip, tripRootSaved, tripSaved]),
+      const load = async () => {
+        if (!tripSaved && !tripRootSaved && !useTripStore.getState().loading) {
+          await hydrateLatestTrip();
+        }
+        if (useTripStore.getState().tripId) await hydrateSchedule();
+      };
+      void load().catch(() => undefined);
+    }, [hydrateLatestTrip, hydrateSchedule, tripRootSaved, tripSaved]),
   );
 
   /** 여행 기본 조건이 없으면 안내 모달을 띄우고 true를 돌려준다 */
@@ -114,9 +134,65 @@ export default function CalendarScreen() {
   const dayCount = Math.max(tripDates.length, 1);
 
   const reorderItems = useMemo(
-    () => places.map((place) => ({ key: place.placeId, label: place.name })),
+    () =>
+      places.map((place, index) => ({
+        key: place.itemId ?? place.placeId ?? `local-${index}`,
+        label: place.name,
+      })),
     [places],
   );
+
+  const showMutationError = (error: unknown) => {
+    if (
+      error instanceof Error &&
+      error.name === 'SchedulePendingMutationError'
+    ) {
+      Alert.alert('이전 저장 결과를 확인해 주세요', error.message, [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '보류 기록 해제',
+          style: 'destructive',
+          onPress: () => {
+            void discardPendingMutation()
+              .then(() => hydrateSchedule())
+              .catch(showMutationError);
+          },
+        },
+      ]);
+      return;
+    }
+    Alert.alert(
+      '일정을 저장하지 못했어요',
+      error instanceof Error
+        ? error.message
+        : '최신 일정을 확인한 뒤 다시 시도해 주세요.',
+    );
+  };
+
+  const showPendingRecovery = () => {
+    Alert.alert(
+      '이전 저장 결과를 확인해 주세요',
+      '같은 요청을 같은 키로 다시 확인하거나, 보류 기록을 직접 해제할 수 있어요.',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '기록 해제',
+          style: 'destructive',
+          onPress: () => {
+            void discardPendingMutation()
+              .then(() => hydrateSchedule())
+              .catch(showMutationError);
+          },
+        },
+        {
+          text: '원래 요청 재시도',
+          onPress: () => {
+            void retryPendingMutation().catch(showMutationError);
+          },
+        },
+      ],
+    );
+  };
 
   const handleGenerate = () => {
     Alert.alert('일정 서비스 준비 중', PLANNER_UNAVAILABLE_MESSAGE);
@@ -131,25 +207,45 @@ export default function CalendarScreen() {
   };
 
   const handleMenuSelect = (key: string) => {
+    if (useScheduleStore.getState().mutating) return;
     const target = menuTarget?.place;
     setMenuTarget(null);
     if (!target) return;
 
     if (key === 'stay') setStayTarget(target);
     else if (key === 'reorder') setReorderOpen(true);
-    else if (key === 'remove') removePlace(selectedDay, target.placeId);
+    else if (key === 'move-day') setMoveTarget(target);
+    else if (key === 'remove') {
+      if (target.itemId) {
+        void deleteItem(target.itemId).catch(showMutationError);
+      } else if (target.placeId) {
+        removePlace(selectedDay, target.placeId);
+      }
+    }
   };
 
-  const handleReorder = (keys: string[]) => {
-    setReorderOpen(false);
+  const handleReorder = async (keys: string[]) => {
+    if (places.every((place) => place.itemId)) {
+      try {
+        await reorderDay(selectedDay, keys);
+        setReorderOpen(false);
+      } catch (error) {
+        showMutationError(error);
+      }
+      return;
+    }
     // 앞에서부터 원하는 자리로 하나씩 끌어다 놓는다
     keys.forEach((name, target) => {
       const current = useScheduleStore.getState().places[selectedDay] ?? [];
-      const from = current.findIndex((place) => place.placeId === name);
+      const from = current.findIndex(
+        (place, index) =>
+          (place.itemId ?? place.placeId ?? `local-${index}`) === name,
+      );
       if (from !== -1 && from !== target) {
         movePlace(selectedDay, from, target);
       }
     });
+    setReorderOpen(false);
   };
 
   return (
@@ -167,12 +263,18 @@ export default function CalendarScreen() {
         />
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{selectedDay}일차 일정 항목</Text>
+          <Text style={styles.sectionTitle}>
+            {selectedDay}일차 일정 항목{versionNo ? ` · v${versionNo}` : ''}
+          </Text>
 
           {places.length > 0 ? (
             <View>
               {places.map((place, index) => (
-                <Fragment key={place.placeId}>
+                <Fragment
+                  key={
+                    place.itemId ?? place.placeId ?? `${selectedDay}-${index}`
+                  }
+                >
                   {index > 0 && <View style={styles.rowDivider} />}
                   <View style={styles.placeRow}>
                     <View style={styles.placeInfo}>
@@ -196,6 +298,7 @@ export default function CalendarScreen() {
                       </View>
                     </View>
                     <MenuIcon
+                      accessibilityLabel="일정 항목 더보기"
                       onPress={(event) =>
                         // 누른 아이콘 바로 아래에 메뉴를 띄운다
                         setMenuTarget({
@@ -229,6 +332,11 @@ export default function CalendarScreen() {
           >
             <Text style={styles.addLabel}>+ 장소 추가하기</Text>
           </Pressable>
+          {pendingMutationRecovery && (
+            <Pressable style={styles.addButton} onPress={showPendingRecovery}>
+              <Text style={styles.addLabel}>이전 일정 저장 복구하기</Text>
+            </Pressable>
+          )}
         </View>
       </ScrollView>
 
@@ -272,7 +380,7 @@ export default function CalendarScreen() {
           title="일정을 이동할까요?"
           items={reorderItems}
           onClose={() => setReorderOpen(false)}
-          onConfirm={handleReorder}
+          onConfirm={(keys) => void handleReorder(keys)}
         />
       )}
 
@@ -285,11 +393,38 @@ export default function CalendarScreen() {
         selectedKey={stayTarget ? String(stayTarget.stayMinutes) : undefined}
         onSelect={(key) => {
           if (stayTarget) {
-            updateStayMinutes(selectedDay, stayTarget.placeId, Number(key));
+            if (stayTarget.itemId) {
+              void updateItem(stayTarget.itemId, {
+                stayMinutes: Number(key),
+              })
+                .then(() => setStayTarget(null))
+                .catch(showMutationError);
+              return;
+            }
+            if (stayTarget.placeId) {
+              updateStayMinutes(selectedDay, stayTarget.placeId, Number(key));
+            }
           }
           setStayTarget(null);
         }}
         onClose={() => setStayTarget(null)}
+      />
+
+      <OptionSheet
+        visible={moveTarget !== null}
+        options={Array.from({ length: dayCount }, (_, index) => index + 1)
+          .filter((day) => day !== selectedDay)
+          .map((day) => ({ key: String(day), label: `${day}일차` }))}
+        onSelect={(key) => {
+          const targetDay = Number(key);
+          if (!moveTarget?.itemId) return;
+          const targetSequence =
+            (useScheduleStore.getState().places[targetDay]?.length ?? 0) + 1;
+          void moveItem(moveTarget.itemId, targetDay, targetSequence)
+            .then(() => setMoveTarget(null))
+            .catch(showMutationError);
+        }}
+        onClose={() => setMoveTarget(null)}
       />
 
       {/* 여행 기본 조건을 저장하기 전에는 일정을 만들 수 없다 */}
