@@ -6,7 +6,8 @@
 - 고정 BE 계약: `Timing-Jeju/jeju_BE d1fa8184bb56b60febd483ad82d8ea16b5bb4774`
 - 브랜치: `feat/12-saved-places-api`
 - 최초 #12 commit: `c554bec`
-- 통합 FE base: `origin/main f3af3d340ec216fcec02413abf80435857fa8951`
+- #11 통합 FE base: `origin/main f3af3d340ec216fcec02413abf80435857fa8951`
+- 최종 #15 통합 FE base: `origin/main d5163ab265494da5478419bd014a3b11613f0590`
 
 ## Red
 
@@ -75,3 +76,12 @@ GET 401 단일 재요청 제한을 결합했다. saved-place wrapper와 store도
 Green에서는 mutation start/success `dataEpoch`로 stale hydration commit을 폐기하고,
 모든 충돌 복구 commit 직전에 owner/authGeneration을 다시 검증했다. create의 durable
 read/write와 POST 전체는 owner+place single-flight로 묶어 같은 요청을 공유한다.
+
+## #15 main 통합 뒤 최종 검증
+
+동시성 보정 commit 뒤 `origin/main d5163ab265494da5478419bd014a3b11613f0590`을
+충돌 없이 merge했다. 최종 `origin/main...HEAD` diff에는 #12 소유 파일만 남는다.
+
+- 전체 Jest: 36 suites, 199/199 Green
+- typecheck, lint, api:check, ui:check: Green
+- Expo web static export: 23 routes Green
