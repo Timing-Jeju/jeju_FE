@@ -33,6 +33,10 @@ import {
 import { useWeatherForecast } from '@/hooks/useWeatherForecast';
 import { getPlace, type PlaceDetail } from '@/services/places';
 import { useFavoriteStore } from '@/store/useFavoriteStore';
+import {
+  favoriteMutationErrorMessage,
+  useFavoriteSync,
+} from '@/hooks/useFavoriteSync';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
 const MEMO_BACKGROUND = '#F5F6F9';
@@ -58,6 +62,7 @@ export default function PlaceDetailScreen() {
 
 function PlaceDetailContent({ placeId }: { placeId: string }) {
   const router = useRouter();
+  useFavoriteSync();
   const insets = useSafeAreaInsets();
   const [loadedDetail, setDetail] = useState<PlaceDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -353,7 +358,7 @@ function PlaceDetailContent({ placeId }: { placeId: string }) {
         onClose={() => setMemoModalVisible(false)}
         onSave={(visitType, memo) => {
           if (!loadedDetail) return;
-          addFavorite({
+          void addFavorite({
             placeId: detail.placeId,
             name,
             category: detail.categoryLabel,
@@ -364,8 +369,14 @@ function PlaceDetailContent({ placeId }: { placeId: string }) {
               favorite?.stayMinutes ?? detail.recommendedStayMinutes ?? 60,
             direction: '',
             coord,
-          });
-          setMemoModalVisible(false);
+          })
+            .then(() => setMemoModalVisible(false))
+            .catch((error) =>
+              Alert.alert(
+                '찜을 저장하지 못했어요',
+                favoriteMutationErrorMessage(error),
+              ),
+            );
         }}
       />
 
@@ -376,8 +387,14 @@ function PlaceDetailContent({ placeId }: { placeId: string }) {
         description="찜 목록에서 삭제되며 저장한 메모도 함께 사라져요"
         onCancel={() => setDeleteModalVisible(false)}
         onConfirm={() => {
-          removeFavorite(placeId);
-          setDeleteModalVisible(false);
+          void removeFavorite(placeId)
+            .then(() => setDeleteModalVisible(false))
+            .catch((error) =>
+              Alert.alert(
+                '찜을 삭제하지 못했어요',
+                favoriteMutationErrorMessage(error),
+              ),
+            );
         }}
       />
     </View>

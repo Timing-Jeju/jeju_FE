@@ -215,7 +215,7 @@ export function createApiTransport(
       } catch (error) {
         const normalized = toApiError(error);
         const method = options.method.toUpperCase();
-        const safelyRetryable = method === 'GET' || method === 'HEAD';
+        const safelyRetryable = method === 'GET' && options.auth === 'required';
         if (normalized.status !== 401 || !safelyRetryable) throw normalized;
 
         let refreshed: string | null = null;

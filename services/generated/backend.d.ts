@@ -950,6 +950,11 @@ export interface components {
         SavedPlaceResponse: {
             /** Format: uuid */
             placeId?: string;
+            /**
+             * @description PATCH If-Match에 그대로 사용하는 현재 owner row의 strong ETag
+             * @example "sp-0123456789abcdef0123456789abcdef"
+             */
+            etag: string;
             name?: string;
             category?: string;
             regionLabel?: string;
@@ -1121,7 +1126,7 @@ export interface components {
             /** Format: int32 */
             size?: number;
             hasNext?: boolean;
-            nextCursor?: string | null;
+            nextCursor?: null | string;
         };
         TripsListResponse: {
             items: components["schemas"]["TripSummary"][];
@@ -1230,7 +1235,7 @@ export interface components {
             /** Format: int32 */
             size?: number;
             hasNext?: boolean;
-            nextCursor?: string | null;
+            nextCursor?: null | string;
         };
         PlaceDataFreshness: {
             provider?: string;
@@ -4017,6 +4022,7 @@ export interface operations {
                      *       "items": [
                      *         {
                      *           "placeId": "34000000-0000-4000-8000-000000000034",
+                     *           "etag": "\"sp-0123456789abcdef0123456789abcdef\"",
                      *           "name": "새별오름",
                      *           "category": "content-type:12",
                      *           "regionLabel": "제주시",
@@ -4114,6 +4120,7 @@ export interface operations {
                     /**
                      * @example {
                      *       "placeId": "34000000-0000-4000-8000-000000000034",
+                     *       "etag": "\"sp-0123456789abcdef0123456789abcdef\"",
                      *       "name": "새별오름",
                      *       "category": "content-type:12",
                      *       "regionLabel": "제주시",
@@ -4146,6 +4153,7 @@ export interface operations {
                     /**
                      * @example {
                      *       "placeId": "34000000-0000-4000-8000-000000000034",
+                     *       "etag": "\"sp-0123456789abcdef0123456789abcdef\"",
                      *       "name": "새별오름",
                      *       "category": "content-type:12",
                      *       "regionLabel": "제주시",
@@ -5798,6 +5806,7 @@ export interface operations {
                     /**
                      * @example {
                      *       "placeId": "34000000-0000-4000-8000-000000000034",
+                     *       "etag": "\"sp-fedcba9876543210fedcba9876543210\"",
                      *       "name": "새별오름",
                      *       "category": "content-type:12",
                      *       "regionLabel": "제주시",

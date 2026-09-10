@@ -12,6 +12,8 @@ import type { CursorPageResponse } from './types';
 
 export interface SavedPlace {
   placeId: string;
+  /** 목록/POST/PATCH body가 주는 owner row의 strong ETag */
+  etag: string;
   name: string;
   /** `content-type:12` 형식 */
   category: string;
@@ -52,12 +54,16 @@ export interface SavedPlacesListQuery {
  * 오류 code: INVALID_QUERY_PARAMETER / INVALID_CURSOR /
  * CURSOR_CONTEXT_MISMATCH (400).
  */
-export const fetchSavedPlaces = (query: SavedPlacesListQuery = {}) =>
+export const fetchSavedPlaces = (
+  query: SavedPlacesListQuery = {},
+  authContextIsCurrent?: () => boolean,
+) =>
   requestData<SavedPlacesListResponse>({
     method: 'GET',
     path: '/me/saved-places',
     auth: 'required',
     params: { ...query },
+    ...(authContextIsCurrent ? { authContextIsCurrent } : {}),
   });
 
 /**
@@ -93,6 +99,7 @@ export interface SavedPlaceCreateRequest {
 export const createSavedPlace = (
   body: SavedPlaceCreateRequest,
   idempotencyKey: string = createIdempotencyKey(),
+  authContextIsCurrent?: () => boolean,
 ): Promise<ApiResponse<SavedPlace>> =>
   request<SavedPlace>({
     method: 'POST',
@@ -100,6 +107,7 @@ export const createSavedPlace = (
     auth: 'required',
     body,
     headers: { 'Idempotency-Key': idempotencyKey },
+    ...(authContextIsCurrent ? { authContextIsCurrent } : {}),
   });
 
 /**
@@ -128,6 +136,7 @@ export const updateSavedPlace = (
   placeId: string,
   body: SavedPlaceUpdateRequest,
   etag: string,
+  authContextIsCurrent?: () => boolean,
 ): Promise<ApiResponse<SavedPlace>> =>
   request<SavedPlace>({
     method: 'PATCH',
@@ -135,17 +144,22 @@ export const updateSavedPlace = (
     auth: 'required',
     body,
     headers: { 'If-Match': etag },
+    ...(authContextIsCurrent ? { authContextIsCurrent } : {}),
   });
 
 /**
- * 찜 삭제. body와 If-Match가 없고 성공은 204다.
+ * 찜 삭제. 고정 BE 계약상 body와 If-Match가 없고 성공은 204다.
  * 이미 지웠거나 남의 것이면 404 SAVED_PLACE_NOT_FOUND로 숨긴다.
  */
-export const deleteSavedPlace = async (placeId: string): Promise<void> => {
+export const deleteSavedPlace = async (
+  placeId: string,
+  authContextIsCurrent?: () => boolean,
+): Promise<void> => {
   await request<void>({
     method: 'DELETE',
     path: `/me/saved-places/${encodeURIComponent(placeId)}`,
     auth: 'required',
+    ...(authContextIsCurrent ? { authContextIsCurrent } : {}),
   });
 };
 
@@ -153,38 +167,26 @@ export const deleteSavedPlace = async (placeId: string): Promise<void> => {
  * 찜 목록을 끝까지 모아 온다. 조건은 페이지마다 그대로 유지한다.
  * 목록 화면처럼 전체가 필요할 때 쓴다.
  */
-export const fetchAllSavedPlaces = (query: SavedPlacesListQuery = {}) =>
+export const fetchAllSavedPlaces = (
+  query: SavedPlacesListQuery = {},
+  authContextIsCurrent?: () => boolean,
+) =>
   collectPages<SavedPlace>((cursor) =>
-    fetchSavedPlaces({ ...query, size: query.size ?? 100, cursor }),
+    fetchSavedPlaces(
+      { ...query, size: query.size ?? 100, cursor },
+      authContextIsCurrent,
+    ),
   );
 
 /**
- * 이미 찜해 둔 장소의 현재 ETag를 읽는다.
- *
- * 목록 API는 ETag를 주지 않고 단건 GET도 없어서, 찬 상태로 화면에 들어오면
- * PATCH에 넣을 If-Match가 없다. 계약의 다음 규칙을 이용한다.
- *
- *   "다른 key지만 같은 owner/place와 현재 payload까지 동일: 200 current resource"
- *
- * 즉 지금 저장된 값 그대로 새 key로 POST하면 아무것도 바꾸지 않고
- * 현재 resource와 ETag를 돌려받는다.
- *
- * 넘긴 값이 서버의 현재 값과 다르면 409 SAVED_PLACE_ALREADY_EXISTS이므로,
- * 호출부는 목록을 다시 불러 최신 값으로 재시도한다.
- * 그 사이 다른 기기에서 찜을 지웠다면 이 호출이 같은 내용으로 다시 만든다.
+ * 목록 item이 ETag를 직접 주기 전의 호출부 호환 helper.
+ * 신규 화면은 목록 body의 `etag`를 보존하므로 POST readback을 사용하지 않는다.
  */
 export const readSavedPlaceEtag = async (
   place: Pick<
     SavedPlace,
-    'placeId' | 'memo' | 'tags' | 'priority' | 'targetDay'
+    'placeId' | 'etag' | 'memo' | 'tags' | 'priority' | 'targetDay'
   >,
 ): Promise<string | null> => {
-  const response = await createSavedPlace({
-    placeId: place.placeId,
-    memo: place.memo,
-    tags: place.tags,
-    priority: place.priority,
-    targetDay: place.targetDay,
-  });
-  return response.etag;
+  return place.etag;
 };

@@ -45,6 +45,10 @@ import {
   useScheduleStore,
   type SchedulePlace,
 } from '@/store/useScheduleStore';
+import {
+  favoriteMutationErrorMessage,
+  useFavoriteSync,
+} from '@/hooks/useFavoriteSync';
 import { useSchedulePersistence } from '@/hooks/useSchedulePersistence';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
@@ -57,6 +61,7 @@ const placeholderPlace = require('../assets/images/placeholder-place.png');
 
 export default function ScheduleFavoritesScreen() {
   const router = useRouter();
+  useFavoriteSync();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ day?: string }>();
   const day = Number(params.day) || 1;
@@ -84,19 +89,27 @@ export default function ScheduleFavoritesScreen() {
   };
 
   const handleAdd = async () => {
-    const places = favorites
-      .filter((place) => selectedIds.includes(place.placeId))
-      .map(
-        (place): SchedulePlace => ({
-          placeId: place.placeId,
-          name: place.name,
-          category: place.category,
-          address: place.address,
-          visitType: place.visitType,
-          stayMinutes: place.stayMinutes,
-          coord: place.coord,
-        }),
+    const selected = favorites.filter((place) =>
+      selectedIds.includes(place.placeId),
+    );
+    if (selected.some((place) => place.stayMinutes === null)) {
+      Alert.alert(
+        '체류 시간 확인이 필요해요',
+        '체류 시간이 제공되지 않은 장소는 일정에 추가할 수 없어요.',
       );
+      return;
+    }
+    const places = selected.map(
+      (place): SchedulePlace => ({
+        placeId: place.placeId,
+        name: place.name,
+        category: place.category,
+        address: place.address,
+        visitType: place.visitType,
+        stayMinutes: place.stayMinutes!,
+        coord: place.coord,
+      }),
+    );
     if (!activeVersionId) {
       Alert.alert(
         '활성 일정이 필요해요',
@@ -179,7 +192,9 @@ export default function ScheduleFavoritesScreen() {
                       <PlaceTag label={item.visitType} />
                     </View>
                     <Text style={styles.stayText}>
-                      설정 체류 {item.stayMinutes}분
+                      {item.stayMinutes === null
+                        ? '체류 시간 미제공'
+                        : `설정 체류 ${item.stayMinutes}분`}
                     </Text>
                   </View>
                 </View>
@@ -223,8 +238,15 @@ export default function ScheduleFavoritesScreen() {
         tabLabels={MEMO_EDIT_TAB_LABELS}
         onClose={() => setMemoTarget(null)}
         onSave={(visitType, memo) => {
-          if (memoTarget) updateFavorite(memoTarget.placeId, visitType, memo);
-          setMemoTarget(null);
+          if (!memoTarget) return;
+          void updateFavorite(memoTarget.placeId, visitType, memo)
+            .then(() => setMemoTarget(null))
+            .catch((error) =>
+              Alert.alert(
+                '찜을 수정하지 못했어요',
+                favoriteMutationErrorMessage(error),
+              ),
+            );
         }}
       />
     </SafeAreaView>

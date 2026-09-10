@@ -51,3 +51,18 @@ test('공개 Spring 계약에 없는 AI 생성·조회·적용은 활성화하�
   );
   expect(PLANNER_AVAILABLE).toBe(false);
 });
+
+test('저장 장소 목록 item ETag와 수정/삭제 concurrency 계약을 고정한다', () => {
+  const openapi = json('contracts/backend.openapi.json');
+  const savedPlace = openapi.components.schemas.SavedPlaceResponse;
+  expect(savedPlace.required).toContain('etag');
+  expect(savedPlace.properties.etag.pattern).toBe('^"sp-[0-9a-f]{32}"$');
+
+  const itemPath = openapi.paths['/api/v1/me/saved-places/{placeId}'];
+  expect(itemPath.patch.parameters.map((value) => value.name)).toContain(
+    'If-Match',
+  );
+  expect(itemPath.delete.parameters.map((value) => value.name)).not.toContain(
+    'If-Match',
+  );
+});

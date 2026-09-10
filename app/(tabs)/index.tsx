@@ -35,6 +35,10 @@ import type { Place } from '@/services/places';
 import { usePlaceSearch } from '@/hooks/usePlaceSearch';
 import { useMapPlaceSelection } from '@/hooks/useMapPlaceSelection';
 import { useFavoriteStore } from '@/store/useFavoriteStore';
+import {
+  favoriteMutationErrorMessage,
+  useFavoriteSync,
+} from '@/hooks/useFavoriteSync';
 import { useScheduleStore } from '@/store/useScheduleStore';
 import { activeReview } from '@/utils/schedule';
 
@@ -88,6 +92,7 @@ const formatDistance = (meters: number) =>
 
 export default function HomeScreen() {
   const router = useRouter();
+  useFavoriteSync();
   const insets = useSafeAreaInsets();
   const mapRef = useRef<NaverMapViewRef>(null);
 
@@ -370,9 +375,16 @@ export default function HomeScreen() {
                 <LikeIcon
                   liked={liked}
                   onPress={() => {
-                    if (liked) removeFavorite(selectedPlace.placeId);
+                    if (liked)
+                      void removeFavorite(selectedPlace.placeId).catch(
+                        (error) =>
+                          Alert.alert(
+                            '찜을 삭제하지 못했어요',
+                            favoriteMutationErrorMessage(error),
+                          ),
+                      );
                     else
-                      addFavorite({
+                      void addFavorite({
                         placeId: selectedPlace.placeId,
                         name: selectedPlace.name,
                         category: selectedPlace.categoryLabel,
@@ -382,7 +394,12 @@ export default function HomeScreen() {
                         stayMinutes: selectedPlace.recommendedStayMinutes ?? 60,
                         direction: '',
                         coord: selectedPlace.coord,
-                      });
+                      }).catch((error) =>
+                        Alert.alert(
+                          '찜을 저장하지 못했어요',
+                          favoriteMutationErrorMessage(error),
+                        ),
+                      );
                   }}
                 />
               </View>
