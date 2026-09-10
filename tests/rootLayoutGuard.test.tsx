@@ -4,8 +4,13 @@ import { RootLayoutNav } from '@/app/_layout';
 import { useUserStore } from '@/store/useUserStore';
 
 const mockProfileState = { consentStatus: 'idle' };
+const mockUsePushRegistration = jest.fn();
 
 jest.mock('@/services/appSession', () => ({ startAppSession: jest.fn() }));
+jest.mock('@/hooks/usePushRegistration', () => ({
+  usePushRegistration: (userId: string | null) =>
+    mockUsePushRegistration(userId),
+}));
 jest.mock('react-native-reanimated', () => ({}));
 jest.mock('@/components/useColorScheme', () => ({
   useColorScheme: () => 'light',
@@ -64,6 +69,7 @@ beforeEach(() => {
 
 test('로그인 사용자는 일반 signup에 접근하지 않는다', async () => {
   const screen = await render(<RootLayoutNav />);
+  expect(mockUsePushRegistration).toHaveBeenCalledWith('user-a');
   expect(screen.queryByText('signup')).toBeNull();
   expect(screen.getByText('(tabs)')).toBeTruthy();
 });
