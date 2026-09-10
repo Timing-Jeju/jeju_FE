@@ -91,6 +91,9 @@ export function createNotificationPreferenceController(
   const sessionFor = (userId: string) =>
     active?.userId === userId ? active : null;
 
+  const currentGeneration = (userId: string) =>
+    sessionFor(userId)?.generation ?? null;
+
   const snapshot = (userId: string): PreferenceState =>
     active?.userId === userId
       ? (states.get(userId) ?? { status: 'idle' })
@@ -162,5 +165,12 @@ export function createNotificationPreferenceController(
     return operation;
   };
 
-  return { activate, deactivate, snapshot, load, update };
+  return {
+    activate,
+    deactivate,
+    currentGeneration,
+    snapshot,
+    load,
+    update,
+  };
 }

@@ -9,15 +9,19 @@ const controller = createNotificationPreferenceController();
 export function useNotificationPreferences(userId: string | null) {
   const [rendered, setRendered] = useState<{
     userId: string;
+    generation: number;
     state: ReturnType<typeof controller.snapshot>;
   } | null>(null);
 
   useEffect(() => {
     controller.activate(userId);
     if (!userId) return;
+    const generation = controller.currentGeneration(userId)!;
     let active = true;
     void controller.load(userId).then((state) => {
-      if (active) setRendered({ userId, state });
+      if (active && controller.currentGeneration(userId) === generation) {
+        setRendered({ userId, generation, state });
+      }
     });
     return () => {
       active = false;
@@ -28,8 +32,18 @@ export function useNotificationPreferences(userId: string | null) {
   const update = useCallback(
     async (patch: NotificationPreferencePatch) => {
       if (!userId) return { status: 'unavailable' } as const;
+      const generation = controller.currentGeneration(userId);
       const state = await controller.update(userId, patch);
-      setRendered({ userId, state });
+      if (
+        generation !== null &&
+        controller.currentGeneration(userId) === generation
+      ) {
+        setRendered((current) =>
+          current && current.userId !== userId
+            ? current
+            : { userId, generation, state },
+        );
+      }
       return state;
     },
     [userId],

@@ -187,7 +187,6 @@ export function createPushRegistrationController(dependencies: Dependencies) {
     // 호출 즉시 닫아 새 AppState/token/UI intent를 차단한다.
     session.closing = true;
     session.dirty = null;
-    session.abort.abort();
     const preceding = session.pending;
     const operation = (async () => {
       if (preceding) await preceding.catch(() => unavailable);

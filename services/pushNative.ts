@@ -18,7 +18,9 @@ const permissionStatus = (
   permission: Notifications.NotificationPermissionsStatus,
 ): PushPermissionStatus => {
   if (permission.granted) return 'GRANTED';
-  return permission.canAskAgain ? 'NOT_DETERMINED' : 'DENIED';
+  return permission.status === Notifications.PermissionStatus.DENIED
+    ? 'DENIED'
+    : 'NOT_DETERMINED';
 };
 
 const safeLocale = () => {

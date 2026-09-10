@@ -171,6 +171,49 @@ test('logout closing은 대기 PUT 뒤 DELETE하고 이후 sync/token PUT을 차
   expect(register).toHaveBeenCalledTimes(1);
 });
 
+test('이미 dispatch된 PUT은 서버 완료를 기다린 뒤 DELETE로 닫는다', async () => {
+  const native = makeNative();
+  const events: string[] = [];
+  let finishServer!: () => void;
+  let dispatchedSignal!: AbortSignal;
+  const register = jest.fn(
+    (_id: string, _body: unknown, signal?: AbortSignal) =>
+      new Promise<void>((resolve, reject) => {
+        dispatchedSignal = signal!;
+        finishServer = () => {
+          events.push('put-committed');
+          resolve();
+        };
+        signal?.addEventListener(
+          'abort',
+          () => reject(new Error('client aborted before server outcome')),
+          { once: true },
+        );
+      }),
+  );
+  const remove = jest.fn(async () => {
+    events.push('delete');
+  });
+  const controller = createPushRegistrationController({
+    native,
+    getDeviceId: async () => deviceId,
+    register,
+    remove,
+  });
+  controller.activate('user-a');
+
+  void controller.sync('user-a');
+  while (register.mock.calls.length === 0) await Promise.resolve();
+  const closing = controller.unregister('user-a');
+
+  expect(dispatchedSignal.aborted).toBe(false);
+  expect(remove).not.toHaveBeenCalled();
+  finishServer();
+  await closing;
+
+  expect(events).toEqual(['put-committed', 'delete']);
+});
+
 test('진행 중 PUT의 token refresh는 dirty intent로 최신 token을 재등록한다', async () => {
   const native = makeNative();
   let refresh!: () => void;
