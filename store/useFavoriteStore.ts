@@ -397,10 +397,11 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
       } catch (error) {
         recoveryError = error;
       }
-      if (authContextIsCurrent() && get().ownerId === ownerId)
-        set({ notice: missingDeleteEtagNotice });
       if (recoveryError) throw recoveryError;
-      throw new ApiError({ status: 0, code: 'INVALID_ETAG' });
+      if (!authContextIsCurrent() || get().ownerId !== ownerId)
+        throw new ApiError({ status: 401, code: 'AUTHENTICATION_REQUIRED' });
+      set({ notice: missingDeleteEtagNotice });
+      throw new ApiError({ status: 0, code: 'SAVED_PLACE_DELETE_REFRESHED' });
     }
     try {
       await deleteSavedPlace(placeId, current.etag, authContextIsCurrent);

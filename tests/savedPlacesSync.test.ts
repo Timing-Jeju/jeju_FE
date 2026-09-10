@@ -670,7 +670,11 @@ test('ETag가 없으면 DELETE를 보내지 않고 최신 목록을 재조회해
 
   await expect(
     useFavoriteStore.getState().removeFavorite(placeId),
-  ).rejects.toMatchObject({ code: 'INVALID_ETAG' });
+  ).rejects.toMatchObject({
+    code: 'SAVED_PLACE_DELETE_REFRESHED',
+    message:
+      '최신 찜 정보를 다시 불러왔어요. 삭제할 장소를 확인한 뒤 다시 시도해 주세요.',
+  });
 
   expect(deleteSavedPlace).not.toHaveBeenCalled();
   expect(fetchAllSavedPlaces).toHaveBeenCalledTimes(1);
@@ -678,6 +682,29 @@ test('ETag가 없으면 DELETE를 보내지 않고 최신 목록을 재조회해
     notice:
       '최신 찜 정보를 다시 불러왔어요. 삭제할 장소를 확인한 뒤 다시 시도해 주세요.',
     favorites: [expect.objectContaining({ etag: etag2 })],
+  });
+});
+
+test('ETag 재조회가 실패하면 최신 목록을 불러왔다는 성공 notice를 남기지 않는다', async () => {
+  jest
+    .mocked(fetchAllSavedPlaces)
+    .mockRejectedValueOnce(
+      new ApiError({ status: 0, code: 'CLIENT_NETWORK_ERROR' }),
+    );
+  useFavoriteStore.setState({
+    ownerId: ownerA,
+    status: 'ready',
+    favorites: [{ ...favoriteInput, etag: undefined, coord: null }],
+  });
+
+  await expect(
+    useFavoriteStore.getState().removeFavorite(placeId),
+  ).rejects.toMatchObject({ code: 'CLIENT_NETWORK_ERROR' });
+
+  expect(deleteSavedPlace).not.toHaveBeenCalled();
+  expect(useFavoriteStore.getState()).toMatchObject({
+    status: 'error',
+    notice: null,
   });
 });
 
