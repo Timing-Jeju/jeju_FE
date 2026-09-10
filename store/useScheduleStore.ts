@@ -79,7 +79,8 @@ export interface RouteLeg {
   /** 'H:MM' */
   startTime: string;
   endTime: string;
-  cost: number;
+  /** 서버가 제공하지 않은 요금은 null이며 0원으로 합성하지 않는다. */
+  cost: number | null;
   distanceText: string;
   /** 위험 / 주의 사유 (안전한 구간은 null) */
   reason: string | null;
@@ -101,6 +102,8 @@ export interface DayReview {
   dirty: boolean;
   /** 확정하기를 누른 뒤인지 */
   confirmed: boolean;
+  /** Spring schedule API에서 조회한 검토 데이터인지 여부 */
+  serverBacked?: boolean;
 }
 
 /** 검토 결과 전체의 위험도 (가장 나쁜 구간을 따른다) */

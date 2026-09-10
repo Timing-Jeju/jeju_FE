@@ -1,6 +1,7 @@
 import {
   createSchedulePersistenceActions,
   scheduleToPlaces,
+  scheduleToReviews,
   SchedulePersistenceValidationError,
 } from '@/services/schedulePersistence';
 import * as scheduleApi from '@/services/api/schedule';
@@ -10,6 +11,22 @@ import { ApiError } from '@/services/api/problem';
 import { useScheduleStore } from '@/store/useScheduleStore';
 import { useTripStore } from '@/store/useTripStore';
 import { useUserStore } from '@/store/useUserStore';
+
+const mockJournalStorage = new Map<string, string>();
+jest.mock('@react-native-async-storage/async-storage', () => ({
+  __esModule: true,
+  default: {
+    getItem: jest.fn(
+      async (key: string) => mockJournalStorage.get(key) ?? null,
+    ),
+    setItem: jest.fn(async (key: string, value: string) => {
+      mockJournalStorage.set(key, value);
+    }),
+    removeItem: jest.fn(async (key: string) => {
+      mockJournalStorage.delete(key);
+    }),
+  },
+}));
 
 jest.mock('@/services/api/schedule', () => ({ fetchSchedule: jest.fn() }));
 jest.mock('@/services/api/scheduleItems', () => ({
@@ -61,7 +78,7 @@ const item = (
 const schedule = (
   version = version1,
   items = [item(item1, place1, 1, '성산일출봉')],
-) => ({
+): scheduleApi.TripSchedule => ({
   tripId,
   scheduleVersion: {
     scheduleVersionId: version,
@@ -130,6 +147,7 @@ const mutation = {
 };
 
 beforeEach(() => {
+  mockJournalStorage.clear();
   useUserStore.setState({ userId: 'user-1' });
   useTripStore.setState({
     tripId,
@@ -154,6 +172,45 @@ test('adapter는 서버 순서와 opaque itemId를 보존하고 custom 항목도
     [item2, null, '바다 산책'],
   ]);
   expect(scheduleToPlaces(schedule(version1, []))).toEqual({ 1: [] });
+});
+
+test('서버 legs는 요금·거리 누락을 합성하지 않고 기존 검토 모델에 연결한다', () => {
+  const value = schedule(version1, [
+    item(item1, place1, 1, '성산일출봉'),
+    item(item2, place2, 2, '섭지코지'),
+  ]);
+  value.days[0].legs = [
+    {
+      legId: '63000000-0000-4000-8000-000000000001',
+      sequenceNo: 1,
+      fromItemId: item1,
+      toItemId: item2,
+      transportMode: 'public_transit',
+      plannedDepartureAt: '2026-09-10T10:00:00+09:00',
+      plannedArrivalAt: '2026-09-10T10:30:00+09:00',
+      walkMinutes: 5,
+      waitMinutes: 5,
+      rideMinutes: 20,
+      transferMinutes: 0,
+      durationMinutes: 30,
+      bufferMinutes: 10,
+      distanceMeters: null,
+      estimatedFareKrw: null,
+      riskScore: null,
+    },
+  ];
+  const places = scheduleToPlaces(value);
+
+  const review = scheduleToReviews(value, places)[1];
+
+  expect(review.serverBacked).toBe(true);
+  expect(review.legs[0]).toMatchObject({
+    from: '성산일출봉',
+    to: '섭지코지',
+    cost: null,
+    distanceText: '거리 정보 없음',
+    reason: '위험도 정보 미제공',
+  });
 });
 
 test('조회는 active version과 서버 항목을 store에 함께 반영한다', async () => {
@@ -376,7 +433,7 @@ test('사용자가 바뀐 뒤 도착한 일정 조회 응답은 새 세션 store
   expect(useScheduleStore.getState().places).toEqual({});
 });
 
-test('결과가 불명확한 실패는 화면을 바꾸지 않고 같은 payload 재시도에 Idempotency-Key를 재사용한다', async () => {
+test('결과가 불명확한 실패는 action 재생성 뒤에도 같은 payload·lock·Idempotency-Key를 재사용한다', async () => {
   useScheduleStore.setState({
     places: scheduleToPlaces(schedule()),
     activeVersionId: version1,
@@ -387,16 +444,161 @@ test('결과가 불명확한 실패는 화면을 바꾸지 않고 같은 payload
     .mockRejectedValueOnce(new Error('network lost'))
     .mockResolvedValueOnce(mutation);
   jest.mocked(scheduleApi.fetchSchedule).mockResolvedValue(schedule(version2));
-  const actions = createSchedulePersistenceActions();
-
-  await expect(actions.updateItem(item1, { stayMinutes: 90 })).rejects.toThrow(
-    'network lost',
-  );
+  await expect(
+    createSchedulePersistenceActions().updateItem(item1, { stayMinutes: 90 }),
+  ).rejects.toThrow('network lost');
   expect(useScheduleStore.getState().places[1][0].stayMinutes).toBe(60);
 
-  await actions.updateItem(item1, { stayMinutes: 90 });
+  await createSchedulePersistenceActions().updateItem(item1, {
+    stayMinutes: 90,
+  });
 
   const firstKey = jest.mocked(itemApi.updateScheduleItem).mock.calls[0][4];
   const retryKey = jest.mocked(itemApi.updateScheduleItem).mock.calls[1][4];
   expect(retryKey).toBe(firstKey);
+  expect(jest.mocked(itemApi.updateScheduleItem).mock.calls[1][3]).toEqual({
+    etag: etag1,
+    expectedActiveScheduleVersionId: version1,
+  });
+});
+
+test('POST 성공 뒤 GET 실패는 저장 성공이며 재진입해도 POST를 다시 보내지 않는다', async () => {
+  useScheduleStore.setState({ activeVersionId: version1, places: { 1: [] } });
+  jest.mocked(itemApi.createScheduleItem).mockResolvedValue(mutation);
+  jest
+    .mocked(scheduleApi.fetchSchedule)
+    .mockRejectedValueOnce(new Error('refresh failed'))
+    .mockResolvedValueOnce(schedule(version2));
+  const place = {
+    placeId: place1,
+    name: '성산일출봉',
+    category: '관광지',
+    address: '제주',
+    visitType: '선택방문' as const,
+    stayMinutes: 60,
+    coord: null,
+  };
+
+  await expect(
+    createSchedulePersistenceActions().createPlace(1, place),
+  ).resolves.toMatchObject({ saved: true, refreshed: false });
+  expect(itemApi.createScheduleItem).toHaveBeenCalledTimes(1);
+
+  await expect(
+    createSchedulePersistenceActions().createPlace(1, place),
+  ).resolves.toMatchObject({ saved: true, refreshed: true });
+  expect(itemApi.createScheduleItem).toHaveBeenCalledTimes(1);
+});
+
+test('느린 이전 GET은 mutation 뒤 최신 GET 결과를 덮지 않는다', async () => {
+  useScheduleStore.setState({
+    places: scheduleToPlaces(schedule()),
+    activeVersionId: version1,
+    versionNo: 1,
+  });
+  let resolveOld!: (value: ReturnType<typeof schedule>) => void;
+  jest
+    .mocked(scheduleApi.fetchSchedule)
+    .mockReturnValueOnce(new Promise((done) => (resolveOld = done)))
+    .mockResolvedValueOnce(
+      schedule(version2, [
+        { ...item(item1, place1, 1, '성산일출봉'), stayMinutes: 90 },
+      ]),
+    );
+  jest.mocked(itemApi.updateScheduleItem).mockResolvedValue(mutation);
+
+  const oldRequest = createSchedulePersistenceActions().hydrateSchedule();
+  await createSchedulePersistenceActions().updateItem(item1, {
+    stayMinutes: 90,
+  });
+  resolveOld(schedule(version1));
+  await oldRequest;
+
+  expect(useScheduleStore.getState().activeVersionId).toBe(version2);
+  expect(useScheduleStore.getState().places[1][0].stayMinutes).toBe(90);
+});
+
+test('처리 중인 mutation이 있으면 두 번째 mutation을 보내지 않는다', async () => {
+  useScheduleStore.setState({
+    places: scheduleToPlaces(schedule()),
+    activeVersionId: version1,
+  });
+  let resolveMutation!: (value: typeof mutation) => void;
+  jest
+    .mocked(itemApi.updateScheduleItem)
+    .mockReturnValue(new Promise((done) => (resolveMutation = done)));
+  const pending = createSchedulePersistenceActions().updateItem(item1, {
+    stayMinutes: 90,
+  });
+
+  await expect(
+    createSchedulePersistenceActions().deleteItem(item1),
+  ).rejects.toThrow('저장 중');
+  expect(itemApi.deleteScheduleItem).not.toHaveBeenCalled();
+
+  jest.mocked(scheduleApi.fetchSchedule).mockResolvedValue(schedule(version2));
+  resolveMutation(mutation);
+  await pending;
+});
+
+test('H:mm 시작 시각을 HH:mm:ss+09:00으로 정규화한다', async () => {
+  useTripStore.setState({
+    dayTimes: { '2026-09-10': { start: '9:00', end: '18:00' } },
+  });
+  useScheduleStore.setState({ activeVersionId: version1, places: { 1: [] } });
+  jest.mocked(itemApi.createScheduleItem).mockResolvedValue(mutation);
+  jest.mocked(scheduleApi.fetchSchedule).mockResolvedValue(schedule(version2));
+
+  await createSchedulePersistenceActions().createPlace(1, {
+    placeId: place1,
+    name: '성산일출봉',
+    category: '관광지',
+    address: '제주',
+    visitType: null,
+    stayMinutes: 60,
+    coord: null,
+  });
+
+  expect(
+    jest.mocked(itemApi.createScheduleItem).mock.calls[0][1].plannedStartAt,
+  ).toBe('2026-09-10T09:00:00+09:00');
+});
+
+test('A→logout→A는 같은 userId여도 이전 요청 응답을 폐기한다', async () => {
+  let resolve!: (value: ReturnType<typeof schedule>) => void;
+  jest
+    .mocked(scheduleApi.fetchSchedule)
+    .mockReturnValue(new Promise((done) => (resolve = done)));
+  const pending = createSchedulePersistenceActions().hydrateSchedule();
+
+  useUserStore.setState({ userId: null });
+  useUserStore.setState({ userId: 'user-1' });
+  resolve(schedule());
+
+  await expect(pending).rejects.toThrow('로그인 사용자가 변경');
+  expect(useScheduleStore.getState().places).toEqual({});
+});
+
+test('PATCH는 허용 필드만 새 객체로 복사해 위치·초과 필드를 제거한다', async () => {
+  useScheduleStore.setState({
+    places: scheduleToPlaces(schedule()),
+    activeVersionId: version1,
+  });
+  jest.mocked(itemApi.updateScheduleItem).mockResolvedValue(mutation);
+  jest.mocked(scheduleApi.fetchSchedule).mockResolvedValue(schedule(version2));
+
+  await createSchedulePersistenceActions().updateItem(item1, {
+    stayMinutes: 90,
+    latitude: 33.4,
+    longitude: 126.9,
+    extra: true,
+  } as never);
+
+  expect(itemApi.updateScheduleItem).toHaveBeenCalledWith(
+    tripId,
+    item1,
+    { stayMinutes: 90 },
+    expect.any(Object),
+    expect.any(String),
+  );
 });

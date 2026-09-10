@@ -109,7 +109,11 @@ function ScheduleLegScreenContent() {
   const [deleteVisible, setDeleteVisible] = useState(false);
   const [path, setPath] = useState<Coord[]>([]);
 
-  const review = PLANNER_AVAILABLE ? reviews[day] : undefined;
+  const candidateReview = reviews[day];
+  const review =
+    PLANNER_AVAILABLE || candidateReview?.serverBacked
+      ? candidateReview
+      : undefined;
   const legs = review?.legs ?? [];
   const legIndex = legs.findIndex((item) => item.id === params.legId);
   const leg: RouteLeg | undefined = legs[legIndex];
@@ -215,7 +219,9 @@ function ScheduleLegScreenContent() {
           <MetaRow
             items={[
               `${formatTime(leg.startTime)} - ${formatTime(leg.endTime)}`,
-              `${leg.cost.toLocaleString()}원`,
+              leg.cost === null
+                ? '요금 정보 없음'
+                : `${leg.cost.toLocaleString()}원`,
             ]}
           />
         </View>
@@ -287,7 +293,9 @@ function ScheduleLegScreenContent() {
                               {formatTime(leg.endTime)}
                             </Text>
                             <Text style={styles.connectorLabel}>
-                              {leg.cost.toLocaleString()}원
+                              {leg.cost === null
+                                ? '요금 정보 없음'
+                                : `${leg.cost.toLocaleString()}원`}
                             </Text>
                           </View>
                         ))

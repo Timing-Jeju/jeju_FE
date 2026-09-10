@@ -7,12 +7,29 @@ import {
   type ScheduleItemPatchRequest,
 } from '@/services/api/scheduleItems';
 import { fetchSchedule, type TripSchedule } from '@/services/api/schedule';
+import {
+  captureAuthScope,
+  isCurrentAuthScope,
+  type AuthScope,
+} from '@/services/authScope';
 import { createIdempotencyKey } from '@/services/api/idempotency';
 import { hasCode, isApiError } from '@/services/api/problem';
 import { fetchTrip } from '@/services/api/trips';
-import { useScheduleStore, type SchedulePlace } from '@/store/useScheduleStore';
+import {
+  clearScheduleMutationJournal,
+  loadScheduleMutationJournal,
+  saveScheduleMutationJournal,
+  type ScheduleMutationCompletion,
+  type ScheduleMutationJournal,
+  type ScheduleMutationLocks,
+} from '@/services/scheduleMutationJournal';
+import {
+  useScheduleStore,
+  type DayReview,
+  type RouteLeg,
+  type SchedulePlace,
+} from '@/store/useScheduleStore';
 import { useTripStore } from '@/store/useTripStore';
-import { useUserStore } from '@/store/useUserStore';
 
 const STRONG_TRIP_ETAG = /^"[A-Za-z0-9._:-]{1,128}"$/;
 const TERMINAL_STATUSES = new Set(['completed', 'skipped', 'missed']);
@@ -44,7 +61,6 @@ export class ScheduleSessionChangedError extends Error {
   }
 }
 
-/** 서버 순서와 opaque item ID를 그대로 유지하며 기존 카드 모델로 옮긴다. */
 export const scheduleToPlaces = (
   schedule: TripSchedule,
   previous: Record<number, SchedulePlace[]> = {},
@@ -53,7 +69,7 @@ export const scheduleToPlaces = (
     schedule.days.map((day) => [
       day.dayNo,
       [...day.items]
-        .sort((left, right) => left.sequenceNo - right.sequenceNo)
+        .sort((a, b) => a.sequenceNo - b.sequenceNo)
         .map((item) => {
           const known = (previous[day.dayNo] ?? []).find(
             (place) => place.placeId && place.placeId === item.placeId,
@@ -79,15 +95,81 @@ export const scheduleToPlaces = (
     ]),
   );
 
-interface Scope {
-  userId: string | null;
-}
+const timePart = (value: string) => value.slice(11, 16);
+const formatDistance = (meters: number | null) =>
+  meters === null
+    ? '거리 정보 없음'
+    : meters >= 1000
+      ? `${(meters / 1000).toFixed(1)}km`
+      : `${meters}m`;
 
-const captureScope = (): Scope => ({ userId: useUserStore.getState().userId });
-const assertScope = (scope: Scope) => {
-  if (scope.userId !== useUserStore.getState().userId) {
-    throw new ScheduleSessionChangedError();
-  }
+/** 서버가 계산한 구간만 기존 검토/상세 화면 모델로 옮긴다. */
+export const scheduleToReviews = (
+  schedule: TripSchedule,
+  places: Record<number, SchedulePlace[]>,
+): Record<number, DayReview> =>
+  Object.fromEntries(
+    schedule.days.map((day) => {
+      const byId = new Map(
+        (places[day.dayNo] ?? []).map((item) => [item.itemId, item]),
+      );
+      const legs: RouteLeg[] = [...day.legs]
+        .sort((a, b) => a.sequenceNo - b.sequenceNo)
+        .map((leg) => {
+          const from = byId.get(leg.fromItemId);
+          const to = byId.get(leg.toItemId);
+          return {
+            id: leg.legId,
+            from: from?.name ?? '출발지 정보 없음',
+            to: to?.name ?? '도착지 정보 없음',
+            fromCoord: from?.coord ?? null,
+            toCoord: to?.coord ?? null,
+            status: 'cautionary',
+            startTime: timePart(leg.plannedDepartureAt),
+            endTime: timePart(leg.plannedArrivalAt),
+            cost: leg.estimatedFareKrw,
+            distanceText: formatDistance(leg.distanceMeters),
+            reason:
+              leg.riskScore === null
+                ? '위험도 정보 미제공'
+                : `서버 위험도 점수 ${leg.riskScore}`,
+            steps: [
+              {
+                kind: 'place',
+                name: from?.name ?? '출발지 정보 없음',
+                detail: `${leg.transportMode} · ${leg.durationMinutes}분`,
+                buses: [],
+                caution: false,
+              },
+              {
+                kind: 'place',
+                name: to?.name ?? '도착지 정보 없음',
+                detail: null,
+                buses: [],
+                caution: false,
+              },
+            ],
+            departStayMinutes: from?.stayMinutes ?? 0,
+            slackMinutes: leg.bufferMinutes,
+            buses: [],
+          };
+        });
+      return [
+        day.dayNo,
+        {
+          mode: 'manual',
+          summary: `서버 일정 버전 ${schedule.scheduleVersion.versionNo}`,
+          legs,
+          dirty: schedule.scheduleVersion.feasibilityStale,
+          confirmed: false,
+          serverBacked: true,
+        } satisfies DayReview,
+      ];
+    }),
+  );
+
+const assertScope = (scope: AuthScope) => {
+  if (!isCurrentAuthScope(scope)) throw new ScheduleSessionChangedError();
 };
 
 const messageOf = (error: unknown) =>
@@ -142,28 +224,46 @@ const assertEditable = (itemId: string) => {
   return found;
 };
 
-const setSchedule = (value: TripSchedule, scope: Scope) => {
+let requestRevision = 0;
+let mutationInFlight = false;
+
+const setSchedule = (
+  value: TripSchedule,
+  scope: AuthScope,
+  revision: number,
+) => {
   assertScope(scope);
-  useScheduleStore.setState((state) => ({
-    places: scheduleToPlaces(value, state.places),
-    activeVersionId: value.scheduleVersion.scheduleVersionId,
-    versionNo: value.scheduleVersion.versionNo,
-    loading: false,
-    mutating: false,
-    error: null,
-  }));
+  if (revision !== requestRevision) return false;
+  useScheduleStore.setState((state) => {
+    const places = scheduleToPlaces(value, state.places);
+    return {
+      places,
+      reviews: scheduleToReviews(value, places),
+      activeVersionId: value.scheduleVersion.scheduleVersionId,
+      versionNo: value.scheduleVersion.versionNo,
+      loading: false,
+      mutating: false,
+      error: null,
+    };
+  });
+  return true;
 };
 
-const refreshSchedule = async (tripId: string, scope: Scope) => {
+const refreshSchedule = async (
+  tripId: string,
+  scope: AuthScope,
+  revision: number,
+) => {
   const value = await fetchSchedule(tripId);
-  setSchedule(value, scope);
+  setSchedule(value, scope, revision);
   return value;
 };
 
 const refreshConflict = async (
   error: unknown,
   tripId: string,
-  scope: Scope,
+  scope: AuthScope,
+  revision: number,
 ) => {
   if (
     !hasCode(
@@ -173,9 +273,8 @@ const refreshConflict = async (
       'PRECONDITION_FAILED',
       'CONFLICT',
     )
-  ) {
+  )
     return;
-  }
   try {
     const latestTrip = await fetchTrip(tripId);
     assertScope(scope);
@@ -184,9 +283,9 @@ const refreshConflict = async (
       etag: latestTrip.etag,
       serverTrip: latestTrip.data,
     });
-    await refreshSchedule(tripId, scope);
+    await refreshSchedule(tripId, scope, revision);
   } catch {
-    // 원래 mutation 오류를 유지한다. 사용자가 명시적으로 다시 조회할 수 있다.
+    // 원래 mutation 오류를 유지한다.
   }
 };
 
@@ -205,137 +304,262 @@ const plannedStartForAppend = (dayNo: number) => {
   const trip = useTripStore.getState();
   const date = trip.serverTrip?.days.find((day) => day.dayNo === dayNo)?.date;
   const time = date ? trip.dayTimes[date]?.start : undefined;
-  if (!date || !time || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+  const match = time?.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  if (!date || !match) {
     throw new SchedulePersistenceValidationError(
       '해당 날짜의 활동 시작 시간을 먼저 설정해 주세요.',
     );
   }
-  return `${date}T${time}:00+09:00`;
+  return `${date}T${match[1].padStart(2, '0')}:${match[2]}:00+09:00`;
+};
+
+const allowedPatch = (
+  body: ScheduleItemPatchRequest,
+): ScheduleItemPatchRequest => {
+  const next: ScheduleItemPatchRequest = {};
+  const keys: (keyof ScheduleItemPatchRequest)[] = [
+    'placeId',
+    'accommodationId',
+    'transportEventId',
+    'title',
+    'plannedStartAt',
+    'stayMinutes',
+    'bufferAfterMinutes',
+    'required',
+    'memo',
+  ];
+  keys.forEach((key) => {
+    if (body[key] !== undefined) Object.assign(next, { [key]: body[key] });
+  });
+  return next;
+};
+
+type MutationResponse = {
+  data: { activeScheduleVersionId: string; etag: string; versionNo: number };
+  etag: string | null;
+};
+
+const applyCompletion = (
+  completion: ScheduleMutationCompletion,
+  scope: AuthScope,
+) => {
+  assertScope(scope);
+  useTripStore.setState({ etag: completion.etag });
+  useTripStore.setState((state) => ({
+    serverTrip: state.serverTrip
+      ? {
+          ...state.serverTrip,
+          activeScheduleVersionId: completion.activeScheduleVersionId,
+        }
+      : null,
+  }));
+  useScheduleStore.setState({
+    activeVersionId: completion.activeScheduleVersionId,
+    versionNo: completion.versionNo,
+  });
 };
 
 export function createSchedulePersistenceActions() {
-  const pendingKeys = new Map<string, string>();
   const hydrateSchedule = async () => {
-    const scope = captureScope();
+    if (mutationInFlight) {
+      throw new SchedulePersistenceValidationError(
+        '일정을 저장 중이에요. 저장이 끝난 뒤 다시 불러와 주세요.',
+      );
+    }
+    const scope = captureAuthScope();
     const tripId = useTripStore.getState().tripId;
-    if (!tripId) {
+    if (!tripId)
       throw new SchedulePersistenceValidationError(
         '저장된 여행을 먼저 선택해 주세요.',
       );
-    }
+    const revision = ++requestRevision;
     useScheduleStore.setState({ loading: true, error: null });
     try {
-      return await refreshSchedule(tripId, scope);
-    } catch (error) {
+      const journal = await loadScheduleMutationJournal();
       assertScope(scope);
-      useScheduleStore.setState({ loading: false, error: messageOf(error) });
+      const completedHere =
+        journal?.userId === scope.userId &&
+        journal.tripId === tripId &&
+        journal.completion
+          ? journal
+          : null;
+      if (completedHere?.completion) {
+        applyCompletion(completedHere.completion, scope);
+      }
+      const value = await refreshSchedule(tripId, scope, revision);
+      if (completedHere) await clearScheduleMutationJournal();
+      return value;
+    } catch (error) {
+      if (!isCurrentAuthScope(scope)) {
+        useScheduleStore.setState({ loading: false });
+        throw new ScheduleSessionChangedError();
+      }
+      if (revision === requestRevision) {
+        useScheduleStore.setState({ loading: false, error: messageOf(error) });
+      }
       throw error;
     }
   };
 
-  const mutate = async (
+  const mutate = async <TRequest>(
     fingerprint: string,
+    request: TRequest,
     operation: (
       tripId: string,
-      locks: ReturnType<typeof requireContext>['locks'],
+      request: TRequest,
+      locks: ScheduleMutationLocks,
       key: string,
-    ) => Promise<{
-      data: { activeScheduleVersionId: string; etag: string };
-      etag: string | null;
-    }>,
+    ) => Promise<MutationResponse>,
   ) => {
-    const scope = captureScope();
-    const { tripId, locks } = requireContext();
-    useScheduleStore.setState({ mutating: true, error: null });
+    if (mutationInFlight) {
+      throw new SchedulePersistenceValidationError(
+        '다른 일정을 저장 중이에요. 잠시 후 다시 시도해 주세요.',
+      );
+    }
+    const context = requireContext();
+    mutationInFlight = true;
+    const revision = ++requestRevision;
+    const scope = captureAuthScope();
+    let journal: ScheduleMutationJournal | null = null;
+    useScheduleStore.setState({ mutating: true, loading: false, error: null });
     try {
-      const key = pendingKeys.get(fingerprint) ?? createIdempotencyKey();
-      pendingKeys.set(fingerprint, key);
-      const response = await operation(tripId, locks, key);
+      const existing = await loadScheduleMutationJournal();
       assertScope(scope);
       if (
-        response.etag &&
-        response.data.etag &&
-        response.etag !== response.data.etag
+        existing &&
+        (existing.userId !== scope.userId || existing.tripId !== context.tripId)
       ) {
+        await clearScheduleMutationJournal();
+      } else if (existing && existing.fingerprint !== fingerprint) {
         throw new SchedulePersistenceValidationError(
-          '일정 저장 응답의 ETag가 일치하지 않아요.',
+          '이전 일정 저장 결과를 먼저 확인해 주세요.',
+        );
+      } else if (existing) {
+        journal = existing;
+      }
+
+      if (!journal) {
+        journal = {
+          version: 1,
+          userId: scope.userId,
+          tripId: context.tripId,
+          fingerprint,
+          idempotencyKey: createIdempotencyKey(),
+          locks: context.locks,
+          request,
+          completion: null,
+        };
+        await saveScheduleMutationJournal(journal);
+      }
+
+      if (!journal.completion) {
+        const response = await operation(
+          journal.tripId,
+          journal.request as TRequest,
+          journal.locks,
+          journal.idempotencyKey,
+        );
+        assertScope(scope);
+        if (
+          response.etag &&
+          response.data.etag &&
+          response.etag !== response.data.etag
+        ) {
+          throw new SchedulePersistenceValidationError(
+            '일정 저장 응답의 ETag가 일치하지 않아요.',
+          );
+        }
+        const nextEtag = response.etag ?? response.data.etag;
+        if (!STRONG_TRIP_ETAG.test(nextEtag)) {
+          throw new SchedulePersistenceValidationError(
+            '일정 저장 응답의 버전 정보를 확인할 수 없어요.',
+          );
+        }
+        journal = {
+          ...journal,
+          completion: {
+            activeScheduleVersionId: response.data.activeScheduleVersionId,
+            etag: nextEtag,
+            versionNo: response.data.versionNo,
+          },
+        };
+        await saveScheduleMutationJournal(journal);
+      }
+
+      if (!journal.completion) {
+        throw new SchedulePersistenceValidationError(
+          '일정 저장 결과를 확인할 수 없어요.',
         );
       }
-      const nextEtag = response.etag ?? response.data.etag;
-      if (!STRONG_TRIP_ETAG.test(nextEtag)) {
-        throw new SchedulePersistenceValidationError(
-          '일정 저장 응답의 버전 정보를 확인할 수 없어요.',
-        );
+      applyCompletion(journal.completion, scope);
+      try {
+        const schedule = await refreshSchedule(journal.tripId, scope, revision);
+        await clearScheduleMutationJournal();
+        return { saved: true as const, refreshed: true as const, schedule };
+      } catch (refreshError) {
+        assertScope(scope);
+        useScheduleStore.setState({
+          mutating: false,
+          error: `일정은 저장됐지만 최신 내용을 불러오지 못했어요. ${messageOf(refreshError)}`,
+        });
+        return {
+          saved: true as const,
+          refreshed: false as const,
+          refreshError,
+        };
       }
-      useTripStore.setState({ etag: nextEtag });
-      useTripStore.setState((state) => ({
-        serverTrip: state.serverTrip
-          ? {
-              ...state.serverTrip,
-              activeScheduleVersionId: response.data.activeScheduleVersionId,
-            }
-          : null,
-      }));
-      useScheduleStore.setState({
-        activeVersionId: response.data.activeScheduleVersionId,
-      });
-      const refreshed = await refreshSchedule(tripId, scope);
-      pendingKeys.delete(fingerprint);
-      return refreshed;
     } catch (error) {
       assertScope(scope);
       if (isApiError(error) && error.status > 0)
-        pendingKeys.delete(fingerprint);
-      await refreshConflict(error, tripId, scope);
+        await clearScheduleMutationJournal();
+      await refreshConflict(error, context.tripId, scope, revision);
       assertScope(scope);
       useScheduleStore.setState({ mutating: false, error: messageOf(error) });
       throw error;
+    } finally {
+      mutationInFlight = false;
+      useScheduleStore.setState({ mutating: false });
     }
   };
 
   const createPlace = async (dayNo: number, place: SchedulePlace) => {
-    if (!place.placeId) {
+    if (!place.placeId)
       throw new SchedulePersistenceValidationError(
         '추가할 장소를 다시 선택해 주세요.',
       );
-    }
-    const sequenceNo =
-      (useScheduleStore.getState().places[dayNo]?.length ?? 0) + 1;
-    const plannedStartAt = plannedStartForAppend(dayNo);
-    return await mutate(
-      `create:${dayNo}:${place.placeId}:${sequenceNo}`,
-      (tripId, locks, key) =>
-        createScheduleItem(
-          tripId,
-          {
-            dayNo,
-            sequenceNo,
-            itemType: 'place_visit',
-            placeId: place.placeId!,
-            plannedStartAt,
-            stayMinutes: place.stayMinutes,
-            bufferAfterMinutes: 0,
-            required: place.visitType === '필수방문',
-            memo: null,
-          },
-          locks,
-          key,
-        ),
+    const request = {
+      dayNo,
+      sequenceNo: (useScheduleStore.getState().places[dayNo]?.length ?? 0) + 1,
+      itemType: 'place_visit' as const,
+      placeId: place.placeId,
+      plannedStartAt: plannedStartForAppend(dayNo),
+      stayMinutes: place.stayMinutes,
+      bufferAfterMinutes: 0,
+      required: place.visitType === '필수방문',
+      memo: null,
+    };
+    return mutate(
+      `create:${JSON.stringify(request)}`,
+      request,
+      (tripId, body, locks, key) =>
+        createScheduleItem(tripId, body, locks, key),
     );
   };
 
   const updateItem = async (itemId: string, body: ScheduleItemPatchRequest) => {
     assertEditable(itemId);
-    return await mutate(
-      `update:${itemId}:${JSON.stringify(body)}`,
-      (tripId, locks, key) =>
-        updateScheduleItem(tripId, itemId, body, locks, key),
+    const request = allowedPatch(body);
+    return mutate(
+      `update:${itemId}:${JSON.stringify(request)}`,
+      request,
+      (tripId, patch, locks, key) =>
+        updateScheduleItem(tripId, itemId, patch, locks, key),
     );
   };
 
   const deleteItem = async (itemId: string) => {
     assertEditable(itemId);
-    return await mutate(`delete:${itemId}`, (tripId, locks, key) =>
+    return mutate(`delete:${itemId}`, {}, (tripId, _body, locks, key) =>
       deleteScheduleItem(tripId, itemId, locks, key),
     );
   };
@@ -354,11 +578,10 @@ export function createSchedulePersistenceActions() {
         '이동할 날짜와 순서를 확인해 주세요.',
       );
     }
-    if (!targetExists) {
+    if (!targetExists)
       throw new SchedulePersistenceValidationError(
         '이동할 날짜를 다시 선택해 주세요.',
       );
-    }
     const targetCount =
       useScheduleStore.getState().places[targetDayNo]?.length ?? 0;
     const maxSequence =
@@ -368,16 +591,12 @@ export function createSchedulePersistenceActions() {
         '이동할 순서를 확인해 주세요.',
       );
     }
-    return await mutate(
-      `move:${itemId}:${targetDayNo}:${targetSequenceNo}`,
-      (tripId, locks, key) =>
-        moveScheduleItem(
-          tripId,
-          itemId,
-          { targetDayNo, targetSequenceNo },
-          locks,
-          key,
-        ),
+    const request = { targetDayNo, targetSequenceNo };
+    return mutate(
+      `move:${itemId}:${JSON.stringify(request)}`,
+      request,
+      (tripId, target, locks, key) =>
+        moveScheduleItem(tripId, itemId, target, locks, key),
     );
   };
 
@@ -396,10 +615,11 @@ export function createSchedulePersistenceActions() {
       );
     }
     orderedItemIds.forEach(assertEditable);
-    return await mutate(
+    const request = [{ dayNo, orderedItemIds }];
+    return mutate(
       `reorder:${dayNo}:${orderedItemIds.join(',')}`,
-      (tripId, locks, key) =>
-        reorderSchedule(tripId, [{ dayNo, orderedItemIds }], locks, key),
+      request,
+      (tripId, order, locks, key) => reorderSchedule(tripId, order, locks, key),
     );
   };
 

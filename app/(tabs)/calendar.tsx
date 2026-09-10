@@ -58,6 +58,7 @@ const FLOATING_AREA_HEIGHT = 44 + spacing.md + spacing.xl;
 const PLACE_MENU = [
   { key: 'stay', label: '체류시간 변경하기' },
   { key: 'reorder', label: '일정 순서 변경하기' },
+  { key: 'move-day', label: '다른 날짜로 이동하기' },
   { key: 'remove', label: '일정 삭제하기' },
 ];
 
@@ -66,7 +67,7 @@ const PLACE_MENU = [
 export default function CalendarScreen() {
   const router = useRouter();
   const { hydrateLatestTrip } = useTripPersistence();
-  const { hydrateSchedule, updateItem, deleteItem, reorderDay } =
+  const { hydrateSchedule, updateItem, deleteItem, moveItem, reorderDay } =
     useSchedulePersistence();
 
   const tripSaved = useTripStore((state) => state.draftSaved);
@@ -79,11 +80,13 @@ export default function CalendarScreen() {
   const updateStayMinutes = useScheduleStore(
     (state) => state.updateStayMinutes,
   );
+  const versionNo = useScheduleStore((state) => state.versionNo);
 
   const [selectedDay, setSelectedDay] = useState(1);
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [reorderOpen, setReorderOpen] = useState(false);
   const [stayTarget, setStayTarget] = useState<SchedulePlace | null>(null);
+  const [moveTarget, setMoveTarget] = useState<SchedulePlace | null>(null);
   const [menuTarget, setMenuTarget] = useState<{
     place: SchedulePlace;
     top: number;
@@ -158,6 +161,7 @@ export default function CalendarScreen() {
 
     if (key === 'stay') setStayTarget(target);
     else if (key === 'reorder') setReorderOpen(true);
+    else if (key === 'move-day') setMoveTarget(target);
     else if (key === 'remove') {
       if (target.itemId) {
         void deleteItem(target.itemId).catch(showMutationError);
@@ -206,7 +210,9 @@ export default function CalendarScreen() {
         />
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{selectedDay}일차 일정 항목</Text>
+          <Text style={styles.sectionTitle}>
+            {selectedDay}일차 일정 항목{versionNo ? ` · v${versionNo}` : ''}
+          </Text>
 
           {places.length > 0 ? (
             <View>
@@ -239,6 +245,7 @@ export default function CalendarScreen() {
                       </View>
                     </View>
                     <MenuIcon
+                      accessibilityLabel="일정 항목 더보기"
                       onPress={(event) =>
                         // 누른 아이콘 바로 아래에 메뉴를 띄운다
                         setMenuTarget({
@@ -343,6 +350,23 @@ export default function CalendarScreen() {
           setStayTarget(null);
         }}
         onClose={() => setStayTarget(null)}
+      />
+
+      <OptionSheet
+        visible={moveTarget !== null}
+        options={Array.from({ length: dayCount }, (_, index) => index + 1)
+          .filter((day) => day !== selectedDay)
+          .map((day) => ({ key: String(day), label: `${day}일차` }))}
+        onSelect={(key) => {
+          const targetDay = Number(key);
+          if (!moveTarget?.itemId) return;
+          const targetSequence =
+            (useScheduleStore.getState().places[targetDay]?.length ?? 0) + 1;
+          void moveItem(moveTarget.itemId, targetDay, targetSequence)
+            .then(() => setMoveTarget(null))
+            .catch(showMutationError);
+        }}
+        onClose={() => setMoveTarget(null)}
       />
 
       {/* 여행 기본 조건을 저장하기 전에는 일정을 만들 수 없다 */}

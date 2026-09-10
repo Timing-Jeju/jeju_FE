@@ -48,6 +48,44 @@ test('미지원 검토는 기존 헤더·빈 상태를 표시하고 과거 모�
   expect(screen.queryByText('과거 모의 결과')).toBeNull();
 });
 
+test('공개 서버 일정 구간은 AI planner flag가 꺼져도 검토 화면에 표시한다', async () => {
+  useScheduleStore.setState({
+    reviews: {
+      1: {
+        summary: '서버 일정 버전 2',
+        mode: 'manual',
+        dirty: false,
+        confirmed: false,
+        serverBacked: true,
+        legs: [
+          {
+            id: 'leg-1',
+            from: '성산일출봉',
+            to: '섭지코지',
+            fromCoord: null,
+            toCoord: null,
+            status: 'cautionary',
+            startTime: '09:00',
+            endTime: '09:30',
+            cost: 0,
+            distanceText: '1.2km',
+            reason: '서버 위험도 점수 20',
+            steps: [],
+            departStayMinutes: 60,
+            slackMinutes: 10,
+            buses: [],
+          },
+        ],
+      },
+    },
+  });
+
+  const screen = await render(<Review />);
+  expect(screen.getByText('성산일출봉')).toBeTruthy();
+  expect(screen.getByText('섭지코지')).toBeTruthy();
+  expect(screen.queryByText(/일정 서비스 준비 중/)).toBeNull();
+});
+
 test('미지원 구간 상세는 기존 빈 상태를 표시하고 경로 API를 호출하지 않는다', async () => {
   const screen = await render(<Leg />);
   expect(screen.getByText('상세 일정')).toBeTruthy();

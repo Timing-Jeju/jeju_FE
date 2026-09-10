@@ -102,7 +102,9 @@ function LegCard({
       <MetaRow
         items={[
           `${formatTime(leg.startTime)} - ${formatTime(leg.endTime)}`,
-          `${leg.cost.toLocaleString()}원`,
+          leg.cost === null
+            ? '요금 정보 없음'
+            : `${leg.cost.toLocaleString()}원`,
         ]}
       />
 
@@ -326,7 +328,11 @@ function ScheduleReviewScreenContent() {
     [startDate, endDate],
   );
 
-  const review = PLANNER_AVAILABLE ? reviews[selectedDay] : undefined;
+  const candidateReview = reviews[selectedDay];
+  const review =
+    PLANNER_AVAILABLE || candidateReview?.serverBacked
+      ? candidateReview
+      : undefined;
   const legs = useMemo(() => review?.legs ?? [], [review]);
 
   // 마지막 날에만 확정하고, 그 전에는 다음 날 검토로 넘어간다
