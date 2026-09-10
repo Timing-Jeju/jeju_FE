@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import { isCanonicalPlaceId } from '@/services/canonicalId';
 
 import type { Coord } from '@/services/naverApi';
+import type { Accommodation } from '@/services/api/accommodations';
+import type { TransportEvent } from '@/services/api/transportEvents';
+import type { Trip, TripListItem } from '@/services/api/trips';
 
 export type TripTransportMode = 'bus' | 'taxi' | 'walk';
 export type ArrivalTransport = '비행기' | '선박';
@@ -40,10 +43,20 @@ export interface TripConditions {
   transport: TripTransportMode[];
 }
 
-interface TripState extends TripConditions {
-  /** 서버 저장 여부. 현재 로컬 입력은 이 값을 변경하지 않는다. */
+export interface TripState extends TripConditions {
+  /** 서버 trip root 저장 여부. BE가 제공하지 않는 하위 aggregate 조회 여부와는 별개다. */
   saved: boolean;
   draftSaved: boolean;
+  tripId: string | null;
+  etag: string | null;
+  serverTrip: Trip | null;
+  trips: TripListItem[];
+  accommodations: Record<string, Accommodation>;
+  transportEvents: Partial<Record<'arrival' | 'departure', TransportEvent>>;
+  loading: boolean;
+  serverError: string | null;
+  pendingTripCreate: { fingerprint: string; key: string } | null;
+  pendingAccommodationCreate: { fingerprint: string; key: string } | null;
   saveConditions: (conditions: TripConditions) => void;
 }
 
@@ -62,8 +75,18 @@ export const useTripStore = create<TripState>((set) => ({
   transport: [],
   saved: false,
   draftSaved: false,
+  tripId: null,
+  etag: null,
+  serverTrip: null,
+  trips: [],
+  accommodations: {},
+  transportEvents: {},
+  loading: false,
+  serverError: null,
+  pendingTripCreate: null,
+  pendingAccommodationCreate: null,
   saveConditions: (conditions) =>
-    set({ ...conditions, draftSaved: true, saved: false }),
+    set({ ...conditions, draftSaved: true, saved: false, serverError: null }),
 }));
 
 type LodgingFields = Pick<

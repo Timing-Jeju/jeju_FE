@@ -34,6 +34,7 @@ import {
 } from '@/constants';
 import type { Place } from '@/services/places';
 import { usePlaceSearch } from '@/hooks/usePlaceSearch';
+import { useTripPersistence } from '@/hooks/useTripPersistence';
 import {
   isLodgingComplete,
   useTripStore,
@@ -337,34 +338,47 @@ type OrderGuard = 'schedule' | 'dayTime' | null;
 
 export default function TripConditionsScreen() {
   const router = useRouter();
-  const saveConditions = useTripStore((state) => state.saveConditions);
-  const stored = useTripStore();
+  const tripLoading = useTripStore((state) => state.loading);
+  const storedStartDate = useTripStore((state) => state.startDate);
+  const storedEndDate = useTripStore((state) => state.endDate);
+  const storedArrivalTransport = useTripStore(
+    (state) => state.arrivalTransport,
+  );
+  const storedArrivalTime = useTripStore((state) => state.arrivalTime);
+  const storedDepartureTransport = useTripStore(
+    (state) => state.departureTransport,
+  );
+  const storedDepartureTime = useTripStore((state) => state.departureTime);
+  const storedDayTimes = useTripStore((state) => state.dayTimes);
+  const storedLodgingMode = useTripStore((state) => state.lodgingMode);
+  const storedLodging = useTripStore((state) => state.lodging);
+  const storedDailyLodgings = useTripStore((state) => state.dailyLodgings);
+  const storedStyles = useTripStore((state) => state.styles);
+  const storedTransport = useTripStore((state) => state.transport);
+  const { saveTrip } = useTripPersistence();
 
   // 여행 일정
-  const [startDate, setStartDate] = useState(stored.startDate);
-  const [endDate, setEndDate] = useState(stored.endDate);
+  const [startDate, setStartDate] = useState(storedStartDate);
+  const [endDate, setEndDate] = useState(storedEndDate);
   const [arrivalTransport, setArrivalTransport] =
-    useState<ArrivalTransport | null>(stored.arrivalTransport);
-  const [arrivalTime, setArrivalTime] = useState(stored.arrivalTime);
+    useState<ArrivalTransport | null>(storedArrivalTransport);
+  const [arrivalTime, setArrivalTime] = useState(storedArrivalTime);
   const [departureTransport, setDepartureTransport] =
-    useState<ArrivalTransport | null>(stored.departureTransport);
-  const [departureTime, setDepartureTime] = useState(stored.departureTime);
+    useState<ArrivalTransport | null>(storedDepartureTransport);
+  const [departureTime, setDepartureTime] = useState(storedDepartureTime);
   // 하루 활동 시간
-  const [dayTimes, setDayTimes] = useState<Record<string, DayTime>>(
-    stored.dayTimes,
-  );
+  const [dayTimes, setDayTimes] =
+    useState<Record<string, DayTime>>(storedDayTimes);
   // 숙소 / 스타일 / 이동수단
   const [lodgingMode, setLodgingMode] = useState<LodgingMode | null>(
-    stored.lodgingMode,
+    storedLodgingMode,
   );
-  const [lodging, setLodging] = useState<TripLodging | null>(stored.lodging);
-  const [dailyLodgings, setDailyLodgings] = useState<
-    Record<string, TripLodging>
-  >(stored.dailyLodgings);
-  const [styleTags, setStyleTags] = useState<string[]>(stored.styles);
-  const [transportModes, setTransportModes] = useState<TripTransportMode[]>(
-    stored.transport,
-  );
+  const [lodging, setLodging] = useState<TripLodging | null>(storedLodging);
+  const [dailyLodgings, setDailyLodgings] =
+    useState<Record<string, TripLodging>>(storedDailyLodgings);
+  const [styleTags, setStyleTags] = useState<string[]>(storedStyles);
+  const [transportModes, setTransportModes] =
+    useState<TripTransportMode[]>(storedTransport);
 
   // 바텀시트 / 모달
   const [scheduleOpen, setScheduleOpen] = useState(false);
@@ -444,8 +458,8 @@ export default function TripConditionsScreen() {
     setLodgingOpen(true);
   };
 
-  const handleSave = () => {
-    saveConditions({
+  const handleSave = async () => {
+    const conditions = {
       startDate,
       endDate,
       arrivalTransport,
@@ -458,12 +472,23 @@ export default function TripConditionsScreen() {
       dailyLodgings,
       styles: styleTags,
       transport: transportModes,
-    });
-    Alert.alert(
-      '앱에 임시 보관했어요',
-      '서버에 저장되지 않으며 앱을 종료하면 입력이 사라져요.',
-    );
-    router.back();
+    };
+    try {
+      // hook이 요청 전에 입력을 store에 보존해 충돌/네트워크 오류여도 다시 입력하지 않는다.
+      await saveTrip(conditions);
+      Alert.alert(
+        '여행 기본 정보를 저장했어요',
+        '여행 날짜와 서버가 지원하는 기본 이동수단만 서버에 저장했어요. 여행 스타일·하루 활동 시간·숙소·입출도 상세는 메모리 임시 입력이며 앱을 종료하면 사라져요.',
+      );
+      router.back();
+    } catch (error) {
+      Alert.alert(
+        '저장하지 못했어요',
+        error instanceof Error
+          ? error.message
+          : '입력은 그대로 보관했어요. 다시 시도해 주세요.',
+      );
+    }
   };
 
   return (
@@ -720,9 +745,9 @@ export default function TripConditionsScreen() {
 
       <View style={styles.footer}>
         <Button
-          title="기본 조건 임시 보관"
-          disabled={!canSave}
-          onPress={handleSave}
+          title={tripLoading ? '저장 중...' : '기본 조건 저장'}
+          disabled={!canSave || tripLoading}
+          onPress={() => void handleSave()}
         />
       </View>
 
