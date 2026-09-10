@@ -13,7 +13,8 @@ const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 
 test('OpenAPI와 runtime manifest는 검증한 backend SHA/checksum에 고정된다', () => {
   const source = json('contracts/backend.source.json');
-  expect(source.sourceCommit).toMatch(/^[0-9a-f]{40}$/);
+  expect(source.sourceCommit).toBe('f91c9c4fac1a162f1e20af096280c47ee0fe69e6');
+  expect(source.sourceBranch).toBe('fix/248-saved-place-delete-cas');
   expect(sha256(read('contracts/backend.openapi.json'))).toBe(
     source.sourceOpenApiSha256,
   );
@@ -54,6 +55,7 @@ test('공개 Spring 계약에 없는 AI 생성·조회·적용은 활성화하�
 
 test('저장 장소 목록 item ETag와 수정/삭제 concurrency 계약을 고정한다', () => {
   const openapi = json('contracts/backend.openapi.json');
+  const runtime = json('contracts/backend.runtime.json');
   const savedPlace = openapi.components.schemas.SavedPlaceResponse;
   expect(savedPlace.required).toContain('etag');
   expect(savedPlace.properties.etag.pattern).toBe('^"sp-[0-9a-f]{32}"$');
@@ -62,7 +64,29 @@ test('저장 장소 목록 item ETag와 수정/삭제 concurrency 계약을 고�
   expect(itemPath.patch.parameters.map((value) => value.name)).toContain(
     'If-Match',
   );
-  expect(itemPath.delete.parameters.map((value) => value.name)).not.toContain(
-    'If-Match',
+  const deleteIfMatch = itemPath.delete.parameters.find(
+    (value) => value.name === 'If-Match',
   );
+  expect(deleteIfMatch).toMatchObject({
+    in: 'header',
+    required: true,
+  });
+  expect(itemPath.delete.responses).toEqual(
+    expect.objectContaining({
+      204: expect.any(Object),
+      400: expect.any(Object),
+      404: expect.any(Object),
+      409: expect.any(Object),
+    }),
+  );
+  expect(
+    runtime.operations['DELETE /api/v1/me/saved-places/{placeId}'],
+  ).toMatchObject({
+    statuses: [204, 400, 401, 403, 404, 409, 500],
+    problems: {
+      400: ['INVALID_REQUEST', expect.any(String)],
+      404: ['SAVED_PLACE_NOT_FOUND', expect.any(String)],
+      409: ['SAVED_PLACE_VERSION_CONFLICT', expect.any(String)],
+    },
+  });
 });

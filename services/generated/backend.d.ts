@@ -371,7 +371,7 @@ export interface paths {
         post?: never;
         /**
          * 관심 장소 삭제
-         * @description 관심 장소를 삭제합니다. request body와 성공 response content는 없습니다.
+         * @description 직전 관심 장소 strong ETag가 일치할 때만 삭제합니다. request body와 성공 response content는 없습니다.
          */
         delete: operations["savedPlacesDelete"];
         options?: never;
@@ -5691,7 +5691,13 @@ export interface operations {
     savedPlacesDelete: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /**
+                 * @description 목록 또는 직전 관심 장소 mutation 응답의 strong ETag를 큰따옴표까지 그대로 전달합니다.
+                 * @example "sp-0123456789abcdef0123456789abcdef"
+                 */
+                "If-Match": string;
+            };
             path: {
                 /**
                  * @description lowercase canonical UUID 장소 식별자
@@ -5757,6 +5763,28 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ApiProblemDetails"];
                 };
             };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/saved-place-version-conflict",
+                     *       "title": "관심 장소가 이미 변경되었습니다",
+                     *       "status": 409,
+                     *       "detail": "최신 관심 장소를 조회한 뒤 다시 요청해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "SAVED_PLACE_VERSION_CONFLICT",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
             500: components["responses"]["InternalServerProblem"];
         };
     };
@@ -5765,8 +5793,8 @@ export interface operations {
             query?: never;
             header: {
                 /**
-                 * @description 직전 관심 장소 응답 ETag를 큰따옴표까지 그대로 전달
-                 * @example "saved-place.34.v1"
+                 * @description 목록 또는 직전 관심 장소 mutation 응답의 strong ETag를 큰따옴표까지 그대로 전달합니다.
+                 * @example "sp-0123456789abcdef0123456789abcdef"
                  */
                 "If-Match": string;
             };
@@ -5883,7 +5911,7 @@ export interface operations {
                      *       "type": "https://api.timing-jeju.com/problems/saved-place-version-conflict",
                      *       "title": "관심 장소가 이미 변경되었습니다",
                      *       "status": 409,
-                     *       "detail": "최신 관심 장소를 조회한 뒤 다시 수정해 주세요.",
+                     *       "detail": "최신 관심 장소를 조회한 뒤 다시 요청해 주세요.",
                      *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
                      *       "code": "SAVED_PLACE_VERSION_CONFLICT",
                      *       "traceId": "0123456789abcdef0123456789abcdef",

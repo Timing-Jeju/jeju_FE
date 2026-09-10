@@ -1,11 +1,11 @@
 # Spring API wrapper coverage
 
-Backend: `Timing-Jeju/jeju_BE@d1fa8184bb56b60febd483ad82d8ea16b5bb4774` (`develop`)
+Backend: `Timing-Jeju/jeju_BE@f91c9c4fac1a162f1e20af096280c47ee0fe69e6` (`fix/248-saved-place-delete-cas`)
 
 | Operation | Wrapper | 화면 연결 | 선행 조건 |
 | --- | --- | --- | --- |
 | `DELETE /api/v1/me/push-devices/{deviceId}` | `push.ts#deletePushDevice` | deferred | Supabase session |
-| `DELETE /api/v1/me/saved-places/{placeId}` | `savedPlaces.ts#deleteSavedPlace` | connected | Supabase session; fixed backend contract has no delete If-Match |
+| `DELETE /api/v1/me/saved-places/{placeId}` | `savedPlaces.ts#deleteSavedPlace` | connected | session and hydrated list item strong ETag |
 | `DELETE /api/v1/trips/{tripId}` | `trips.ts#deleteTrip` | deferred | Supabase session |
 | `DELETE /api/v1/trips/{tripId}/accommodations/{accommodationId}` | `accommodations.ts#deleteAccommodation` | deferred | session and latest trip ETag |
 | `DELETE /api/v1/trips/{tripId}/schedule-items/{itemId}` | `scheduleItems.ts#deleteScheduleItem` | deferred | session, ETag, schedule version, Idempotency-Key |
