@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { Alert } from 'react-native';
 
@@ -11,6 +11,8 @@ import {
 } from '@/services/pendingConsent';
 import { useProfileLegalStore } from '@/store/useProfileLegalStore';
 import { useUserStore } from '@/store/useUserStore';
+
+const mockRouterBack = jest.fn();
 
 jest.mock('@/services/api/legal', () => ({
   fetchLegalDocuments: jest.fn(),
@@ -27,7 +29,7 @@ jest.mock('@/services/pendingConsent', () => ({
 }));
 jest.mock('expo-web-browser', () => ({ openBrowserAsync: jest.fn() }));
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ back: jest.fn() }),
+  useRouter: () => ({ back: mockRouterBack }),
 }));
 jest.mock(
   'react-native-safe-area-context',
@@ -176,6 +178,46 @@ test('409는 최신 v2를 다시 불러와 체크를 초기화하고 명시적 �
     ],
     expect.any(Function),
   );
+});
+
+test('A 재동의 중 B로 전환되면 늦은 실패를 성공 처리하지 않는다', async () => {
+  let rejectConsent!: (error: ApiError) => void;
+  jest.mocked(updateLegalConsents).mockImplementationOnce(
+    () =>
+      new Promise((_, reject) => {
+        rejectConsent = reject;
+      }),
+  );
+  const screen = await render(<SignupScreen />);
+  await waitFor(() => screen.getByText('[필수] 서비스 이용약관'));
+  await fireEvent.press(screen.getByText('[필수] 만 14세 이상입니다.'));
+  await fireEvent.press(screen.getByText('[필수] 서비스 이용약관'));
+  await fireEvent.press(screen.getByText('[필수] 개인정보 처리방침'));
+  await fireEvent.press(screen.getAllByText('회원가입').at(-1)!);
+
+  await act(async () => {
+    useUserStore.setState({
+      authGeneration: 2,
+      userId: '00000000-0000-4000-8000-000000000002',
+    });
+    useProfileLegalStore
+      .getState()
+      .resetForUser('00000000-0000-4000-8000-000000000002');
+    rejectConsent(
+      new ApiError({ status: 503, code: 'PROFILE_DATA_UNAVAILABLE' }),
+    );
+    await Promise.resolve();
+  });
+
+  await waitFor(() => expect(updateLegalConsents).toHaveBeenCalledTimes(1));
+  expect(mockRouterBack).not.toHaveBeenCalled();
+  expect(clearPendingConsentIntent).not.toHaveBeenCalled();
+  expect(screen.getByText(/서비스 이용 약관에 동의해주세요/)).toBeTruthy();
+  expect(useProfileLegalStore.getState()).toMatchObject({
+    ownerUserId: '00000000-0000-4000-8000-000000000002',
+    consentStatus: 'idle',
+    consentError: null,
+  });
 });
 
 test('legal GET 503에서는 나이 체크와 무관하게 다음 단계가 비활성화된다', async () => {

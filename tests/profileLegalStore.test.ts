@@ -90,7 +90,7 @@ test.each([
     transition();
     expect(authContextIsCurrent?.()).toBe(false);
     finish(profile('user-a', '변경'));
-    await saving;
+    await expect(saving).rejects.toMatchObject({ status: 401 });
   },
 );
 
@@ -145,6 +145,44 @@ test('필수 약관만 동의 payload로 만들고 서버 409/422를 성공으�
   expect(useProfileLegalStore.getState()).toMatchObject({
     consentStatus: 'error',
     consentError: expect.stringContaining('최신'),
+  });
+});
+
+test('동의 mutation 중 사용자 전환은 성공 resolve하지 않고 새 사용자 상태를 보존한다', async () => {
+  const required = {
+    documentId: '10000000-0000-4000-8000-000000000001',
+    type: 'terms' as const,
+    version: '1.0.0',
+    title: '필수 이용약관',
+    contentUrl: 'https://legal.example.invalid/terms',
+    required: true,
+    effectiveAt: '2026-09-10T00:00:00Z',
+  };
+  jest.mocked(fetchLegalDocuments).mockResolvedValueOnce({
+    evaluatedAt: '2026-09-10T00:00:00Z',
+    locale: 'ko-KR',
+    items: [required],
+  });
+  let rejectOld!: (error: ApiError) => void;
+  jest
+    .mocked(updateLegalConsents)
+    .mockImplementationOnce(
+      () => new Promise((_, reject) => (rejectOld = reject)),
+    );
+  await useProfileLegalStore.getState().loadLegalDocuments();
+  const saving = useProfileLegalStore
+    .getState()
+    .saveRequiredConsents('user-a', new Set([required.documentId]));
+
+  useUserStore.setState({ userId: 'user-b', authGeneration: 2 });
+  useProfileLegalStore.getState().resetForUser('user-b');
+  rejectOld(new ApiError({ status: 503, code: 'PROFILE_DATA_UNAVAILABLE' }));
+
+  await expect(saving).rejects.toMatchObject({ status: 401 });
+  expect(useProfileLegalStore.getState()).toMatchObject({
+    ownerUserId: 'user-b',
+    consentStatus: 'idle',
+    consentError: null,
   });
 });
 

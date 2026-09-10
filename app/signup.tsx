@@ -157,13 +157,24 @@ export default function SignupScreen() {
         .catch(() => undefined);
       return;
     }
+    const authGeneration = useUserStore.getState().authGeneration;
+    const authContextIsCurrent = () => {
+      const current = useUserStore.getState();
+      return (
+        current.isLoggedIn &&
+        current.userId === userId &&
+        current.authGeneration === authGeneration
+      );
+    };
     void saveRequiredConsents(userId, agreed)
       .then(async () => {
-        await clearPendingConsentIntent(userId);
+        if (!authContextIsCurrent()) return;
+        await clearPendingConsentIntent(userId, authContextIsCurrent);
+        if (!authContextIsCurrent()) return;
         router.back();
       })
       .catch(async (error) => {
-        if (hasCode(error, 'PROFILE_CONFLICT')) {
+        if (authContextIsCurrent() && hasCode(error, 'PROFILE_CONFLICT')) {
           setAgreed(new Set(['age']));
           await loadLegalDocuments().catch(() => undefined);
         }

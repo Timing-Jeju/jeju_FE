@@ -39,6 +39,9 @@ let epoch = 0;
 const errorMessage = (error: unknown) =>
   isApiError(error) ? error.message : '서버에 연결하지 못했습니다.';
 
+const cancelledMutation = () =>
+  new ApiError({ status: 401, code: 'AUTHENTICATION_REQUIRED' });
+
 const emptyState = (ownerUserId: string | null) => ({
   ownerUserId,
   profile: null,
@@ -94,13 +97,25 @@ export const useProfileLegalStore = create<ProfileLegalState>((set, get) => ({
         { nickname: nickname.trim() },
         authContextIsCurrent,
       );
-      if (started !== epoch || get().ownerUserId !== userId) return;
+      if (
+        started !== epoch ||
+        get().ownerUserId !== userId ||
+        !authContextIsCurrent()
+      ) {
+        throw cancelledMutation();
+      }
       if (profile.userId !== userId) {
         throw new ApiError({ status: 401, code: 'INVALID_ACCESS_TOKEN' });
       }
       set({ profile, profileStatus: 'ready' });
     } catch (error) {
-      if (started !== epoch || get().ownerUserId !== userId) return;
+      if (
+        started !== epoch ||
+        get().ownerUserId !== userId ||
+        !authContextIsCurrent()
+      ) {
+        throw cancelledMutation();
+      }
       set({ profileStatus: 'error', profileError: errorMessage(error) });
       throw error;
     }
@@ -150,10 +165,22 @@ export const useProfileLegalStore = create<ProfileLegalState>((set, get) => ({
         })),
         authContextIsCurrent,
       );
-      if (started !== epoch || get().ownerUserId !== userId) return;
+      if (
+        started !== epoch ||
+        get().ownerUserId !== userId ||
+        !authContextIsCurrent()
+      ) {
+        throw cancelledMutation();
+      }
       set({ consentStatus: 'idle' });
     } catch (error) {
-      if (started !== epoch || get().ownerUserId !== userId) return;
+      if (
+        started !== epoch ||
+        get().ownerUserId !== userId ||
+        !authContextIsCurrent()
+      ) {
+        throw cancelledMutation();
+      }
       set({ consentStatus: 'error', consentError: errorMessage(error) });
       throw error;
     }

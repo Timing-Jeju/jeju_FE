@@ -125,11 +125,16 @@ export function savePendingConsentIntent(
 }
 
 /** 현재 사용자에게 귀속된 검토 intent만 지운다. */
-export function clearPendingConsentIntent(userId: string): Promise<void> {
+export function clearPendingConsentIntent(
+  userId: string,
+  authContextIsCurrent?: () => boolean,
+): Promise<void> {
   if (!validOwnerId(userId)) return Promise.resolve();
   return enqueueIntentTask(async () => {
+    if (authContextIsCurrent && !authContextIsCurrent()) return;
     const stored = parseStoredIntents(await AsyncStorage.getItem(STORAGE_KEY));
     if (!stored?.byOwner[userId]) return;
+    if (authContextIsCurrent && !authContextIsCurrent()) return;
     const { [userId]: _removed, ...byOwner } = stored.byOwner;
     const next = { ...stored, byOwner };
     if (!next.unowned && Object.keys(byOwner).length === 0) {
