@@ -1,4 +1,5 @@
-import { render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
+import { Alert } from 'react-native';
 import Review from '@/app/schedule-review';
 import Leg from '@/app/schedule-leg';
 import Live from '@/app/live-map';
@@ -84,6 +85,47 @@ test('공개 서버 일정 구간은 AI planner flag가 꺼져도 검토 화면�
   expect(screen.getByText('성산일출봉')).toBeTruthy();
   expect(screen.getByText('섭지코지')).toBeTruthy();
   expect(screen.queryByText(/일정 서비스 준비 중/)).toBeNull();
+});
+
+test('serverBacked dirty 일정의 미지원 재검사는 throw 없이 안내한다', async () => {
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+  useScheduleStore.setState({
+    reviews: {
+      1: {
+        summary: '서버 일정 버전 2',
+        mode: 'manual',
+        dirty: true,
+        confirmed: false,
+        serverBacked: true,
+        legs: [
+          {
+            id: 'old',
+            from: '성산일출봉',
+            to: '섭지코지',
+            fromCoord: null,
+            toCoord: null,
+            status: 'cautionary',
+            startTime: '09:00',
+            endTime: '09:30',
+            cost: null,
+            distanceText: '거리 정보 없음',
+            reason: '위험도 정보 미제공',
+            steps: [],
+            departStayMinutes: 60,
+            slackMinutes: 10,
+            buses: [],
+          },
+        ],
+      },
+    },
+  });
+  const screen = await render(<Review />);
+
+  expect(() => fireEvent.press(screen.getByText('재검사 하기'))).not.toThrow();
+  expect(alert).toHaveBeenCalledWith(
+    '준비 중이에요',
+    expect.stringContaining('재검사'),
+  );
 });
 
 test('미지원 구간 상세는 기존 빈 상태를 표시하고 경로 API를 호출하지 않는다', async () => {

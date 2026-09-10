@@ -67,8 +67,14 @@ const PLACE_MENU = [
 export default function CalendarScreen() {
   const router = useRouter();
   const { hydrateLatestTrip } = useTripPersistence();
-  const { hydrateSchedule, updateItem, deleteItem, moveItem, reorderDay } =
-    useSchedulePersistence();
+  const {
+    hydrateSchedule,
+    updateItem,
+    deleteItem,
+    moveItem,
+    reorderDay,
+    discardPendingMutation,
+  } = useSchedulePersistence();
 
   const tripSaved = useTripStore((state) => state.draftSaved);
   const tripRootSaved = useTripStore((state) => state.saved);
@@ -133,6 +139,24 @@ export default function CalendarScreen() {
   );
 
   const showMutationError = (error: unknown) => {
+    if (
+      error instanceof Error &&
+      error.name === 'SchedulePendingMutationError'
+    ) {
+      Alert.alert('이전 저장 결과를 확인해 주세요', error.message, [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '보류 기록 해제',
+          style: 'destructive',
+          onPress: () => {
+            void discardPendingMutation()
+              .then(() => hydrateSchedule())
+              .catch(showMutationError);
+          },
+        },
+      ]);
+      return;
+    }
     Alert.alert(
       '일정을 저장하지 못했어요',
       error instanceof Error

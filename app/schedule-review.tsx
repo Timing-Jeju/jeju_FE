@@ -339,6 +339,13 @@ function ScheduleReviewScreenContent() {
   const isLastDay = selectedDay >= dayCount;
 
   const handleConfirm = () => {
+    if (review?.serverBacked && review.dirty) {
+      Alert.alert(
+        '준비 중이에요',
+        '서버 일정의 이동 시간 재검사는 아직 지원하지 않아요.',
+      );
+      return;
+    }
     if (review?.dirty) {
       recheck(selectedDay);
       return;

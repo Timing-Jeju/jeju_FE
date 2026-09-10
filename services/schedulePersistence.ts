@@ -61,6 +61,15 @@ export class ScheduleSessionChangedError extends Error {
   }
 }
 
+export class SchedulePendingMutationError extends Error {
+  constructor() {
+    super(
+      '이전 일정 저장 결과가 불명확해요. 서버 일정을 확인하거나 보류 기록을 해제해 주세요.',
+    );
+    this.name = 'SchedulePendingMutationError';
+  }
+}
+
 export const scheduleToPlaces = (
   schedule: TripSchedule,
   previous: Record<number, SchedulePlace[]> = {},
@@ -359,6 +368,39 @@ const applyCompletion = (
   });
 };
 
+const pendingCreateExists = (
+  journal: ScheduleMutationJournal,
+  schedule: TripSchedule,
+) => {
+  if (
+    journal.operation !== 'create' ||
+    !journal.request ||
+    typeof journal.request !== 'object'
+  ) {
+    return false;
+  }
+  const request = journal.request as {
+    dayNo?: number;
+    sequenceNo?: number;
+    itemType?: string;
+    placeId?: string;
+    plannedStartAt?: string;
+    stayMinutes?: number;
+  };
+  return Boolean(
+    schedule.days
+      .find((day) => day.dayNo === request.dayNo)
+      ?.items.some(
+        (item) =>
+          item.sequenceNo === request.sequenceNo &&
+          item.itemType === request.itemType &&
+          item.placeId === request.placeId &&
+          item.plannedStartAt === request.plannedStartAt &&
+          item.stayMinutes === request.stayMinutes,
+      ),
+  );
+};
+
 export function createSchedulePersistenceActions() {
   const hydrateSchedule = async () => {
     if (mutationInFlight) {
@@ -387,7 +429,27 @@ export function createSchedulePersistenceActions() {
         applyCompletion(completedHere.completion, scope);
       }
       const value = await refreshSchedule(tripId, scope, revision);
-      if (completedHere) await clearScheduleMutationJournal();
+      if (completedHere) {
+        await clearScheduleMutationJournal();
+      } else if (
+        journal?.userId === scope.userId &&
+        journal.tripId === tripId &&
+        !journal.completion &&
+        pendingCreateExists(journal, value)
+      ) {
+        const latestTrip = await fetchTrip(tripId);
+        assertScope(scope);
+        if (!latestTrip.etag || !STRONG_TRIP_ETAG.test(latestTrip.etag)) {
+          throw new SchedulePersistenceValidationError(
+            '서버에서 확인한 일정의 여행 버전을 읽을 수 없어요.',
+          );
+        }
+        useTripStore.setState({
+          etag: latestTrip.etag,
+          serverTrip: latestTrip.data,
+        });
+        await clearScheduleMutationJournal();
+      }
       return value;
     } catch (error) {
       if (!isCurrentAuthScope(scope)) {
@@ -402,6 +464,7 @@ export function createSchedulePersistenceActions() {
   };
 
   const mutate = async <TRequest>(
+    operationKind: ScheduleMutationJournal['operation'],
     fingerprint: string,
     request: TRequest,
     operation: (
@@ -431,9 +494,7 @@ export function createSchedulePersistenceActions() {
       ) {
         await clearScheduleMutationJournal();
       } else if (existing && existing.fingerprint !== fingerprint) {
-        throw new SchedulePersistenceValidationError(
-          '이전 일정 저장 결과를 먼저 확인해 주세요.',
-        );
+        throw new SchedulePendingMutationError();
       } else if (existing) {
         journal = existing;
       }
@@ -444,15 +505,18 @@ export function createSchedulePersistenceActions() {
           userId: scope.userId,
           tripId: context.tripId,
           fingerprint,
+          operation: operationKind,
           idempotencyKey: createIdempotencyKey(),
           locks: context.locks,
           request,
           completion: null,
         };
         await saveScheduleMutationJournal(journal);
+        assertScope(scope);
       }
 
       if (!journal.completion) {
+        assertScope(scope);
         const response = await operation(
           journal.tripId,
           journal.request as TRequest,
@@ -539,6 +603,7 @@ export function createSchedulePersistenceActions() {
       memo: null,
     };
     return mutate(
+      'create',
       `create:${JSON.stringify(request)}`,
       request,
       (tripId, body, locks, key) =>
@@ -550,6 +615,7 @@ export function createSchedulePersistenceActions() {
     assertEditable(itemId);
     const request = allowedPatch(body);
     return mutate(
+      'update',
       `update:${itemId}:${JSON.stringify(request)}`,
       request,
       (tripId, patch, locks, key) =>
@@ -559,8 +625,12 @@ export function createSchedulePersistenceActions() {
 
   const deleteItem = async (itemId: string) => {
     assertEditable(itemId);
-    return mutate(`delete:${itemId}`, {}, (tripId, _body, locks, key) =>
-      deleteScheduleItem(tripId, itemId, locks, key),
+    return mutate(
+      'delete',
+      `delete:${itemId}`,
+      {},
+      (tripId, _body, locks, key) =>
+        deleteScheduleItem(tripId, itemId, locks, key),
     );
   };
 
@@ -593,6 +663,7 @@ export function createSchedulePersistenceActions() {
     }
     const request = { targetDayNo, targetSequenceNo };
     return mutate(
+      'move',
       `move:${itemId}:${JSON.stringify(request)}`,
       request,
       (tripId, target, locks, key) =>
@@ -617,10 +688,23 @@ export function createSchedulePersistenceActions() {
     orderedItemIds.forEach(assertEditable);
     const request = [{ dayNo, orderedItemIds }];
     return mutate(
+      'reorder',
       `reorder:${dayNo}:${orderedItemIds.join(',')}`,
       request,
       (tripId, order, locks, key) => reorderSchedule(tripId, order, locks, key),
     );
+  };
+
+  const discardPendingMutation = async () => {
+    const scope = captureAuthScope();
+    const journal = await loadScheduleMutationJournal();
+    assertScope(scope);
+    if (journal && journal.userId !== scope.userId) {
+      throw new ScheduleSessionChangedError();
+    }
+    await clearScheduleMutationJournal();
+    assertScope(scope);
+    useScheduleStore.setState({ error: null });
   };
 
   return {
@@ -630,5 +714,6 @@ export function createSchedulePersistenceActions() {
     deleteItem,
     moveItem,
     reorderDay,
+    discardPendingMutation,
   };
 }

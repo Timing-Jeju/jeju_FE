@@ -18,24 +18,37 @@ export interface ScheduleMutationJournal {
   userId: string | null;
   tripId: string;
   fingerprint: string;
+  operation: 'create' | 'update' | 'delete' | 'move' | 'reorder';
   idempotencyKey: string;
   locks: ScheduleMutationLocks;
   request: unknown;
   completion: ScheduleMutationCompletion | null;
 }
 
-const isJournal = (value: unknown): value is ScheduleMutationJournal => {
-  if (!value || typeof value !== 'object') return false;
+const normalizeJournal = (value: unknown): ScheduleMutationJournal | null => {
+  if (!value || typeof value !== 'object') return null;
   const journal = value as Partial<ScheduleMutationJournal>;
-  return (
+  const operation =
+    journal.operation ??
+    (typeof journal.fingerprint === 'string'
+      ? journal.fingerprint.split(':', 1)[0]
+      : '');
+  if (
     journal.version === 1 &&
     typeof journal.tripId === 'string' &&
     typeof journal.fingerprint === 'string' &&
+    ['create', 'update', 'delete', 'move', 'reorder'].includes(operation) &&
     typeof journal.idempotencyKey === 'string' &&
     !!journal.locks &&
     typeof journal.locks.etag === 'string' &&
     typeof journal.locks.expectedActiveScheduleVersionId === 'string'
-  );
+  ) {
+    return {
+      ...(journal as ScheduleMutationJournal),
+      operation: operation as ScheduleMutationJournal['operation'],
+    };
+  }
+  return null;
 };
 
 export const loadScheduleMutationJournal = async () => {
@@ -43,7 +56,7 @@ export const loadScheduleMutationJournal = async () => {
   if (!raw) return null;
   try {
     const parsed: unknown = JSON.parse(raw);
-    return isJournal(parsed) ? parsed : null;
+    return normalizeJournal(parsed);
   } catch {
     return null;
   }

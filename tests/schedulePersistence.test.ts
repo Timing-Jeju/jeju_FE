@@ -11,6 +11,7 @@ import { ApiError } from '@/services/api/problem';
 import { useScheduleStore } from '@/store/useScheduleStore';
 import { useTripStore } from '@/store/useTripStore';
 import { useUserStore } from '@/store/useUserStore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const mockJournalStorage = new Map<string, string>();
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -601,4 +602,95 @@ test('PATCH는 허용 필드만 새 객체로 복사해 위치·초과 필드를
     expect.any(Object),
     expect.any(String),
   );
+});
+
+test('응답 유실 POST가 서버 일정에 있으면 hydrate가 journal을 해소해 다음 mutation을 막지 않는다', async () => {
+  useScheduleStore.setState({ activeVersionId: version1, places: { 1: [] } });
+  jest
+    .mocked(itemApi.createScheduleItem)
+    .mockRejectedValueOnce(new Error('response lost'))
+    .mockResolvedValueOnce(mutation);
+  const actions = createSchedulePersistenceActions();
+  const firstPlace: Parameters<typeof actions.createPlace>[1] = {
+    placeId: place1,
+    name: '성산일출봉',
+    category: '관광지',
+    address: '제주',
+    visitType: null,
+    stayMinutes: 60,
+    coord: null,
+  };
+
+  await expect(actions.createPlace(1, firstPlace)).rejects.toThrow(
+    'response lost',
+  );
+  jest
+    .mocked(scheduleApi.fetchSchedule)
+    .mockResolvedValue(
+      schedule(version2, [item(item1, place1, 1, '성산일출봉')]),
+    );
+  jest.mocked(tripApi.fetchTrip).mockResolvedValue({
+    data: { ...trip, activeScheduleVersionId: version2 },
+    status: 200,
+    etag: etag2,
+    location: null,
+    idempotencyReplayed: null,
+    traceId: null,
+  });
+
+  await createSchedulePersistenceActions().hydrateSchedule();
+
+  expect(mockJournalStorage.size).toBe(0);
+  expect(tripApi.fetchTrip).toHaveBeenCalledWith(tripId);
+  await expect(
+    createSchedulePersistenceActions().createPlace(1, {
+      ...firstPlace,
+      placeId: place2,
+      name: '섭지코지',
+    }),
+  ).resolves.toMatchObject({ saved: true });
+  expect(itemApi.createScheduleItem).toHaveBeenCalledTimes(2);
+});
+
+test('서버 확인으로도 불명확한 journal은 사용자가 명시적으로 해제할 수 있다', async () => {
+  useScheduleStore.setState({
+    places: scheduleToPlaces(schedule()),
+    activeVersionId: version1,
+  });
+  jest
+    .mocked(itemApi.updateScheduleItem)
+    .mockRejectedValueOnce(new Error('response lost'));
+  const actions = createSchedulePersistenceActions();
+  await expect(actions.updateItem(item1, { stayMinutes: 90 })).rejects.toThrow(
+    'response lost',
+  );
+
+  await actions.discardPendingMutation();
+
+  expect(mockJournalStorage.size).toBe(0);
+});
+
+test('journal 저장 중 계정이 바뀌면 Spring mutation을 전송하지 않는다', async () => {
+  useScheduleStore.setState({
+    places: scheduleToPlaces(schedule()),
+    activeVersionId: version1,
+  });
+  let finishSave!: () => void;
+  jest.mocked(AsyncStorage.setItem).mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finishSave = resolve;
+      }),
+  );
+
+  const pending = createSchedulePersistenceActions().updateItem(item1, {
+    stayMinutes: 90,
+  });
+  await Promise.resolve();
+  await Promise.resolve();
+  useUserStore.setState({ userId: 'user-2' });
+  finishSave();
+
+  await expect(pending).rejects.toThrow('로그인 사용자가 변경');
+  expect(itemApi.updateScheduleItem).not.toHaveBeenCalled();
 });
