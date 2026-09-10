@@ -619,6 +619,139 @@ test('삭제는 서버 204 뒤에만 화면에서 제거하며 실패를 성공�
   expect(useFavoriteStore.getState().favorites).toHaveLength(1);
 
   await useFavoriteStore.getState().removeFavorite(placeId);
-  expect(deleteSavedPlace).toHaveBeenCalledWith(placeId, expect.any(Function));
+  expect(deleteSavedPlace).toHaveBeenCalledWith(
+    placeId,
+    etag1,
+    expect.any(Function),
+  );
   expect(useFavoriteStore.getState().favorites).toEqual([]);
+});
+
+test('DELETE 204 응답이 끝나기 전에는 hydrated 장소를 로컬 성공 처리하지 않는다', async () => {
+  jest.mocked(fetchAllSavedPlaces).mockResolvedValueOnce([serverPlace()]);
+  await useFavoriteStore.getState().hydrate(ownerA);
+  let resolveDelete!: () => void;
+  let markDeleteStarted!: () => void;
+  const deleteStarted = new Promise<void>((resolve) => {
+    markDeleteStarted = resolve;
+  });
+  jest.mocked(deleteSavedPlace).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        markDeleteStarted();
+        resolveDelete = resolve;
+      }),
+  );
+
+  const deletion = useFavoriteStore.getState().removeFavorite(placeId);
+  await deleteStarted;
+  expect(useFavoriteStore.getState().favorites).toHaveLength(1);
+
+  resolveDelete();
+  await deletion;
+  expect(useFavoriteStore.getState().favorites).toEqual([]);
+});
+
+test('ETag가 없으면 DELETE를 보내지 않고 최신 목록을 재조회해 다시 시도하도록 안내한다', async () => {
+  jest
+    .mocked(fetchAllSavedPlaces)
+    .mockResolvedValueOnce([serverPlace({ etag: etag2 })]);
+  useFavoriteStore.setState({
+    ownerId: ownerA,
+    status: 'ready',
+    favorites: [
+      {
+        ...favoriteInput,
+        etag: undefined,
+        coord: null,
+      },
+    ],
+  });
+
+  await expect(
+    useFavoriteStore.getState().removeFavorite(placeId),
+  ).rejects.toMatchObject({ code: 'INVALID_ETAG' });
+
+  expect(deleteSavedPlace).not.toHaveBeenCalled();
+  expect(fetchAllSavedPlaces).toHaveBeenCalledTimes(1);
+  expect(useFavoriteStore.getState()).toMatchObject({
+    notice:
+      '최신 찜 정보를 다시 불러왔어요. 삭제할 장소를 확인한 뒤 다시 시도해 주세요.',
+    favorites: [expect.objectContaining({ etag: etag2 })],
+  });
+});
+
+test('DELETE 409는 자동 삭제 재시도 없이 최신 목록을 읽고 충돌을 안내한다', async () => {
+  jest
+    .mocked(fetchAllSavedPlaces)
+    .mockResolvedValueOnce([serverPlace()])
+    .mockResolvedValueOnce([
+      serverPlace({ etag: etag2, memo: '다른 기기 메모' }),
+    ]);
+  await useFavoriteStore.getState().hydrate(ownerA);
+  jest
+    .mocked(deleteSavedPlace)
+    .mockRejectedValueOnce(
+      new ApiError({ status: 409, code: 'SAVED_PLACE_VERSION_CONFLICT' }),
+    );
+
+  await expect(
+    useFavoriteStore.getState().removeFavorite(placeId),
+  ).rejects.toMatchObject({
+    status: 409,
+    code: 'SAVED_PLACE_VERSION_CONFLICT',
+  });
+
+  expect(deleteSavedPlace).toHaveBeenCalledTimes(1);
+  expect(deleteSavedPlace).toHaveBeenCalledWith(
+    placeId,
+    etag1,
+    expect.any(Function),
+  );
+  expect(fetchAllSavedPlaces).toHaveBeenCalledTimes(2);
+  expect(useFavoriteStore.getState()).toMatchObject({
+    notice:
+      '다른 곳에서 변경된 최신 내용을 불러왔어요. 입력한 내용을 확인한 뒤 다시 저장해 주세요.',
+    favorites: [
+      expect.objectContaining({ etag: etag2, memo: '다른 기기 메모' }),
+    ],
+  });
+});
+
+test('DELETE 충돌 복구 중 authGeneration이 바뀌면 이전 owner 결과와 안내를 폐기한다', async () => {
+  jest.mocked(fetchAllSavedPlaces).mockResolvedValueOnce([serverPlace()]);
+  await useFavoriteStore.getState().hydrate(ownerA);
+  jest
+    .mocked(deleteSavedPlace)
+    .mockRejectedValueOnce(
+      new ApiError({ status: 409, code: 'SAVED_PLACE_VERSION_CONFLICT' }),
+    );
+  let resolveRecoveryA!: (places: SavedPlace[]) => void;
+  let markRecoveryStarted!: () => void;
+  const recoveryStarted = new Promise<void>((resolve) => {
+    markRecoveryStarted = resolve;
+  });
+  jest.mocked(fetchAllSavedPlaces).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        markRecoveryStarted();
+        resolveRecoveryA = resolve;
+      }),
+  );
+
+  const deleteA = useFavoriteStore.getState().removeFavorite(placeId);
+  await recoveryStarted;
+  useUserStore.setState({ userId: ownerB, authGeneration: 2 });
+  jest
+    .mocked(fetchAllSavedPlaces)
+    .mockResolvedValueOnce([serverPlace({ name: 'B의 장소' })]);
+  await useFavoriteStore.getState().hydrate(ownerB);
+  resolveRecoveryA([serverPlace({ memo: 'A 최신 메모' })]);
+  await expect(deleteA).rejects.toMatchObject({ status: 409 });
+
+  expect(useFavoriteStore.getState()).toMatchObject({
+    ownerId: ownerB,
+    favorites: [expect.objectContaining({ name: 'B의 장소' })],
+    notice: null,
+  });
 });

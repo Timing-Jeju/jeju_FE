@@ -62,7 +62,7 @@ test('opaque cursor를 그대로 따라가며 각 목록 item의 strong ETag를 
   );
 });
 
-test('고정 BE DELETE 계약에는 body와 If-Match를 추가하지 않는다', async () => {
+test('hydration에서 받은 strong ETag를 DELETE If-Match로 정확히 전송한다', async () => {
   jest.mocked(request).mockResolvedValue({
     data: undefined,
     status: 204,
@@ -72,11 +72,15 @@ test('고정 BE DELETE 계약에는 body와 If-Match를 추가하지 않는다',
     traceId: null,
   });
 
-  await deleteSavedPlace('34000000-0000-4000-8000-000000000001');
+  await deleteSavedPlace(
+    '34000000-0000-4000-8000-000000000001',
+    '"saved-place.34.v3"',
+  );
 
   expect(request).toHaveBeenCalledWith({
     method: 'DELETE',
     path: '/me/saved-places/34000000-0000-4000-8000-000000000001',
     auth: 'required',
+    headers: { 'If-Match': '"saved-place.34.v3"' },
   });
 });

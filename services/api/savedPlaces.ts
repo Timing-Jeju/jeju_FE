@@ -6,8 +6,8 @@ import type { CursorPageResponse } from './types';
 /**
  * 관심 장소(찜). 네 개 모두 인증 필수다.
  *
- * 이 도메인만 낙관적 잠금을 쓴다. POST/PATCH 응답의 ETag를 들고 있다가
- * 다음 PATCH의 If-Match에 큰따옴표까지 그대로 넣어야 한다.
+ * 이 도메인만 낙관적 잠금을 쓴다. 목록/POST/PATCH 응답의 ETag를 들고 있다가
+ * 다음 PATCH/DELETE의 If-Match에 큰따옴표까지 그대로 넣어야 한다.
  */
 
 export interface SavedPlace {
@@ -148,17 +148,20 @@ export const updateSavedPlace = (
   });
 
 /**
- * 찜 삭제. 고정 BE 계약상 body와 If-Match가 없고 성공은 204다.
- * 이미 지웠거나 남의 것이면 404 SAVED_PLACE_NOT_FOUND로 숨긴다.
+ * 찜 삭제. 목록 또는 직전 mutation의 strong ETag를 `If-Match`로 보낸다.
+ * body 없는 204만 성공이다. stale ETag는 409, 이미 지웠거나 남의 것이면
+ * 404 SAVED_PLACE_NOT_FOUND로 숨긴다.
  */
 export const deleteSavedPlace = async (
   placeId: string,
+  etag: string,
   authContextIsCurrent?: () => boolean,
 ): Promise<void> => {
   await request<void>({
     method: 'DELETE',
     path: `/me/saved-places/${encodeURIComponent(placeId)}`,
     auth: 'required',
+    headers: { 'If-Match': etag },
     ...(authContextIsCurrent ? { authContextIsCurrent } : {}),
   });
 };
