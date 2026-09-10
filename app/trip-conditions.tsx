@@ -478,7 +478,7 @@ export default function TripConditionsScreen() {
       await saveTrip(conditions);
       Alert.alert(
         '여행 기본 정보를 저장했어요',
-        '하루 활동 시간과 숙소·입출도 상세는 서버 조회 계약이 준비될 때까지 이 기기에만 보관돼요.',
+        '여행 날짜와 서버가 지원하는 기본 이동수단만 서버에 저장했어요. 여행 스타일·하루 활동 시간·숙소·입출도 상세는 메모리 임시 입력이며 앱을 종료하면 사라져요.',
       );
       router.back();
     } catch (error) {

@@ -26,6 +26,7 @@ import {
   type TripTransportMode as ApiTransportMode,
 } from './api/trips';
 import { useTripStore, type TripConditions } from '@/store/useTripStore';
+import { useUserStore } from '@/store/useUserStore';
 
 const DEFAULT_TITLE = '제주 여행';
 const STRONG_TRIP_ETAG = /^"trip-[0-9a-f-]{36}-r[1-9][0-9]*"$/;
@@ -36,6 +37,40 @@ export class TripPersistenceValidationError extends Error {
     this.name = 'TripPersistenceValidationError';
   }
 }
+
+export class TripSessionChangedError extends Error {
+  constructor() {
+    super('로그인 사용자가 변경되어 이전 요청 결과를 적용하지 않았어요.');
+    this.name = 'TripSessionChangedError';
+  }
+}
+
+let authGeneration = 0;
+let authUserId = useUserStore.getState().userId;
+useUserStore.subscribe((state) => {
+  if (state.userId !== authUserId) {
+    authUserId = state.userId;
+    authGeneration += 1;
+  }
+});
+
+interface AuthScope {
+  generation: number;
+  userId: string | null;
+}
+
+const captureAuthScope = (): AuthScope => ({
+  generation: authGeneration,
+  userId: useUserStore.getState().userId,
+});
+
+const isCurrentAuthScope = (scope: AuthScope) =>
+  scope.generation === authGeneration &&
+  scope.userId === useUserStore.getState().userId;
+
+const assertCurrentAuthScope = (scope: AuthScope) => {
+  if (!isCurrentAuthScope(scope)) throw new TripSessionChangedError();
+};
 
 const requireDates = (conditions: TripConditions) => {
   if (!conditions.startDate || !conditions.endDate) {
@@ -116,7 +151,13 @@ const uiTransport = (trip: Trip): TripConditions['transport'] =>
     return [];
   });
 
-const setServerTrip = (trip: Trip, etag: string, hydrate: boolean) => {
+const setServerTrip = (
+  trip: Trip,
+  etag: string,
+  hydrate: boolean,
+  scope: AuthScope,
+) => {
+  assertCurrentAuthScope(scope);
   useTripStore.setState((state) => ({
     ...(hydrate
       ? {
@@ -137,7 +178,8 @@ const setServerTrip = (trip: Trip, etag: string, hydrate: boolean) => {
   }));
 };
 
-const setFailure = (error: unknown) => {
+const setFailure = (error: unknown, scope: AuthScope) => {
+  assertCurrentAuthScope(scope);
   useTripStore.setState({
     loading: false,
     serverError:
@@ -147,8 +189,13 @@ const setFailure = (error: unknown) => {
   });
 };
 
-const refreshVersionWithoutHydratingDraft = async (tripId: string) => {
+const refreshVersionWithoutHydratingDraft = async (
+  tripId: string,
+  scope: AuthScope,
+) => {
+  assertCurrentAuthScope(scope);
   const response = await fetchTrip(tripId);
+  assertCurrentAuthScope(scope);
   const etag = requireEtag(response.etag);
   useTripStore.setState({
     tripId,
@@ -158,10 +205,15 @@ const refreshVersionWithoutHydratingDraft = async (tripId: string) => {
   });
 };
 
-const refreshOnConflict = async (error: unknown, tripId: string) => {
+const refreshOnConflict = async (
+  error: unknown,
+  tripId: string,
+  scope: AuthScope,
+) => {
+  assertCurrentAuthScope(scope);
   if (hasCode(error, 'TRIP_VERSION_CONFLICT', 'PRECONDITION_FAILED')) {
     try {
-      await refreshVersionWithoutHydratingDraft(tripId);
+      await refreshVersionWithoutHydratingDraft(tripId, scope);
     } catch {
       // 원래 mutation 오류를 보존한다. 다음 명시적 조회에서 다시 복구할 수 있다.
     }
@@ -177,6 +229,21 @@ const exactAccommodationRequest = (
   checkOutDate: body.checkOutDate,
   checkInTime: body.checkInTime,
   checkOutTime: body.checkOutTime,
+});
+
+const exactAccommodationPatch = (
+  body: AccommodationPatchRequest,
+): AccommodationPatchRequest => ({
+  ...(body.placeId !== undefined ? { placeId: body.placeId } : {}),
+  ...(body.customName !== undefined ? { customName: body.customName } : {}),
+  ...(body.checkInDate !== undefined ? { checkInDate: body.checkInDate } : {}),
+  ...(body.checkOutDate !== undefined
+    ? { checkOutDate: body.checkOutDate }
+    : {}),
+  ...(body.checkInTime !== undefined ? { checkInTime: body.checkInTime } : {}),
+  ...(body.checkOutTime !== undefined
+    ? { checkOutTime: body.checkOutTime }
+    : {}),
 });
 
 const failAccommodation = () => {
@@ -294,6 +361,7 @@ const currentAggregate = () => {
 
 export function createTripPersistenceActions() {
   const saveTrip = async (conditions: TripConditions) => {
+    const scope = captureAuthScope();
     useTripStore.getState().saveConditions(conditions);
     useTripStore.setState({ loading: true });
     const state = useTripStore.getState();
@@ -307,7 +375,8 @@ export function createTripPersistenceActions() {
             : { fingerprint: bodyFingerprint, key: createIdempotencyKey() };
         useTripStore.setState({ pendingTripCreate: attempt });
         const response = await createTrip(body, attempt.key);
-        setServerTrip(response.data, requireEtag(response.etag), false);
+        assertCurrentAuthScope(scope);
+        setServerTrip(response.data, requireEtag(response.etag), false, scope);
         useTripStore.setState({ pendingTripCreate: null });
         return response.data;
       }
@@ -316,46 +385,56 @@ export function createTripPersistenceActions() {
         toTripPatchRequest(conditions),
         requireEtag(state.etag),
       );
-      setServerTrip(response.data, requireEtag(response.etag), false);
+      assertCurrentAuthScope(scope);
+      setServerTrip(response.data, requireEtag(response.etag), false, scope);
       return response.data;
     } catch (error) {
-      if (state.tripId) await refreshOnConflict(error, state.tripId);
-      setFailure(error);
+      assertCurrentAuthScope(scope);
+      if (state.tripId) await refreshOnConflict(error, state.tripId, scope);
+      setFailure(error, scope);
       throw error;
     }
   };
 
   const hydrateLatestTrip = async () => {
+    const scope = captureAuthScope();
     useTripStore.setState({ loading: true, serverError: null });
     try {
       const list = await fetchTrips({ size: 20 });
+      assertCurrentAuthScope(scope);
       useTripStore.setState({ trips: list.items });
       if (!list.items.length) {
         useTripStore.setState({ loading: false });
         return null;
       }
       const response = await fetchTrip(list.items[0].tripId);
-      setServerTrip(response.data, requireEtag(response.etag), true);
+      assertCurrentAuthScope(scope);
+      setServerTrip(response.data, requireEtag(response.etag), true, scope);
       return response.data;
     } catch (error) {
-      setFailure(error);
+      assertCurrentAuthScope(scope);
+      setFailure(error, scope);
       throw error;
     }
   };
 
   const removeTrip = async () => {
+    const scope = captureAuthScope();
     const { tripId } = currentAggregate();
     useTripStore.setState({ loading: true, serverError: null });
     try {
       await deleteTripApi(tripId);
+      assertCurrentAuthScope(scope);
       useTripStore.setState(useTripStore.getInitialState(), true);
     } catch (error) {
-      setFailure(error);
+      assertCurrentAuthScope(scope);
+      setFailure(error, scope);
       throw error;
     }
   };
 
   const createAccommodation = async (input: AccommodationCreateRequest) => {
+    const scope = captureAuthScope();
     const { tripId, etag } = currentAggregate();
     const body = exactAccommodationRequest(input);
     validateAccommodationSet([
@@ -376,6 +455,7 @@ export function createTripPersistenceActions() {
         etag,
         attempt.key,
       );
+      assertCurrentAuthScope(scope);
       const nextEtag = requireEtag(response.etag);
       useTripStore.setState((current) => ({
         etag: nextEtag,
@@ -387,8 +467,9 @@ export function createTripPersistenceActions() {
       }));
       return response.data;
     } catch (error) {
-      await refreshOnConflict(error, tripId);
-      setFailure(error);
+      assertCurrentAuthScope(scope);
+      await refreshOnConflict(error, tripId, scope);
+      setFailure(error, scope);
       throw error;
     }
   };
@@ -397,7 +478,9 @@ export function createTripPersistenceActions() {
     accommodationId: string,
     body: AccommodationPatchRequest,
   ) => {
+    const scope = captureAuthScope();
     const { tripId, etag } = currentAggregate();
+    const exactBody = exactAccommodationPatch(body);
     const current = useTripStore.getState().accommodations[accommodationId];
     if (!current) {
       throw new TripPersistenceValidationError(
@@ -408,15 +491,16 @@ export function createTripPersistenceActions() {
       ...Object.values(useTripStore.getState().accommodations).filter(
         (item) => item.accommodationId !== accommodationId,
       ),
-      { ...current, ...body },
+      { ...current, ...exactBody },
     ]);
     try {
       const response = await updateAccommodationApi(
         tripId,
         accommodationId,
-        body,
+        exactBody,
         etag,
       );
+      assertCurrentAuthScope(scope);
       const nextEtag = requireEtag(response.etag);
       useTripStore.setState((state) => ({
         etag: nextEtag,
@@ -427,35 +511,42 @@ export function createTripPersistenceActions() {
       }));
       return response.data;
     } catch (error) {
-      await refreshOnConflict(error, tripId);
-      setFailure(error);
+      assertCurrentAuthScope(scope);
+      await refreshOnConflict(error, tripId, scope);
+      setFailure(error, scope);
       throw error;
     }
   };
 
   const deleteAccommodation = async (accommodationId: string) => {
+    const scope = captureAuthScope();
     const { tripId, etag } = currentAggregate();
     try {
       await deleteAccommodationApi(tripId, accommodationId, etag);
-      await refreshVersionWithoutHydratingDraft(tripId);
+      assertCurrentAuthScope(scope);
+      await refreshVersionWithoutHydratingDraft(tripId, scope);
+      assertCurrentAuthScope(scope);
       useTripStore.setState((state) => {
         const next = { ...state.accommodations };
         delete next[accommodationId];
         return { accommodations: next };
       });
     } catch (error) {
-      await refreshOnConflict(error, tripId);
-      setFailure(error);
+      assertCurrentAuthScope(scope);
+      await refreshOnConflict(error, tripId, scope);
+      setFailure(error, scope);
       throw error;
     }
   };
 
   const putTransportEvent = async (input: TransportEventRequest) => {
+    const scope = captureAuthScope();
     const { tripId, etag } = currentAggregate();
     const body = exactTransportEvent(input);
     validateTransportEvent(body);
     try {
       const response = await putTransportEventApi(tripId, body, etag);
+      assertCurrentAuthScope(scope);
       const nextEtag = requireEtag(response.etag);
       if (!response.data.event) {
         throw new TripPersistenceValidationError(
@@ -471,16 +562,19 @@ export function createTripPersistenceActions() {
       }));
       return response.data;
     } catch (error) {
-      await refreshOnConflict(error, tripId);
-      setFailure(error);
+      assertCurrentAuthScope(scope);
+      await refreshOnConflict(error, tripId, scope);
+      setFailure(error, scope);
       throw error;
     }
   };
 
   const deleteTransportEvent = async (eventType: TransportEventType) => {
+    const scope = captureAuthScope();
     const { tripId, etag } = currentAggregate();
     try {
       const response = await deleteTransportEventApi(tripId, eventType, etag);
+      assertCurrentAuthScope(scope);
       const nextEtag = requireEtag(response.etag);
       useTripStore.setState((state) => {
         const next = { ...state.transportEvents };
@@ -489,8 +583,9 @@ export function createTripPersistenceActions() {
       });
       return response.data;
     } catch (error) {
-      await refreshOnConflict(error, tripId);
-      setFailure(error);
+      assertCurrentAuthScope(scope);
+      await refreshOnConflict(error, tripId, scope);
+      setFailure(error, scope);
       throw error;
     }
   };

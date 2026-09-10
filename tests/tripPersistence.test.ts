@@ -8,6 +8,7 @@ import {
   toTripPatchRequest,
 } from '@/services/tripPersistence';
 import { useTripStore, type TripConditions } from '@/store/useTripStore';
+import { useUserStore } from '@/store/useUserStore';
 
 jest.mock('@/services/api/trips', () => ({
   createTrip: jest.fn(),
@@ -83,7 +84,21 @@ const response = (etag: string, data = trip) => ({
 beforeEach(() => {
   jest.clearAllMocks();
   useTripStore.setState(useTripStore.getInitialState(), true);
+  useUserStore.setState({
+    authReady: true,
+    isLoggedIn: true,
+    userId: 'user-a',
+    userName: null,
+  });
 });
+
+const deferred = <T>() => {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+};
 
 test('한국어 이동수단을 순서가 고정된 Spring enum으로 매핑하고 위치·dayTimes를 보내지 않는다', () => {
   const body = toTripCreateRequest(conditions);
@@ -168,6 +183,51 @@ test('목록에서 최신 여행을 골라 상세와 strong ETag를 hydration한
     endDate: trip.endDate,
     transport: ['bus', 'taxi'],
     saved: true,
+  });
+});
+
+test('hydrate 지연 응답은 logout 뒤 이전 사용자의 trip/error를 재주입하지 않는다', async () => {
+  const pending = deferred<Awaited<ReturnType<typeof trips.fetchTrips>>>();
+  jest.mocked(trips.fetchTrips).mockReturnValue(pending.promise);
+  const loading = createTripPersistenceActions().hydrateLatestTrip();
+
+  useTripStore.setState(useTripStore.getInitialState(), true);
+  useUserStore.setState({ isLoggedIn: false, userId: null });
+  pending.resolve({
+    items: [trip],
+    page: { size: 20, hasNext: false, nextCursor: null },
+  });
+
+  await expect(loading).rejects.toHaveProperty(
+    'name',
+    'TripSessionChangedError',
+  );
+  expect(trips.fetchTrip).not.toHaveBeenCalled();
+  expect(useTripStore.getState()).toMatchObject({
+    tripId: null,
+    serverTrip: null,
+    serverError: null,
+    loading: false,
+  });
+});
+
+test('mutation 지연 응답은 A→B 전환 뒤 이전 trip과 ETag를 쓰지 않는다', async () => {
+  const pending = deferred<Awaited<ReturnType<typeof trips.createTrip>>>();
+  jest.mocked(trips.createTrip).mockReturnValue(pending.promise);
+  const saving = createTripPersistenceActions().saveTrip(conditions);
+
+  useTripStore.setState(useTripStore.getInitialState(), true);
+  useUserStore.setState({ userId: 'user-b' });
+  pending.resolve(response(etag1));
+
+  await expect(saving).rejects.toHaveProperty(
+    'name',
+    'TripSessionChangedError',
+  );
+  expect(useTripStore.getState()).toMatchObject({
+    tripId: null,
+    etag: null,
+    serverError: null,
   });
 });
 
@@ -296,6 +356,46 @@ test('숙소 XOR와 여행 범위·gap·overlap을 요청 전에 검증한다', 
     actions.createAccommodation({ ...base, checkInDate: '2026-09-10' }),
   ).rejects.toThrow('숙소 날짜의 공백이나 중복을 확인해 주세요.');
   expect(accommodations.createAccommodation).not.toHaveBeenCalled();
+});
+
+test('숙소 PATCH는 허용 필드만 새 객체로 전달해 좌표 등 초과 필드를 제거한다', async () => {
+  const current = {
+    accommodationId,
+    placeId: null,
+    customName: '첫 숙소',
+    name: '첫 숙소',
+    checkInDate: '2026-09-10',
+    checkOutDate: '2026-09-12',
+    checkInTime: '15:00',
+    checkOutTime: '11:00',
+    sequenceNo: 1,
+  };
+  useTripStore.setState({
+    tripId,
+    etag: etag1,
+    serverTrip: trip,
+    accommodations: { [accommodationId]: current },
+  });
+  jest.mocked(accommodations.updateAccommodation).mockResolvedValue({
+    data: { accommodationId, accommodation: current },
+    etag: etag2,
+  } as never);
+
+  await createTripPersistenceActions().updateAccommodation(accommodationId, {
+    customName: '수정 숙소',
+    latitude: 33.4,
+    longitude: 126.5,
+  } as accommodations.AccommodationPatchRequest & {
+    latitude: number;
+    longitude: number;
+  });
+
+  expect(accommodations.updateAccommodation).toHaveBeenCalledWith(
+    tripId,
+    accommodationId,
+    { customName: '수정 숙소' },
+    etag1,
+  );
 });
 
 test('입출도 PUT/DELETE는 +09:00 payload와 ETag만 전달하고 GPS를 포함하지 않는다', async () => {

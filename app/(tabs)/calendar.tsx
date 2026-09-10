@@ -67,6 +67,7 @@ export default function CalendarScreen() {
   const { hydrateLatestTrip } = useTripPersistence();
 
   const tripSaved = useTripStore((state) => state.draftSaved);
+  const tripRootSaved = useTripStore((state) => state.saved);
   const startDate = useTripStore((state) => state.startDate);
   const endDate = useTripStore((state) => state.endDate);
 
@@ -90,8 +91,10 @@ export default function CalendarScreen() {
   useFocusEffect(
     useCallback(() => {
       setConditionNoticeVisible(!tripSaved);
-      if (!tripSaved) void hydrateLatestTrip().catch(() => undefined);
-    }, [hydrateLatestTrip, tripSaved]),
+      if (!tripSaved && !tripRootSaved && !useTripStore.getState().loading) {
+        void hydrateLatestTrip().catch(() => undefined);
+      }
+    }, [hydrateLatestTrip, tripRootSaved, tripSaved]),
   );
 
   /** 여행 기본 조건이 없으면 안내 모달을 띄우고 true를 돌려준다 */
