@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "ui:check": "node tooling/ui/check.mjs",
     "api:generate": "node tooling/openapi/generate.mjs",
-    "api:check": "node tooling/openapi/generate.mjs --check"
+    "api:check": "node tooling/openapi/generate.mjs --check",
+    "staging:e2e": "node tooling/staging/run.cjs"
   },
   "dependencies": {
     "@mj-studio/react-native-naver-map": "^2.9.0",

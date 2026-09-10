@@ -111,6 +111,55 @@ test('토큰 조회 중 인증 세대가 바뀌면 mutation을 전송 직전에 
   expect(adapter).not.toHaveBeenCalled();
 });
 
+test.each([
+  { latitude: 33.4, longitude: 126.5 },
+  { currentLocation: { regionCode: 'jeju-si' } },
+  { route: { points: [{ lat: 33.4, lng: 126.5 }] } },
+  { device: { gps: 'enabled' } },
+])('현재·간접 위치 필드는 Spring 전송 전에 거부한다: %j', async (body) => {
+  const transport = makeTransport();
+  const adapter = jest.fn();
+  transport.setAdapter(adapter);
+
+  await expect(
+    transport.request({
+      method: 'POST',
+      path: '/trips',
+      auth: 'required',
+      body,
+      headers: { 'Idempotency-Key': 'location-boundary-test' },
+    }),
+  ).rejects.toMatchObject({
+    status: 0,
+    code: 'CLIENT_LOCATION_DATA_FORBIDDEN',
+  });
+  expect(adapter).not.toHaveBeenCalled();
+});
+
+test('공개 selector는 위치정보로 오인하지 않고 허용한다', async () => {
+  const transport = makeTransport();
+  const adapter = jest.fn(async (config) => ({
+    data: { ok: true },
+    status: 200,
+    statusText: 'OK',
+    headers: {},
+    config,
+  }));
+  transport.setAdapter(adapter);
+
+  await transport.request({
+    method: 'GET',
+    path: '/weather/forecast',
+    auth: 'optional',
+    params: {
+      regionCode: 'jeju-si',
+      dateTime: '2026-09-10T17:00:00+09:00',
+    },
+  });
+
+  expect(adapter).toHaveBeenCalledTimes(1);
+});
+
 test('GET 401은 세션을 한 번 갱신하고 회전된 토큰으로 한 번만 복구한다', async () => {
   const accessToken = jest
     .fn<Promise<string | null>, [boolean?]>()

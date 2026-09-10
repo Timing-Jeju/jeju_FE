@@ -15,6 +15,7 @@ import { API_PREFIX, API_TIMEOUT_MS } from './config';
 import { assertIdempotencyKey } from './idempotency';
 import {
   ApiError,
+  CLIENT_LOCATION_DATA_FORBIDDEN,
   CLIENT_NETWORK_ERROR,
   CLIENT_NOT_CONFIGURED,
 } from './problem';
@@ -114,6 +115,46 @@ const assertRequestHeaders = (headers: Record<string, string> | undefined) => {
   }
 };
 
+const LOCATION_FIELD_NAMES = new Set([
+  'coordinate',
+  'coordinates',
+  'currentlatitude',
+  'currentlocation',
+  'currentlongitude',
+  'devicelocation',
+  'geolocation',
+  'gps',
+  'lat',
+  'latitude',
+  'lng',
+  'location',
+  'lon',
+  'longitude',
+]);
+
+/** 공개 selector(regionCode/placeId)는 허용하되 기기·현재 위치는 어떤 깊이에서도 차단한다. */
+const assertNoLocationData = (value: unknown, seen = new WeakSet<object>()) => {
+  if (value === null || typeof value !== 'object') return;
+  if (seen.has(value)) return;
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    value.forEach((item) => assertNoLocationData(item, seen));
+    return;
+  }
+
+  for (const [key, item] of Object.entries(value)) {
+    const normalized = key.toLowerCase().replace(/[_-]/g, '');
+    if (LOCATION_FIELD_NAMES.has(normalized)) {
+      throw new ApiError({
+        status: 0,
+        code: CLIENT_LOCATION_DATA_FORBIDDEN,
+      });
+    }
+    assertNoLocationData(item, seen);
+  }
+};
+
 const toApiError = (error: unknown): ApiError => {
   if (error instanceof ApiError) return error;
   if (!axios.isAxiosError(error) || !error.response) {
@@ -163,6 +204,8 @@ export function createApiTransport(
   ): Promise<ApiResponse<T>> => {
     const url = assertPath(origin, options.path);
     assertRequestHeaders(options.headers);
+    assertNoLocationData(options.params);
+    assertNoLocationData(options.body);
 
     let authorization: string | null = null;
     if (options.auth === 'naver') {
