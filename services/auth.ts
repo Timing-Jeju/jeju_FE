@@ -19,13 +19,16 @@ const valid = (session: Session | null) =>
 
 function acceptSession(session: Session | null) {
   const userId = valid(session) ? session!.user.id : null;
-  if (useUserStore.getState().userId !== userId || !userId) {
+  const previous = useUserStore.getState();
+  if (previous.userId !== userId || !userId) {
     useTripStore.setState(useTripStore.getInitialState(), true);
     useScheduleStore.setState(useScheduleStore.getInitialState(), true);
     useFavoriteStore.setState({ favorites: [] });
     useProfileLegalStore.getState().resetForUser(userId);
   }
   useUserStore.setState({
+    authGeneration:
+      previous.authGeneration + (previous.userId === userId ? 0 : 1),
     authReady: true,
     isLoggedIn: !!userId,
     userId,

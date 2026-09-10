@@ -80,6 +80,37 @@ test('실패한 mutation도 자동 재시도하지 않는다', async () => {
   expect(adapter).toHaveBeenCalledTimes(1);
 });
 
+test('토큰 조회 중 인증 세대가 바뀌면 mutation을 전송 직전에 중단한다', async () => {
+  let releaseToken!: (token: string) => void;
+  const accessToken = jest.fn(
+    () =>
+      new Promise<string>((resolve) => {
+        releaseToken = resolve;
+      }),
+  );
+  const transport = makeTransport(accessToken);
+  const adapter = jest.fn();
+  transport.setAdapter(adapter);
+  let current = true;
+
+  const request = transport.request({
+    method: 'PUT',
+    path: '/me/consents',
+    auth: 'required',
+    body: { consents: [] },
+    authContextIsCurrent: () => current,
+  });
+  while (!releaseToken) await Promise.resolve();
+  current = false;
+  releaseToken('user-a-access');
+
+  await expect(request).rejects.toMatchObject({
+    status: 401,
+    code: 'AUTHENTICATION_REQUIRED',
+  });
+  expect(adapter).not.toHaveBeenCalled();
+});
+
 test('GET 401은 세션을 한 번 갱신하고 회전된 토큰으로 한 번만 복구한다', async () => {
   const accessToken = jest
     .fn<Promise<string | null>, [boolean?]>()

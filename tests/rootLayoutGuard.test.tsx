@@ -75,3 +75,11 @@ test('pending consent 검토 오류가 있을 때만 로그인 사용자에게 s
   expect(screen.queryByText('login')).toBeNull();
   expect(screen.getByText('(tabs)')).toBeTruthy();
 });
+
+test('동의 저장 중에는 응답이 확정될 때까지 signup 복구 경로를 유지한다', async () => {
+  mockProfileState.consentStatus = 'saving';
+  const screen = await render(<RootLayoutNav />);
+
+  expect(screen.getByText('signup')).toBeTruthy();
+  expect(screen.getByText('(tabs)')).toBeTruthy();
+});

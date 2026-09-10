@@ -30,6 +30,8 @@ export interface RequestOptions {
   headers?: Record<string, string>;
   naverAccessToken?: string;
   signal?: AbortSignal;
+  /** 토큰 조회 뒤 실제 전송 직전에 인증 주체가 그대로인지 확인한다. */
+  authContextIsCurrent?: () => boolean;
 }
 
 export interface ApiResponse<T> {
@@ -182,8 +184,14 @@ export function createApiTransport(
       throw new ApiError({ status: 401, code: 'AUTHENTICATION_REQUIRED' });
     }
 
-    const execute = async (bearer: string | null) =>
-      client.request<T>({
+    const execute = async (bearer: string | null) => {
+      if (options.authContextIsCurrent && !options.authContextIsCurrent()) {
+        throw new ApiError({
+          status: 401,
+          code: 'AUTHENTICATION_REQUIRED',
+        });
+      }
+      return client.request<T>({
         method: options.method,
         url,
         params: compactParams(options.params),
@@ -198,6 +206,7 @@ export function createApiTransport(
           ...options.headers,
         },
       });
+    };
 
     try {
       let response: AxiosResponse<T>;

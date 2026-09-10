@@ -169,10 +169,13 @@ test('409는 최신 v2를 다시 불러와 체크를 초기화하고 명시적 �
   await fireEvent.press(screen.getByText('[필수] 개인정보 처리방침'));
   await fireEvent.press(submit);
   await waitFor(() => expect(updateLegalConsents).toHaveBeenCalledTimes(2));
-  expect(updateLegalConsents).toHaveBeenLastCalledWith([
-    { documentId: termsV2.documentId, agreed: true },
-    { documentId: privacy.documentId, agreed: true },
-  ]);
+  expect(updateLegalConsents).toHaveBeenLastCalledWith(
+    [
+      { documentId: termsV2.documentId, agreed: true },
+      { documentId: privacy.documentId, agreed: true },
+    ],
+    expect.any(Function),
+  );
 });
 
 test('legal GET 503에서는 나이 체크와 무관하게 다음 단계가 비활성화된다', async () => {

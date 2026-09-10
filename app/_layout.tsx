@@ -69,8 +69,9 @@ export default function RootLayout() {
 export function RootLayoutNav() {
   const colorScheme = useColorScheme();
   const isLoggedIn = useUserStore((state) => state.isLoggedIn);
-  const consentNeedsReview = useProfileLegalStore(
-    (state) => state.consentStatus === 'error',
+  const consentRecoveryActive = useProfileLegalStore(
+    (state) =>
+      state.consentStatus === 'error' || state.consentStatus === 'saving',
   );
 
   return (
@@ -79,7 +80,7 @@ export function RootLayoutNav() {
         <Stack.Protected guard={!isLoggedIn}>
           <Stack.Screen name="login" options={{ headerShown: false }} />
         </Stack.Protected>
-        <Stack.Protected guard={!isLoggedIn || consentNeedsReview}>
+        <Stack.Protected guard={!isLoggedIn || consentRecoveryActive}>
           <Stack.Screen name="signup" options={{ headerShown: false }} />
         </Stack.Protected>
         <Stack.Protected guard={isLoggedIn}>

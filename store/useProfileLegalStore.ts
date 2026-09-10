@@ -11,6 +11,7 @@ import {
   type Profile,
 } from '@/services/api/profile';
 import { ApiError, isApiError } from '@/services/api/problem';
+import { useUserStore } from '@/store/useUserStore';
 
 type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 type MutationStatus = 'idle' | 'saving' | 'error';
@@ -119,6 +120,15 @@ export const useProfileLegalStore = create<ProfileLegalState>((set, get) => ({
       set({ ownerUserId: userId, profile: null });
     }
     const started = epoch;
+    const authGeneration = useUserStore.getState().authGeneration;
+    const authContextIsCurrent = () => {
+      const current = useUserStore.getState();
+      return (
+        current.isLoggedIn &&
+        current.userId === userId &&
+        current.authGeneration === authGeneration
+      );
+    };
     set({ consentStatus: 'saving', consentError: null });
     try {
       await updateLegalConsents(
@@ -126,6 +136,7 @@ export const useProfileLegalStore = create<ProfileLegalState>((set, get) => ({
           documentId: item.documentId,
           agreed: agreedIds.has(item.documentId),
         })),
+        authContextIsCurrent,
       );
       if (started !== epoch || get().ownerUserId !== userId) return;
       set({ consentStatus: 'idle' });

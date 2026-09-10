@@ -36,6 +36,7 @@ jest.mock('@/services/supabase', () => ({
 
 beforeEach(() => {
   useUserStore.setState({
+    authGeneration: 0,
     isLoggedIn: false,
     userId: null,
     userName: null,
@@ -114,6 +115,17 @@ test('세션 확인 중 로그아웃한 사용자를 늦은 응답으로 복원�
   finish({ data: { user: session.user }, error: null });
   await settle();
   expect(useUserStore.getState().isLoggedIn).toBe(false);
+  stop();
+});
+
+test('인증 세대는 사용자 주체가 바뀔 때만 증가한다', () => {
+  const stop = startAuthSession();
+  changed('SIGNED_IN', session);
+  expect(useUserStore.getState().authGeneration).toBe(1);
+  changed('TOKEN_REFRESHED', session);
+  expect(useUserStore.getState().authGeneration).toBe(1);
+  changed('SIGNED_OUT', null);
+  expect(useUserStore.getState().authGeneration).toBe(2);
   stop();
 });
 

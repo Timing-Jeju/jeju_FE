@@ -73,7 +73,10 @@ export interface LegalConsentsResponse {
  * 오류 code: INVALID_PROFILE_LEGAL_REQUEST (400), PROFILE_CONFLICT (409),
  * LEGAL_CONSENT_REQUIRED (422 — 필수 동의가 빠졌을 때), PROFILE_DATA_UNAVAILABLE (503).
  */
-export const updateLegalConsents = (consents: LegalConsent[]) => {
+export const updateLegalConsents = (
+  consents: LegalConsent[],
+  authContextIsCurrent?: () => boolean,
+) => {
   if (consents.length === 0) {
     return Promise.reject(
       new ApiError({ status: 422, code: 'LEGAL_CONSENT_REQUIRED' }),
@@ -102,5 +105,6 @@ export const updateLegalConsents = (consents: LegalConsent[]) => {
     path: '/me/consents',
     auth: 'required',
     body: { consents },
+    ...(authContextIsCurrent ? { authContextIsCurrent } : {}),
   });
 };

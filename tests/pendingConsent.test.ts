@@ -7,6 +7,7 @@ import {
 } from '@/services/pendingConsent';
 import { updateLegalConsents } from '@/services/api/legal';
 import { ApiError } from '@/services/api/problem';
+import { useUserStore } from '@/store/useUserStore';
 
 const mockStorage = new Map<string, string>();
 jest.mock('@react-native-async-storage/async-storage', () => ({
@@ -36,6 +37,12 @@ const documents = [
 beforeEach(async () => {
   mockStorage.clear();
   await AsyncStorage.clear();
+  useUserStore.setState({
+    authGeneration: 1,
+    authReady: true,
+    isLoggedIn: true,
+    userId: 'user-a',
+  });
 });
 
 test('명시적 pending intent는 인증 직후 한 번 PUT하고 성공 시 삭제한다', async () => {
@@ -48,9 +55,10 @@ test('명시적 pending intent는 인증 직후 한 번 PUT하고 성공 시 삭
   await expect(submitPendingConsentIntent('user-a')).resolves.toBe('submitted');
   await expect(submitPendingConsentIntent('user-a')).resolves.toBe('none');
   expect(updateLegalConsents).toHaveBeenCalledTimes(1);
-  expect(updateLegalConsents).toHaveBeenCalledWith([
-    { documentId: documents[0].documentId, agreed: true },
-  ]);
+  expect(updateLegalConsents).toHaveBeenCalledWith(
+    [{ documentId: documents[0].documentId, agreed: true }],
+    expect.any(Function),
+  );
 });
 
 test('백엔드가 정한 불투명한 약관 version 문자열도 그대로 허용한다', async () => {
@@ -63,9 +71,10 @@ test('백엔드가 정한 불투명한 약관 version 문자열도 그대로 허
   ]);
 
   await expect(submitPendingConsentIntent('user-a')).resolves.toBe('submitted');
-  expect(updateLegalConsents).toHaveBeenCalledWith([
-    { documentId: documents[0].documentId, agreed: true },
-  ]);
+  expect(updateLegalConsents).toHaveBeenCalledWith(
+    [{ documentId: documents[0].documentId, agreed: true }],
+    expect.any(Function),
+  );
 });
 
 test('409는 자동 재시도하지 않고 검토 상태로 남겨 명시적 재동의를 요구한다', async () => {
@@ -84,4 +93,50 @@ test('409는 자동 재시도하지 않고 검토 상태로 남겨 명시적 재
   );
   expect(updateLegalConsents).toHaveBeenCalledTimes(1);
   await clearPendingConsentIntent();
+});
+
+test('storage read 중 인증 계정이 바뀌면 계정별 작업으로 분리한다', async () => {
+  await savePendingConsentIntent(documents);
+  const raw = [...mockStorage.values()][0];
+  let releaseRead!: (value: string) => void;
+  jest.mocked(AsyncStorage.getItem).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        releaseRead = resolve;
+      }),
+  );
+
+  const submission = submitPendingConsentIntent('user-a');
+  while (!releaseRead) await Promise.resolve();
+  useUserStore.setState({ userId: 'user-b', authGeneration: 2 });
+  const nextSubmission = submitPendingConsentIntent('user-b');
+  releaseRead(raw);
+
+  await expect(submission).rejects.toMatchObject({ status: 401 });
+  await expect(nextSubmission).resolves.toBe('submitted');
+  expect(updateLegalConsents).toHaveBeenCalledTimes(1);
+  const authContextIsCurrent =
+    jest.mocked(updateLegalConsents).mock.calls[0][1];
+  expect(authContextIsCurrent?.()).toBe(true);
+});
+
+test('PUT dispatch 전에 durable attempted 상태로 바꿔 재시작 자동 재전송을 막는다', async () => {
+  let intentAtDispatch: Record<string, unknown> | null = null;
+  jest.mocked(updateLegalConsents).mockImplementationOnce(async () => {
+    intentAtDispatch = JSON.parse([...mockStorage.values()][0]);
+    throw new Error('simulated process loss after dispatch');
+  });
+  await savePendingConsentIntent(documents);
+
+  await expect(submitPendingConsentIntent('user-a')).rejects.toThrow(
+    'simulated process loss',
+  );
+  expect(intentAtDispatch).toMatchObject({
+    status: 'needs_review',
+    ownerUserId: 'user-a',
+  });
+  await expect(submitPendingConsentIntent('user-a')).resolves.toBe(
+    'needs_review',
+  );
+  expect(updateLegalConsents).toHaveBeenCalledTimes(1);
 });
