@@ -96,8 +96,10 @@ const categoryLabel = (place: SavedPlace) => {
   return labels[place.category] ?? '장소';
 };
 
+const strongSavedPlaceEtag = /^"sp-[0-9a-f]{32}"$/;
+
 const strongEtag = (etag: string) => {
-  if (!/^"sp-[0-9a-f]{32}"$/.test(etag))
+  if (!strongSavedPlaceEtag.test(etag))
     throw new ApiError({ status: 0, code: 'INVALID_ETAG' });
   return etag;
 };
@@ -189,6 +191,9 @@ const isConflict = (error: unknown) =>
 
 const conflictNotice =
   '다른 곳에서 변경된 최신 내용을 불러왔어요. 입력한 내용을 확인한 뒤 다시 저장해 주세요.';
+
+const missingDeleteEtagNotice =
+  '최신 찜 정보를 다시 불러왔어요. 삭제할 장소를 확인한 뒤 다시 시도해 주세요.';
 
 export const useFavoriteStore = create<FavoriteState>((set, get) => ({
   favorites: [],
@@ -385,9 +390,21 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
     const { ownerId, authGeneration } = currentAuth();
     const authContextIsCurrent = authContext(ownerId, authGeneration);
     const current = get().favorites.find((place) => place.placeId === placeId);
-    if (!current?.etag) throw new ApiError({ status: 0, code: 'INVALID_ETAG' });
+    if (!current?.etag || !strongSavedPlaceEtag.test(current.etag)) {
+      let recoveryError: unknown;
+      try {
+        await get().hydrate(ownerId);
+      } catch (error) {
+        recoveryError = error;
+      }
+      if (recoveryError) throw recoveryError;
+      if (!authContextIsCurrent() || get().ownerId !== ownerId)
+        throw new ApiError({ status: 401, code: 'AUTHENTICATION_REQUIRED' });
+      set({ notice: missingDeleteEtagNotice });
+      throw new ApiError({ status: 0, code: 'SAVED_PLACE_DELETE_REFRESHED' });
+    }
     try {
-      await deleteSavedPlace(placeId, authContextIsCurrent);
+      await deleteSavedPlace(placeId, current.etag, authContextIsCurrent);
       if (!authContextIsCurrent()) return;
       dataEpoch += 1;
       set((state) => ({

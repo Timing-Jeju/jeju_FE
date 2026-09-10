@@ -103,7 +103,7 @@ const runtimeContractPath = 'services/generated/backendRuntime.ts';
 const coverageOutput = [
   '# Spring API wrapper coverage',
   '',
-  `Backend: \`Timing-Jeju/jeju_BE@${backendManifest.sourceCommit}\` (\`develop\`)`,
+  `Backend: \`Timing-Jeju/jeju_BE@${backendManifest.sourceCommit}\` (\`${backendManifest.sourceBranch}\`)`,
   '',
   '| Operation | Wrapper | 화면 연결 | 선행 조건 |',
   '| --- | --- | --- | --- |',

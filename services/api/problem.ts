@@ -21,6 +21,8 @@ const messages: Record<string, string> = {
   INVALID_API_TARGET: '서버 연결 대상을 확인해 주세요.',
   INVALID_IDEMPOTENCY_KEY: '요청 식별 키를 확인해 주세요.',
   INVALID_ETAG: '최신 데이터를 다시 불러와 주세요.',
+  SAVED_PLACE_DELETE_REFRESHED:
+    '최신 찜 정보를 다시 불러왔어요. 삭제할 장소를 확인한 뒤 다시 시도해 주세요.',
   PRECONDITION_FAILED:
     '데이터가 변경되었습니다. 최신 데이터를 다시 불러와 주세요.',
   TRIP_VERSION_CONFLICT:

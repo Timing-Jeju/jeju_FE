@@ -1,5 +1,5 @@
 {
-  "sourceCommit": "d1fa8184bb56b60febd483ad82d8ea16b5bb4774",
+  "sourceCommit": "f91c9c4fac1a162f1e20af096280c47ee0fe69e6",
   "operations": {
     "GET /api/v1/auth/social/providers": {
       "module": "authSocial.ts",
@@ -90,7 +90,7 @@
       "export": "deleteSavedPlace",
       "wrapper": "connected",
       "screen": "connected",
-      "prerequisite": "Supabase session; fixed backend contract has no delete If-Match"
+      "prerequisite": "session and hydrated list item strong ETag"
     },
     "GET /api/v1/trips": {
       "module": "trips.ts",

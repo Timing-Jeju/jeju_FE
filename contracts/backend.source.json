@@ -1,9 +1,9 @@
 {
   "repository": "Timing-Jeju/jeju_BE",
-  "sourceBranch": "develop",
-  "sourceCommit": "d1fa8184bb56b60febd483ad82d8ea16b5bb4774",
-  "sourceOpenApiSha256": "87cbe47cc5555c452fb90916311618fe314220f5a63341524c7cfef028d16cc2",
-  "runtimeManifestSha256": "aafd6ffe85ae783074f702e906e37033755dc27435a08868b243c3181fbf4459",
+  "sourceBranch": "fix/248-saved-place-delete-cas",
+  "sourceCommit": "f91c9c4fac1a162f1e20af096280c47ee0fe69e6",
+  "sourceOpenApiSha256": "6da8e56c5c85966f9542820d542fb8f9b311ffaa907473af7c5ac3498e24e3d0",
+  "runtimeManifestSha256": "688fe660f130c3804c3009198db56616f9163589408985f9424c70027ec0bba6",
   "operations": [
     "DELETE /api/v1/me/push-devices/{deviceId}",
     "DELETE /api/v1/me/saved-places/{placeId}",
