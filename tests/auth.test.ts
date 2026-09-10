@@ -8,6 +8,10 @@ import {
   signOut,
   getAccessToken,
 } from '@/services/auth';
+import {
+  registerAfterSignOutFailure,
+  registerBeforeSignOut,
+} from '@/services/authLifecycle';
 import { useUserStore } from '@/store/useUserStore';
 
 const session = {
@@ -133,8 +137,26 @@ test('백그라운드에서 갱신을 멈추고 복귀하면 다시 시작한다
 test('서버 로그아웃 실패를 완료로 처리하지 않는다', async () => {
   useUserStore.setState({ isLoggedIn: true, userId: session.user.id });
   mockAuth.signOut.mockResolvedValue({ error: new Error('unavailable') });
+  const recover = jest.fn(async () => undefined);
+  const removeHandler = registerAfterSignOutFailure(recover);
   await expect(signOut()).rejects.toThrow('로그아웃하지 못했어요');
   expect(useUserStore.getState().isLoggedIn).toBe(true);
+  expect(recover).toHaveBeenCalledWith(session.user.id);
+  removeHandler();
+});
+
+test('로그아웃 전에 현재 기기 해제를 시도한다', async () => {
+  useUserStore.setState({ isLoggedIn: true, userId: session.user.id });
+  const cleanup = jest.fn(async () => {
+    expect(mockAuth.signOut).not.toHaveBeenCalled();
+  });
+  const removeHandler = registerBeforeSignOut(cleanup);
+
+  await signOut();
+
+  expect(cleanup).toHaveBeenCalledWith(session.user.id);
+  expect(mockAuth.signOut).toHaveBeenCalled();
+  removeHandler();
 });
 
 test('BE 요청에는 현재 사용자 access token만 제공한다', async () => {

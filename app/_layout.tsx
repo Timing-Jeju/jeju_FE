@@ -6,6 +6,7 @@ import 'react-native-reanimated';
 
 import { SplashView } from '@/components/ui';
 import { useColorScheme } from '@/components/useColorScheme';
+import { usePushRegistration } from '@/hooks/usePushRegistration';
 import { startAuthSession } from '@/services/auth';
 import { useUserStore } from '@/store/useUserStore';
 
@@ -68,6 +69,8 @@ export default function RootLayout() {
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
   const isLoggedIn = useUserStore((state) => state.isLoggedIn);
+  const userId = useUserStore((state) => state.userId);
+  usePushRegistration(userId);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>

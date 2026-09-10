@@ -2,7 +2,15 @@ import { render, waitFor } from '@testing-library/react-native';
 import PlaceDetailScreen from '@/app/place-detail';
 import { getPlace } from '@/services/places';
 const mockParams: { placeId?: string; name?: string } = {};
+const mockWeather = {
+  status: 'ready' as const,
+  message: '22°C · 맑음',
+  forecast: {} as never,
+};
 jest.mock('@/services/places', () => ({ getPlace: jest.fn() }));
+jest.mock('@/hooks/useWeatherForecast', () => ({
+  useWeatherForecast: () => mockWeather,
+}));
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => mockParams,
   useRouter: () => ({ back: jest.fn() }),
@@ -45,6 +53,8 @@ test('상세 정보 미제공은 무료 또는 영업 중으로 표시하지 않
   expect(screen.getByText('반려동물')).toBeTruthy();
   expect(screen.getByText('부대시설')).toBeTruthy();
   expect(screen.getByText('기타 안내')).toBeTruthy();
+  expect(screen.getByText('날씨')).toBeTruthy();
+  expect(screen.getByText('22°C · 맑음')).toBeTruthy();
 });
 
 test('이름만 있는 과거 링크는 재선택을 안내하고 임시 상세를 표시하지 않는다', async () => {

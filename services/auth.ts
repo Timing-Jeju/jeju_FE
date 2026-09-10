@@ -9,6 +9,7 @@ import { useFavoriteStore } from '@/store/useFavoriteStore';
 import { useScheduleStore } from '@/store/useScheduleStore';
 import { useTripStore } from '@/store/useTripStore';
 import { useUserStore } from '@/store/useUserStore';
+import { runAfterSignOutFailure, runBeforeSignOut } from './authLifecycle';
 import { getSupabase } from './supabase';
 
 const valid = (session: Session | null) =>
@@ -141,11 +142,14 @@ export async function signIn(email: string, password: string): Promise<void> {
 }
 
 export async function signOut(): Promise<void> {
+  const userId = useUserStore.getState().userId;
   try {
+    if (userId) await runBeforeSignOut(userId);
     const { error } = await getSupabase().auth.signOut({ scope: 'local' });
     if (error) throw new Error();
     acceptSession(null);
   } catch {
+    if (userId) await runAfterSignOutFailure(userId);
     throw new Error(
       '로그아웃하지 못했어요. 연결을 확인하고 다시 시도해 주세요.',
     );
