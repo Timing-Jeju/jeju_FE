@@ -5,7 +5,8 @@ Issue #15 구현은 `Timing-Jeju/jeju_BE@73cb2b9310ecb2eba5a931459a78229cd06e702
 - 날씨는 `regionCode`, `placeId`, `tripItemId` 중 하나만 전송한다. 현재 장소 상세 연결은 canonical `placeId`만 사용하며 좌표와 현재·간접 위치를 읽거나 Spring에 보내지 않는다.
 - 기기 등록은 앱 설치별 stable UUID와 FCM registration token을 같은 `PUT` 경로로 replay한다. token, JWT, device ID는 로그와 오류 상태에 보존하지 않는다.
 - 알림 권한을 자동으로 요청하지 않는다. 기존에 허용된 권한은 세션 복원 시 동기화하고, 명시적 사용자 동작은 `requestPushPermission`으로 연결한다. 거부와 철회는 정상 상태이며 철회 시 기기를 해제한다.
-- 알림 설정 cache와 mutation queue는 사용자별로 격리한다. 충돌 응답이 오면 성공으로 표시하지 않고 서버 값을 다시 조회한다.
+- 알림 설정 cache와 mutation queue는 인증 세대별로 격리하고 이전 세대 요청을 취소한다. 충돌 응답이 오면 성공으로 표시하지 않고 서버 값을 다시 조회하며, 더 늦은 GET은 최신 PATCH를 덮지 않는다.
+- Web에서는 native push lifecycle 전체를 unsupported로 처리해 권한, UUID, token, PUT/DELETE 작업을 시작하지 않는다.
 
 ## 후속 통합과 blocker
 

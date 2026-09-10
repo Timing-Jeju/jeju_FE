@@ -13,6 +13,7 @@ export function useNotificationPreferences(userId: string | null) {
   } | null>(null);
 
   useEffect(() => {
+    controller.activate(userId);
     if (!userId) return;
     let active = true;
     void controller.load(userId).then((state) => {
@@ -20,6 +21,7 @@ export function useNotificationPreferences(userId: string | null) {
     });
     return () => {
       active = false;
+      controller.deactivate(userId);
     };
   }, [userId]);
 

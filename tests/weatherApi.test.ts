@@ -81,6 +81,21 @@ test('현재 정시부터 10일까지만 예보 기간으로 허용한다', () =
   ).toThrow(expect.objectContaining({ status: 422 }));
 });
 
+test('regionCode는 pinned underscore와 50자 경계를 정확히 허용한다', () => {
+  const now = new Date('2026-09-10T01:30:00Z');
+  const validate = (regionCode: string) =>
+    validateWeatherForecastQuery(
+      { regionCode, dateTime: '2026-09-10T10:00:00+09:00' },
+      now,
+    );
+
+  expect(() => validate('jeju_special-zone')).not.toThrow();
+  expect(() => validate(`a${'_'.repeat(49)}`)).not.toThrow();
+  expect(() => validate(`a${'_'.repeat(50)}`)).toThrow(
+    expect.objectContaining({ status: 400 }),
+  );
+});
+
 test.each([
   [400, 'INVALID_WEATHER_SELECTOR'],
   [404, 'WEATHER_REFERENCE_NOT_FOUND'],

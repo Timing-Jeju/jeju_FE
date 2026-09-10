@@ -7,16 +7,24 @@ import {
 import { ApiError, hasCode } from './api/problem';
 
 export interface NotificationPreferenceApi {
-  fetch(): Promise<NotificationPreference>;
-  update(patch: NotificationPreferencePatch): Promise<NotificationPreference>;
+  fetch(signal?: AbortSignal): Promise<NotificationPreference>;
+  update(
+    patch: NotificationPreferencePatch,
+    signal?: AbortSignal,
+  ): Promise<NotificationPreference>;
 }
 
 type PreferenceState =
   | { status: 'idle' | 'loading' | 'unavailable' }
-  | {
-      status: 'ready' | 'conflict';
-      preference: NotificationPreference;
-    };
+  | { status: 'ready' | 'conflict'; preference: NotificationPreference };
+
+interface Session {
+  readonly userId: string;
+  readonly generation: number;
+  readonly abort: AbortController;
+  revision: number;
+  tail: Promise<unknown>;
+}
 
 const defaultApi: NotificationPreferenceApi = {
   fetch: fetchNotificationPreference,
@@ -45,63 +53,114 @@ const validatePatch = (patch: NotificationPreferencePatch) => {
   }
 };
 
-/** 사용자별 메모리 cache와 mutation queue를 분리한다. */
+/** 인증 세대마다 cache와 mutation queue를 격리한다. */
 export function createNotificationPreferenceController(
   api: NotificationPreferenceApi = defaultApi,
 ) {
   const states = new Map<string, PreferenceState>();
-  const queues = new Map<string, Promise<unknown>>();
+  let generation = 0;
+  let active: Session | null = null;
+
+  const isCurrent = (session: Session) =>
+    active === session &&
+    active.generation === session.generation &&
+    !session.abort.signal.aborted;
+
+  const activate = (userId: string | null) => {
+    if (active?.userId === userId) return;
+    active?.abort.abort();
+    generation += 1;
+    active = userId
+      ? {
+          userId,
+          generation,
+          abort: new AbortController(),
+          revision: 0,
+          tail: Promise.resolve(),
+        }
+      : null;
+  };
+
+  const deactivate = (userId: string) => {
+    if (active?.userId !== userId) return;
+    active.abort.abort();
+    generation += 1;
+    active = null;
+  };
+
+  const sessionFor = (userId: string) =>
+    active?.userId === userId ? active : null;
 
   const snapshot = (userId: string): PreferenceState =>
-    states.get(userId) ?? { status: 'idle' };
+    active?.userId === userId
+      ? (states.get(userId) ?? { status: 'idle' })
+      : { status: 'idle' };
 
-  const load = async (userId: string) => {
+  const load = async (userId: string): Promise<PreferenceState> => {
+    const session = sessionFor(userId);
+    if (!session) return { status: 'unavailable' };
+    const revision = ++session.revision;
     states.set(userId, { status: 'loading' });
     try {
-      const preference = await api.fetch();
+      const preference = await api.fetch(session.abort.signal);
       const state = { status: 'ready', preference } as const;
-      states.set(userId, state);
-      return state;
+      if (isCurrent(session) && revision === session.revision) {
+        states.set(userId, state);
+        return state;
+      }
     } catch {
-      const state = { status: 'unavailable' } as const;
-      states.set(userId, state);
-      return state;
+      if (isCurrent(session) && revision === session.revision) {
+        const state = { status: 'unavailable' } as const;
+        states.set(userId, state);
+        return state;
+      }
     }
+    return snapshot(userId);
   };
 
   const update = (userId: string, patch: NotificationPreferencePatch) => {
     validatePatch(patch);
-    const previous = queues.get(userId) ?? Promise.resolve();
-    const operation = previous
+    const session = sessionFor(userId);
+    if (!session) {
+      return Promise.resolve({ status: 'unavailable' } as const);
+    }
+    // 호출 시점에 revision을 예약하므로 이미 진행 중인 GET도 이 PATCH보다 오래된 값이다.
+    const revision = ++session.revision;
+    const operation = session.tail
       .catch(() => undefined)
-      .then(async () => {
+      .then(async (): Promise<PreferenceState> => {
+        if (!isCurrent(session)) return { status: 'unavailable' };
         try {
-          const preference = await api.update(patch);
+          const preference = await api.update(patch, session.abort.signal);
           const state = { status: 'ready', preference } as const;
-          states.set(userId, state);
-          return state;
+          if (isCurrent(session) && revision === session.revision) {
+            states.set(userId, state);
+          }
+          return isCurrent(session) ? state : { status: 'unavailable' };
         } catch (error) {
+          if (!isCurrent(session)) return { status: 'unavailable' };
           if (hasCode(error, 'CONFLICT', 'PRECONDITION_FAILED')) {
             try {
-              const preference = await api.fetch();
+              const preference = await api.fetch(session.abort.signal);
               const state = { status: 'conflict', preference } as const;
-              states.set(userId, state);
-              return state;
+              if (isCurrent(session) && revision === session.revision) {
+                states.set(userId, state);
+              }
+              return isCurrent(session) ? state : { status: 'unavailable' };
             } catch {
               // 최신값을 얻지 못하면 충돌을 성공으로 표시하지 않는다.
             }
           }
           const state = { status: 'unavailable' } as const;
-          states.set(userId, state);
+          if (isCurrent(session) && revision === session.revision) {
+            states.set(userId, state);
+          }
           return state;
         }
-      })
-      .finally(() => {
-        if (queues.get(userId) === operation) queues.delete(userId);
       });
-    queues.set(userId, operation);
+    session.tail = operation;
     return operation;
   };
 
-  return { snapshot, load, update };
+  return { activate, deactivate, snapshot, load, update };
 }

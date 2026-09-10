@@ -9,7 +9,7 @@ export type WeatherForecastQuery = NonNullable<
 
 const CANONICAL_UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const REGION_CODE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const REGION_CODE = /^[a-z0-9][a-z0-9_-]{0,49}$/;
 const JEJU_HOUR = /^\d{4}-\d{2}-\d{2}T\d{2}:00:00\+09:00$/;
 const HORIZON_MS = 10 * 24 * 60 * 60 * 1000;
 

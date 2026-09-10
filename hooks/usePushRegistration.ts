@@ -25,11 +25,12 @@ let presentationConfigured = false;
 /** 로그인 세션 동안 기존 권한과 token을 동기화한다. 권한 prompt는 UI action만 요청한다. */
 export function usePushRegistration(userId: string | null) {
   useEffect(() => {
-    if (!presentationConfigured) {
+    if (pushNativeAdapter.supported && !presentationConfigured) {
       presentationConfigured = true;
       void configurePushPresentation().catch(() => undefined);
     }
-    if (!userId) return;
+    controller.activate(userId);
+    if (!userId || !pushNativeAdapter.supported) return;
 
     let active = true;
     const sync = () => {
@@ -47,7 +48,10 @@ export function usePushRegistration(userId: string | null) {
     );
     const unregisterAfterFailure = registerAfterSignOutFailure(
       async (signedOutId) => {
-        if (signedOutId === userId) await controller.sync(userId);
+        if (signedOutId === userId) {
+          controller.activate(userId);
+          await controller.sync(userId);
+        }
       },
     );
     return () => {
@@ -56,6 +60,7 @@ export function usePushRegistration(userId: string | null) {
       unsubscribeToken();
       unregisterBeforeSignOut();
       unregisterAfterFailure();
+      controller.deactivate(userId);
     };
   }, [userId]);
 }

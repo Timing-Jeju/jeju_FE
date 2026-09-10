@@ -52,6 +52,7 @@ const hasFirebaseApp = () => {
 
 /** 오류 객체나 token을 기록하지 않는 native FCM/권한 adapter. */
 export const pushNativeAdapter: PushNativeAdapter = {
+  supported: true,
   platform: Platform.OS === 'ios' ? 'IOS' : 'ANDROID',
   appVersion: Constants.expoConfig?.version?.slice(0, 50) || '1.0.0',
   locale: safeLocale(),

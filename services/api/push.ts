@@ -55,6 +55,7 @@ const assertRegistration = (body: PushDeviceRegistrationRequest) => {
 export const registerPushDevice = async (
   deviceId: string,
   body: PushDeviceRegistrationRequest,
+  signal?: AbortSignal,
 ) => {
   assertDeviceId(deviceId);
   assertRegistration(body);
@@ -63,16 +64,21 @@ export const registerPushDevice = async (
     path: `/me/push-devices/${encodeURIComponent(deviceId)}`,
     auth: 'required',
     body,
+    ...(signal ? { signal } : {}),
   });
 };
 
 /** 기기 해제 (로그아웃 시). 성공은 204다. */
-export const deletePushDevice = async (deviceId: string): Promise<void> => {
+export const deletePushDevice = async (
+  deviceId: string,
+  signal?: AbortSignal,
+): Promise<void> => {
   assertDeviceId(deviceId);
   await request<void>({
     method: 'DELETE',
     path: `/me/push-devices/${encodeURIComponent(deviceId)}`,
     auth: 'required',
+    ...(signal ? { signal } : {}),
   });
 };
 
@@ -82,16 +88,18 @@ export type NotificationPreferencePatch =
   components['schemas']['NotificationPreferencePatchRequest'];
 
 /** 알림 설정 조회 */
-export const fetchNotificationPreference = () =>
+export const fetchNotificationPreference = (signal?: AbortSignal) =>
   requestData<NotificationPreference>({
     method: 'GET',
     path: '/me/notification-preferences',
     auth: 'required',
+    ...(signal ? { signal } : {}),
   });
 
 /** 알림 설정 수정 — 최소 한 필드가 필요하다 */
 export const updateNotificationPreference = async (
   body: NotificationPreferencePatch,
+  signal?: AbortSignal,
 ) => {
   const keys = Object.keys(body);
   if (
@@ -115,5 +123,6 @@ export const updateNotificationPreference = async (
     path: '/me/notification-preferences',
     auth: 'required',
     body,
+    ...(signal ? { signal } : {}),
   });
 };
