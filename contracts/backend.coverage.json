@@ -1,0 +1,264 @@
+{
+  "sourceCommit": "73cb2b9310ecb2eba5a931459a78229cd06e7028",
+  "operations": {
+    "GET /api/v1/auth/social/providers": {
+      "module": "authSocial.ts",
+      "export": "fetchSocialProviders",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "provider configuration"
+    },
+    "GET /api/v1/auth/social/naver/userinfo": {
+      "module": "authSocial.ts",
+      "export": "fetchNaverUserInfo",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "Naver provider token"
+    },
+    "GET /api/v1/me": {
+      "module": "profile.ts",
+      "export": "fetchProfile",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "Supabase session"
+    },
+    "PATCH /api/v1/me": {
+      "module": "profile.ts",
+      "export": "updateProfile",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "Supabase session"
+    },
+    "GET /api/v1/legal-documents": {
+      "module": "legal.ts",
+      "export": "fetchLegalDocuments",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "none; optional session"
+    },
+    "PUT /api/v1/me/consents": {
+      "module": "legal.ts",
+      "export": "updateLegalConsents",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "Supabase session"
+    },
+    "GET /api/v1/places": {
+      "module": "places.ts",
+      "export": "fetchPlaces",
+      "wrapper": "connected",
+      "screen": "connected",
+      "prerequisite": "existing canonical place flow preserved"
+    },
+    "GET /api/v1/places/{placeId}": {
+      "module": "places.ts",
+      "export": "fetchPlace",
+      "wrapper": "connected",
+      "screen": "connected",
+      "prerequisite": "canonical placeId"
+    },
+    "GET /api/v1/weather/forecast": {
+      "module": "weather.ts",
+      "export": "fetchWeatherForecast",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "one public selector; optional session"
+    },
+    "GET /api/v1/me/saved-places": {
+      "module": "savedPlaces.ts",
+      "export": "fetchSavedPlaces",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "Supabase session"
+    },
+    "POST /api/v1/me/saved-places": {
+      "module": "savedPlaces.ts",
+      "export": "createSavedPlace",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "session, canonical placeId, Idempotency-Key"
+    },
+    "PATCH /api/v1/me/saved-places/{placeId}": {
+      "module": "savedPlaces.ts",
+      "export": "updateSavedPlace",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "session and latest ETag"
+    },
+    "DELETE /api/v1/me/saved-places/{placeId}": {
+      "module": "savedPlaces.ts",
+      "export": "deleteSavedPlace",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "Supabase session"
+    },
+    "GET /api/v1/trips": {
+      "module": "trips.ts",
+      "export": "fetchTrips",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "Supabase session"
+    },
+    "POST /api/v1/trips": {
+      "module": "trips.ts",
+      "export": "createTrip",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "session and Idempotency-Key"
+    },
+    "GET /api/v1/trips/{tripId}": {
+      "module": "trips.ts",
+      "export": "fetchTrip",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "Supabase session"
+    },
+    "PATCH /api/v1/trips/{tripId}": {
+      "module": "trips.ts",
+      "export": "updateTrip",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "session and latest trip ETag"
+    },
+    "DELETE /api/v1/trips/{tripId}": {
+      "module": "trips.ts",
+      "export": "deleteTrip",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "Supabase session"
+    },
+    "PUT /api/v1/trips/{tripId}/preferences": {
+      "module": "trips.ts",
+      "export": "replaceTripPreferences",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "session and latest trip ETag"
+    },
+    "PUT /api/v1/trips/{tripId}/place-preferences": {
+      "module": "trips.ts",
+      "export": "replaceTripPlacePreferences",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "session, saved placeIds, latest trip ETag"
+    },
+    "GET /api/v1/trips/{tripId}/schedule": {
+      "module": "schedule.ts",
+      "export": "fetchSchedule",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "existing Spring schedule only; no AI generation"
+    },
+    "POST /api/v1/trips/{tripId}/schedule-items": {
+      "module": "scheduleItems.ts",
+      "export": "createScheduleItem",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "session, ETag, schedule version, Idempotency-Key"
+    },
+    "PATCH /api/v1/trips/{tripId}/schedule-items/{itemId}": {
+      "module": "scheduleItems.ts",
+      "export": "updateScheduleItem",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "session, ETag, schedule version, Idempotency-Key"
+    },
+    "DELETE /api/v1/trips/{tripId}/schedule-items/{itemId}": {
+      "module": "scheduleItems.ts",
+      "export": "deleteScheduleItem",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "session, ETag, schedule version, Idempotency-Key"
+    },
+    "PUT /api/v1/trips/{tripId}/schedule-order": {
+      "module": "scheduleItems.ts",
+      "export": "reorderSchedule",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "session, ETag, schedule version, Idempotency-Key"
+    },
+    "POST /api/v1/trips/{tripId}/schedule-items/{itemId}/move": {
+      "module": "scheduleItems.ts",
+      "export": "moveScheduleItem",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "session, ETag, schedule version, Idempotency-Key"
+    },
+    "POST /api/v1/trips/{tripId}/accommodations": {
+      "module": "accommodations.ts",
+      "export": "createAccommodation",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "session, ETag, Idempotency-Key"
+    },
+    "PATCH /api/v1/trips/{tripId}/accommodations/{accommodationId}": {
+      "module": "accommodations.ts",
+      "export": "updateAccommodation",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "session and latest trip ETag"
+    },
+    "DELETE /api/v1/trips/{tripId}/accommodations/{accommodationId}": {
+      "module": "accommodations.ts",
+      "export": "deleteAccommodation",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "session and latest trip ETag"
+    },
+    "PUT /api/v1/trips/{tripId}/transport-event": {
+      "module": "transportEvents.ts",
+      "export": "putTransportEvent",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "session and latest trip ETag"
+    },
+    "DELETE /api/v1/trips/{tripId}/transport-event": {
+      "module": "transportEvents.ts",
+      "export": "deleteTransportEvent",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "session, eventType, latest trip ETag"
+    },
+    "GET /api/v1/me/profile-image": {
+      "module": "profileImage.ts",
+      "export": "fetchProfileImage",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "Supabase session"
+    },
+    "PUT /api/v1/me/profile-image": {
+      "module": "profileImage.ts",
+      "export": "putProfileImage",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "session, storage object, latest ETag, Idempotency-Key"
+    },
+    "PUT /api/v1/me/push-devices/{deviceId}": {
+      "module": "push.ts",
+      "export": "registerPushDevice",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "session and platform registration token"
+    },
+    "DELETE /api/v1/me/push-devices/{deviceId}": {
+      "module": "push.ts",
+      "export": "deletePushDevice",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "Supabase session"
+    },
+    "GET /api/v1/me/notification-preferences": {
+      "module": "push.ts",
+      "export": "fetchNotificationPreference",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "Supabase session"
+    },
+    "PATCH /api/v1/me/notification-preferences": {
+      "module": "push.ts",
+      "export": "updateNotificationPreference",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "Supabase session"
+    }
+  }
+}
