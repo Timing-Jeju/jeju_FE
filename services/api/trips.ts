@@ -1,3 +1,4 @@
+import type { components } from '../generated/backend';
 import { request, requestData, type ApiResponse } from './http';
 import { createIdempotencyKey } from './idempotency';
 import type { CursorPageResponse, TripMutationEffect } from './types';
@@ -5,9 +6,9 @@ import type { CursorPageResponse, TripMutationEffect } from './types';
 /**
  * 여행. 모두 인증 필수다.
  *
- * 조회(목록/상세)와 생성은 ETag가 필요 없고, 여행을 바꾸는 호출
- * (수정·삭제·여행 조건·장소 선호)은 전부 If-Match에 여행 ETag를 요구한다.
- * ETag는 `GET /trips/{id}` 또는 직전 변경 응답에서 큰따옴표까지 그대로 들고 온다.
+ * 목록 조회는 ETag를 반환하지 않는다. 상세 조회·생성·변경 응답의 ETag는
+ * 후속 수정·여행 조건·장소 선호 요청의 If-Match에 필요하다.
+ * ETag는 `fetchTrip()`의 응답 헤더 또는 직전 변경 응답에서 큰따옴표까지 그대로 들고 온다.
  * 형식은 `"trip-<tripId>-r<revision>"`이며 뜯어보지 않는다.
  */
 
@@ -35,6 +36,9 @@ export interface TripTransportMode {
   primary: boolean;
 }
 
+/** 점수의 계산 run과 freshness를 설명하는 pinned OpenAPI 객체. */
+export type ScoreProvenance = components['schemas']['ScoreProvenance'];
+
 /** 여행 목록의 한 줄 */
 export interface TripListItem {
   tripId: string;
@@ -48,7 +52,7 @@ export interface TripListItem {
   /** key는 항상 있고 값은 null일 수 있다 */
   activeScheduleVersionId: string | null;
   totalScore: number | null;
-  scoreProvenance: string | null;
+  scoreProvenance: ScoreProvenance | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -141,8 +145,8 @@ export const createTrip = (
  * 오류 code: INVALID_REQUEST (400), TRIP_NOT_FOUND (404),
  * TRIP_DATA_UNAVAILABLE (503).
  */
-export const fetchTrip = (tripId: string) =>
-  requestData<Trip>({
+export const fetchTrip = (tripId: string): Promise<ApiResponse<Trip>> =>
+  request<Trip>({
     method: 'GET',
     path: `/trips/${encodeURIComponent(tripId)}`,
     auth: 'required',

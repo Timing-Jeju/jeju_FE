@@ -9,7 +9,9 @@ import { createIdempotencyKey } from './idempotency';
  * - `If-Match` — 여행 자체가 그 사이 바뀌지 않았는지 (여행 ETag)
  * - `expectedActiveScheduleVersionId` — 보고 있던 일정 버전이 아직 유효한지
  *
- * 두 값 모두 `GET /trips/{tripId}/schedule` 응답에서 가져와 들고 있다가 그대로 넘긴다.
+ * `etag`는 `fetchTrip()` 응답 헤더에서, `expectedActiveScheduleVersionId`는
+ * `fetchSchedule()` 응답 body의 `scheduleVersion.scheduleVersionId`에서 가져온다.
+ * 두 값을 들고 있다가 그대로 넘긴다.
  * 편집이 성공할 때마다 **새 일정 버전이 만들어지므로**, 응답의
  * `activeScheduleVersionId`와 `etag`로 갱신하지 않으면 다음 호출이 409로 막힌다.
  */
