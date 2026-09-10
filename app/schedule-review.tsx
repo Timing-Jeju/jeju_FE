@@ -339,10 +339,12 @@ function ScheduleReviewScreenContent() {
   const isLastDay = selectedDay >= dayCount;
 
   const handleConfirm = () => {
-    if (review?.serverBacked && review.dirty) {
+    if (review?.serverBacked) {
       Alert.alert(
         '준비 중이에요',
-        '서버 일정의 이동 시간 재검사는 아직 지원하지 않아요.',
+        review.dirty
+          ? '서버 일정의 이동 시간 재검사는 아직 지원하지 않아요.'
+          : '서버 일정 확정은 아직 지원하지 않아요.',
       );
       return;
     }
@@ -370,6 +372,13 @@ function ScheduleReviewScreenContent() {
 
   const handleMenuSelect = (key: string) => {
     setMenuTop(null);
+    if (review?.serverBacked && (key === 'reorder' || key === 'remove')) {
+      Alert.alert(
+        '준비 중이에요',
+        '서버 일정 편집은 일정 입력 화면에서 진행해 주세요.',
+      );
+      return;
+    }
     if (key === 'reorder') setReorderOpen(true);
     else if (key === 'add') setAddSheetOpen(true);
     else if (key === 'remove') setDeleteOpen(true);
@@ -439,6 +448,7 @@ function ScheduleReviewScreenContent() {
               <Tag status={worstStatus(legs)} />
             </View>
             <MenuIcon
+              accessibilityLabel="일정 검토 더보기"
               onPress={(event) =>
                 setMenuTop(event.nativeEvent.pageY + spacing.sm)
               }

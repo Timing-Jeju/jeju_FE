@@ -137,3 +137,14 @@ test('일정 화면은 versionNo를 표시하고 메뉴에서 다른 날짜 move
     ),
   );
 });
+
+test('항목이 없어도 보류된 일정 저장 복구 진입점을 표시한다', async () => {
+  useScheduleStore.setState({
+    places: { 1: [], 2: [] },
+    pendingMutationRecovery: true,
+  });
+
+  const screen = await render(<Calendar />);
+
+  expect(screen.getByText('이전 일정 저장 복구하기')).toBeTruthy();
+});

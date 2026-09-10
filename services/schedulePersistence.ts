@@ -4,6 +4,7 @@ import {
   moveScheduleItem,
   reorderSchedule,
   updateScheduleItem,
+  type ScheduleItemCreateRequest,
   type ScheduleItemPatchRequest,
 } from '@/services/api/scheduleItems';
 import { fetchSchedule, type TripSchedule } from '@/services/api/schedule';
@@ -252,6 +253,7 @@ const setSchedule = (
       versionNo: value.scheduleVersion.versionNo,
       loading: false,
       mutating: false,
+      pendingMutationRecovery: false,
       error: null,
     };
   });
@@ -449,6 +451,16 @@ export function createSchedulePersistenceActions() {
           serverTrip: latestTrip.data,
         });
         await clearScheduleMutationJournal();
+      } else if (
+        journal?.userId === scope.userId &&
+        journal.tripId === tripId &&
+        !journal.completion
+      ) {
+        useScheduleStore.setState({
+          pendingMutationRecovery: true,
+          error:
+            '이전 일정 저장 결과를 확인하거나 원래 요청을 다시 시도해 주세요.',
+        });
       }
       return value;
     } catch (error) {
@@ -704,7 +716,32 @@ export function createSchedulePersistenceActions() {
     }
     await clearScheduleMutationJournal();
     assertScope(scope);
-    useScheduleStore.setState({ error: null });
+    useScheduleStore.setState({ pendingMutationRecovery: false, error: null });
+  };
+
+  const retryPendingMutation = async () => {
+    const scope = captureAuthScope();
+    const journal = await loadScheduleMutationJournal();
+    assertScope(scope);
+    if (
+      !journal ||
+      journal.userId !== scope.userId ||
+      journal.tripId !== useTripStore.getState().tripId
+    ) {
+      throw new SchedulePersistenceValidationError(
+        '다시 시도할 보류 일정 요청이 없어요.',
+      );
+    }
+    if (journal.operation !== 'create') {
+      throw new SchedulePendingMutationError();
+    }
+    return mutate(
+      'create',
+      journal.fingerprint,
+      journal.request as ScheduleItemCreateRequest,
+      (tripId, body, locks, key) =>
+        createScheduleItem(tripId, body, locks, key),
+    );
   };
 
   return {
@@ -715,5 +752,6 @@ export function createSchedulePersistenceActions() {
     moveItem,
     reorderDay,
     discardPendingMutation,
+    retryPendingMutation,
   };
 }

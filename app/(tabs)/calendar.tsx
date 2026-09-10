@@ -74,6 +74,7 @@ export default function CalendarScreen() {
     moveItem,
     reorderDay,
     discardPendingMutation,
+    retryPendingMutation,
   } = useSchedulePersistence();
 
   const tripSaved = useTripStore((state) => state.draftSaved);
@@ -87,6 +88,9 @@ export default function CalendarScreen() {
     (state) => state.updateStayMinutes,
   );
   const versionNo = useScheduleStore((state) => state.versionNo);
+  const pendingMutationRecovery = useScheduleStore(
+    (state) => state.pendingMutationRecovery,
+  );
 
   const [selectedDay, setSelectedDay] = useState(1);
   const [addSheetOpen, setAddSheetOpen] = useState(false);
@@ -162,6 +166,31 @@ export default function CalendarScreen() {
       error instanceof Error
         ? error.message
         : '최신 일정을 확인한 뒤 다시 시도해 주세요.',
+    );
+  };
+
+  const showPendingRecovery = () => {
+    Alert.alert(
+      '이전 저장 결과를 확인해 주세요',
+      '같은 요청을 같은 키로 다시 확인하거나, 보류 기록을 직접 해제할 수 있어요.',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '기록 해제',
+          style: 'destructive',
+          onPress: () => {
+            void discardPendingMutation()
+              .then(() => hydrateSchedule())
+              .catch(showMutationError);
+          },
+        },
+        {
+          text: '원래 요청 재시도',
+          onPress: () => {
+            void retryPendingMutation().catch(showMutationError);
+          },
+        },
+      ],
     );
   };
 
@@ -303,6 +332,11 @@ export default function CalendarScreen() {
           >
             <Text style={styles.addLabel}>+ 장소 추가하기</Text>
           </Pressable>
+          {pendingMutationRecovery && (
+            <Pressable style={styles.addButton} onPress={showPendingRecovery}>
+              <Text style={styles.addLabel}>이전 일정 저장 복구하기</Text>
+            </Pressable>
+          )}
         </View>
       </ScrollView>
 

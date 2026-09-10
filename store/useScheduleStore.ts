@@ -128,6 +128,7 @@ interface ScheduleState {
   versionNo: number | null;
   loading: boolean;
   mutating: boolean;
+  pendingMutationRecovery: boolean;
   error: string | null;
   /** 이미 담긴 장소는 건너뛰고 뒤에 이어 붙인다 */
   addPlaces: (day: number, places: SchedulePlace[]) => void;
@@ -174,6 +175,7 @@ export const useScheduleStore = create<ScheduleState>((set) => ({
   versionNo: null,
   loading: false,
   mutating: false,
+  pendingMutationRecovery: false,
   error: null,
   addPlaces: (day, places) => {
     places.forEach((place) => requireCanonicalPlaceId(place.placeId));

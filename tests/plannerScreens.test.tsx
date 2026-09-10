@@ -1,4 +1,4 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 import Review from '@/app/schedule-review';
 import Leg from '@/app/schedule-leg';
@@ -27,6 +27,34 @@ jest.mock('@/services/location', () => ({
   requestLocationPermission: jest.fn(),
 }));
 jest.mock('@/services/naverApi', () => ({ getDrivingRoute: jest.fn() }));
+jest.mock('@/components/ui/MenuIcon', () => {
+  const React = jest.requireActual('react');
+  const { Text } = jest.requireActual('react-native');
+  return {
+    MenuIcon: ({ accessibilityLabel, onPress }: Record<string, unknown>) =>
+      React.createElement(Text, { accessibilityLabel, onPress }, '⋮'),
+  };
+});
+jest.mock('@/components/ui/PopoverMenu', () => {
+  const React = jest.requireActual('react');
+  const { Text, View } = jest.requireActual('react-native');
+  return {
+    PopoverMenu: ({ visible, items, onSelect }: Record<string, any>) =>
+      visible
+        ? React.createElement(
+            View,
+            null,
+            items.map((item: { key: string; label: string }) =>
+              React.createElement(
+                Text,
+                { key: item.key, onPress: () => onSelect(item.key) },
+                item.label,
+              ),
+            ),
+          )
+        : null,
+  };
+});
 
 beforeEach(() => {
   useScheduleStore.setState({
@@ -121,10 +149,69 @@ test('serverBacked dirty 일정의 미지원 재검사는 throw 없이 안내한
   });
   const screen = await render(<Review />);
 
-  expect(() => fireEvent.press(screen.getByText('재검사 하기'))).not.toThrow();
+  await fireEvent.press(screen.getByText('재검사 하기'));
   expect(alert).toHaveBeenCalledWith(
     '준비 중이에요',
     expect.stringContaining('재검사'),
+  );
+});
+
+test('serverBacked 확정·재정렬·삭제는 unsupported 함수를 호출하지 않고 안내한다', async () => {
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+  useScheduleStore.setState({
+    reviews: {
+      1: {
+        summary: '서버 일정 버전 2',
+        mode: 'manual',
+        dirty: false,
+        confirmed: false,
+        serverBacked: true,
+        legs: [
+          {
+            id: 'old',
+            from: '성산일출봉',
+            to: '섭지코지',
+            fromCoord: null,
+            toCoord: null,
+            status: 'cautionary',
+            startTime: '09:00',
+            endTime: '09:30',
+            cost: null,
+            distanceText: '거리 정보 없음',
+            reason: '위험도 정보 미제공',
+            steps: [],
+            departStayMinutes: 60,
+            slackMinutes: 10,
+            buses: [],
+          },
+        ],
+      },
+    },
+  });
+  const screen = await render(<Review />);
+
+  await fireEvent.press(screen.getByText('확정하기'));
+  await act(async () => {
+    screen.getByLabelText('일정 검토 더보기').props.onPress({
+      nativeEvent: { pageY: 100 },
+    });
+  });
+  await act(async () => {
+    screen.getByText('일정 순서 변경하기').props.onPress();
+  });
+  await act(async () => {
+    screen.getByLabelText('일정 검토 더보기').props.onPress({
+      nativeEvent: { pageY: 100 },
+    });
+  });
+  await act(async () => {
+    screen.getByText('일정 삭제하기').props.onPress();
+  });
+
+  expect(alert).toHaveBeenCalledTimes(3);
+  expect(alert).toHaveBeenLastCalledWith(
+    '준비 중이에요',
+    expect.stringContaining('일정 입력 화면'),
   );
 });
 

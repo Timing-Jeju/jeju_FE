@@ -694,3 +694,48 @@ test('journal 저장 중 계정이 바뀌면 Spring mutation을 전송하지 않
   await expect(pending).rejects.toThrow('로그인 사용자가 변경');
   expect(itemApi.updateScheduleItem).not.toHaveBeenCalled();
 });
+
+test('빈 일정 재시작은 pending create 복구를 노출하고 원래 key로만 재시도한다', async () => {
+  useScheduleStore.setState({ activeVersionId: version1, places: { 1: [] } });
+  jest
+    .mocked(itemApi.createScheduleItem)
+    .mockRejectedValueOnce(new Error('response lost'))
+    .mockResolvedValueOnce(mutation);
+  const place: Parameters<
+    ReturnType<typeof createSchedulePersistenceActions>['createPlace']
+  >[1] = {
+    placeId: place1,
+    name: '성산일출봉',
+    category: '관광지',
+    address: '제주',
+    visitType: null,
+    stayMinutes: 60,
+    coord: null,
+  };
+
+  await expect(
+    createSchedulePersistenceActions().createPlace(1, place),
+  ).rejects.toThrow('response lost');
+  const originalKey = jest.mocked(itemApi.createScheduleItem).mock.calls[0][3];
+  jest
+    .mocked(scheduleApi.fetchSchedule)
+    .mockResolvedValue(schedule(version1, []));
+
+  await createSchedulePersistenceActions().hydrateSchedule();
+
+  expect(
+    (useScheduleStore.getState() as { pendingMutationRecovery?: boolean })
+      .pendingMutationRecovery,
+  ).toBe(true);
+  jest.mocked(scheduleApi.fetchSchedule).mockResolvedValue(schedule(version2));
+  await (
+    createSchedulePersistenceActions() as ReturnType<
+      typeof createSchedulePersistenceActions
+    > & { retryPendingMutation: () => Promise<unknown> }
+  ).retryPendingMutation();
+
+  expect(itemApi.createScheduleItem).toHaveBeenCalledTimes(2);
+  expect(jest.mocked(itemApi.createScheduleItem).mock.calls[1][3]).toBe(
+    originalKey,
+  );
+});

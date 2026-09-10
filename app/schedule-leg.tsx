@@ -7,6 +7,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Image,
   Platform,
   Pressable,
@@ -211,7 +212,16 @@ function ScheduleLegScreenContent() {
             </View>
             <Pressable
               hitSlop={spacing.xs}
-              onPress={() => setDeleteVisible(true)}
+              onPress={() => {
+                if (review?.serverBacked) {
+                  Alert.alert(
+                    '준비 중이에요',
+                    '서버 일정 삭제는 일정 입력 화면에서 진행해 주세요.',
+                  );
+                  return;
+                }
+                setDeleteVisible(true);
+              }}
             >
               <Image source={trashIcon} style={styles.trashIcon} />
             </Pressable>
