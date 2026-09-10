@@ -78,6 +78,19 @@ AUTHENTICATION_REQUIRED`로 실제 발송 없이 종료한다. hydration `dataEp
 - typecheck, lint, api:check, ui:check: Green
 - Expo web static export: 23 routes Green
 
+## 재리뷰 hydration 보충 동기화
+
+초기 GET이 기존 X를 읽는 동안 새 Y POST가 성공한 뒤 이전 GET이 반환하면, epoch 불일치
+응답을 버리는 것만으로 local state가 `[Y]`에 머물러 X가 사라지는 race를 Red로 재현했다.
+Green에서는 같은 owner/auth generation이 유지될 때 최신 mutation epoch를 캡처한 보충 GET을
+시작한다. 보충 중 계정이 바뀌면 이전 owner 응답을 폐기하고, 보충 중 mutation이 다시
+성공하면 더 최신 epoch로 한 번 더 보충해 server-authoritative 전체 목록을 반영한다.
+
+- focused saved-place Jest: 16/16 Green
+- 전체 Jest: 39 suites, 234/234 Green
+- typecheck, lint, api:check, ui:check: Green
+- Expo web static export: 23 routes Green
+
 ## #11 main 통합
 
 #12 단독 Green commit 뒤 갱신된 `origin/main`을 merge했다. 충돌은 공용

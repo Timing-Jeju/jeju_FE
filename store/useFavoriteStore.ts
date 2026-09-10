@@ -227,7 +227,12 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
           authContextIsCurrent();
         if (scopeIsCurrent && currentDataEpoch === dataEpoch)
           set({ favorites: places.map(fromServer), status: 'ready' });
-        else if (scopeIsCurrent) set({ status: 'ready' });
+        else if (scopeIsCurrent) {
+          // 이 GET 뒤 mutation이 성공했다면 응답 전체를 버리는 것만으로는
+          // 서버에 있던 기존 항목을 잃는다. 최신 epoch로 보충 GET을 시작한다.
+          if (hydration?.promise === promise) hydration = null;
+          return get().hydrate(ownerId);
+        }
       })
       .catch((error) => {
         if (

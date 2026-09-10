@@ -63,6 +63,10 @@ const favoriteInput = {
 };
 
 beforeEach(() => {
+  jest.mocked(createSavedPlace).mockReset();
+  jest.mocked(deleteSavedPlace).mockReset();
+  jest.mocked(fetchAllSavedPlaces).mockReset();
+  jest.mocked(updateSavedPlace).mockReset();
   useUserStore.setState({
     authGeneration: 1,
     authReady: true,
@@ -153,11 +157,14 @@ test('PATCH 성공 뒤 늦게 끝난 이전 목록 GET은 새 memo를 덮지 않
   await patchStarted;
 
   let resolveOldList!: (places: SavedPlace[]) => void;
-  jest.mocked(fetchAllSavedPlaces).mockReturnValueOnce(
-    new Promise((resolve) => {
-      resolveOldList = resolve;
-    }),
-  );
+  jest
+    .mocked(fetchAllSavedPlaces)
+    .mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveOldList = resolve;
+      }),
+    )
+    .mockResolvedValueOnce([serverPlace({ etag: etag2, memo: '새 메모' })]);
   const staleHydration = useFavoriteStore.getState().hydrate(ownerA);
   resolvePatch({
     data: serverPlace({ etag: etag2, memo: '새 메모' }),
@@ -175,6 +182,7 @@ test('PATCH 성공 뒤 늦게 끝난 이전 목록 GET은 새 memo를 덮지 않
     etag: etag2,
     memo: '새 메모',
   });
+  expect(fetchAllSavedPlaces).toHaveBeenCalledTimes(3);
 });
 
 test('A 충돌 복구 GET 중 B로 전환되면 A draft를 B 상태에 기록하지 않는다', async () => {
@@ -344,6 +352,170 @@ test('초기 hydrate 중 create가 실패해도 안전한 GET 결과를 버리�
     status: 'ready',
     favorites: [expect.objectContaining({ name: '서버 기존 장소' })],
   });
+});
+
+test('초기 hydrate 중 create가 성공하면 최신 목록을 보충해 기존 X와 새 Y를 모두 유지한다', async () => {
+  const existingPlaceId = '34000000-0000-4000-8000-000000000002';
+  const existingPlace = serverPlace({
+    placeId: existingPlaceId,
+    name: '기존 X',
+  });
+  const createdPlace = serverPlace({ name: '새 Y', memo: '사용자 메모' });
+  let resolveOldHydration!: (places: SavedPlace[]) => void;
+  jest
+    .mocked(fetchAllSavedPlaces)
+    .mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveOldHydration = resolve;
+      }),
+    )
+    .mockResolvedValueOnce([existingPlace, createdPlace]);
+  jest.mocked(createSavedPlace).mockResolvedValueOnce({
+    data: createdPlace,
+    status: 201,
+    etag: etag1,
+    location: `/api/v1/me/saved-places/${placeId}`,
+    idempotencyReplayed: false,
+    traceId: null,
+  });
+
+  const hydration = useFavoriteStore.getState().hydrate(ownerA);
+  await useFavoriteStore.getState().addFavorite(favoriteInput);
+  resolveOldHydration([existingPlace]);
+  await hydration;
+
+  expect(fetchAllSavedPlaces).toHaveBeenCalledTimes(2);
+  expect(useFavoriteStore.getState()).toMatchObject({
+    ownerId: ownerA,
+    status: 'ready',
+  });
+  expect(
+    useFavoriteStore.getState().favorites.map(({ placeId }) => placeId),
+  ).toEqual([existingPlaceId, placeId]);
+});
+
+test('보충 GET 중 계정이 바뀌면 이전 owner 목록을 새 계정에 commit하지 않는다', async () => {
+  const existingPlace = serverPlace({
+    placeId: '34000000-0000-4000-8000-000000000002',
+    name: 'A의 기존 X',
+  });
+  const createdPlace = serverPlace({ name: 'A의 새 Y', memo: '사용자 메모' });
+  let resolveOldHydration!: (places: SavedPlace[]) => void;
+  let resolveSupplement!: (places: SavedPlace[]) => void;
+  let markSupplementStarted!: () => void;
+  const supplementStarted = new Promise<void>((resolve) => {
+    markSupplementStarted = resolve;
+  });
+  jest
+    .mocked(fetchAllSavedPlaces)
+    .mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveOldHydration = resolve;
+      }),
+    )
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          markSupplementStarted();
+          resolveSupplement = resolve;
+        }),
+    )
+    .mockResolvedValueOnce([serverPlace({ name: 'B의 장소' })]);
+  jest.mocked(createSavedPlace).mockResolvedValueOnce({
+    data: createdPlace,
+    status: 201,
+    etag: etag1,
+    location: `/api/v1/me/saved-places/${placeId}`,
+    idempotencyReplayed: false,
+    traceId: null,
+  });
+
+  const hydrationA = useFavoriteStore.getState().hydrate(ownerA);
+  await useFavoriteStore.getState().addFavorite(favoriteInput);
+  resolveOldHydration([existingPlace]);
+  await supplementStarted;
+
+  useUserStore.setState({ userId: ownerB, authGeneration: 2 });
+  await useFavoriteStore.getState().hydrate(ownerB);
+  resolveSupplement([existingPlace, createdPlace]);
+  await hydrationA;
+
+  expect(useFavoriteStore.getState()).toMatchObject({
+    ownerId: ownerB,
+    status: 'ready',
+    favorites: [expect.objectContaining({ name: 'B의 장소' })],
+  });
+});
+
+test('보충 GET 중 새 mutation이 성공하면 더 최신 epoch로 다시 보충한다', async () => {
+  const existingPlace = serverPlace({
+    placeId: '34000000-0000-4000-8000-000000000002',
+    name: '기존 X',
+  });
+  const createdY = serverPlace({ name: '새 Y', memo: '사용자 메모' });
+  const placeZId = '34000000-0000-4000-8000-000000000003';
+  const createdZ = serverPlace({
+    placeId: placeZId,
+    name: '새 Z',
+    memo: 'Z memo',
+  });
+  let resolveOldHydration!: (places: SavedPlace[]) => void;
+  let resolveSupplement!: (places: SavedPlace[]) => void;
+  let markSupplementStarted!: () => void;
+  const supplementStarted = new Promise<void>((resolve) => {
+    markSupplementStarted = resolve;
+  });
+  jest
+    .mocked(fetchAllSavedPlaces)
+    .mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveOldHydration = resolve;
+      }),
+    )
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          markSupplementStarted();
+          resolveSupplement = resolve;
+        }),
+    )
+    .mockResolvedValueOnce([existingPlace, createdY, createdZ]);
+  jest
+    .mocked(createSavedPlace)
+    .mockResolvedValueOnce({
+      data: createdY,
+      status: 201,
+      etag: etag1,
+      location: `/api/v1/me/saved-places/${placeId}`,
+      idempotencyReplayed: false,
+      traceId: null,
+    })
+    .mockResolvedValueOnce({
+      data: createdZ,
+      status: 201,
+      etag: etag1,
+      location: `/api/v1/me/saved-places/${placeZId}`,
+      idempotencyReplayed: false,
+      traceId: null,
+    });
+
+  const hydration = useFavoriteStore.getState().hydrate(ownerA);
+  await useFavoriteStore.getState().addFavorite(favoriteInput);
+  resolveOldHydration([existingPlace]);
+  await supplementStarted;
+  await useFavoriteStore.getState().addFavorite({
+    ...favoriteInput,
+    placeId: placeZId,
+    name: '새 Z',
+    memo: 'Z memo',
+  });
+  resolveSupplement([existingPlace, createdY]);
+  await hydration;
+
+  expect(fetchAllSavedPlaces).toHaveBeenCalledTimes(3);
+  expect(
+    useFavoriteStore.getState().favorites.map(({ placeId }) => placeId),
+  ).toEqual([existingPlace.placeId, placeId, placeZId]);
 });
 
 test('불확실한 생성 실패는 durable key를 보존하고 사용자의 명시 재시도에 재사용한다', async () => {
