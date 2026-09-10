@@ -129,6 +129,116 @@ test('계정 generation이 바뀐 뒤 끝난 이전 GET은 새 사용자 상태�
   });
 });
 
+test('PATCH 성공 뒤 늦게 끝난 이전 목록 GET은 새 memo를 덮지 않는다', async () => {
+  jest.mocked(fetchAllSavedPlaces).mockResolvedValueOnce([serverPlace()]);
+  await useFavoriteStore.getState().hydrate(ownerA);
+
+  let resolvePatch!: (
+    value: Awaited<ReturnType<typeof updateSavedPlace>>,
+  ) => void;
+  let markPatchStarted!: () => void;
+  const patchStarted = new Promise<void>((resolve) => {
+    markPatchStarted = resolve;
+  });
+  jest.mocked(updateSavedPlace).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        markPatchStarted();
+        resolvePatch = resolve;
+      }),
+  );
+  const update = useFavoriteStore
+    .getState()
+    .updateFavorite(placeId, '선택방문', '새 메모');
+  await patchStarted;
+
+  let resolveOldList!: (places: SavedPlace[]) => void;
+  jest.mocked(fetchAllSavedPlaces).mockReturnValueOnce(
+    new Promise((resolve) => {
+      resolveOldList = resolve;
+    }),
+  );
+  const staleHydration = useFavoriteStore.getState().hydrate(ownerA);
+  resolvePatch({
+    data: serverPlace({ etag: etag2, memo: '새 메모' }),
+    status: 200,
+    etag: etag2,
+    location: null,
+    idempotencyReplayed: null,
+    traceId: null,
+  });
+  await update;
+  resolveOldList([serverPlace({ memo: '오래된 메모' })]);
+  await staleHydration;
+
+  expect(useFavoriteStore.getState().favorites[0]).toMatchObject({
+    etag: etag2,
+    memo: '새 메모',
+  });
+});
+
+test('A 충돌 복구 GET 중 B로 전환되면 A draft를 B 상태에 기록하지 않는다', async () => {
+  jest.mocked(fetchAllSavedPlaces).mockResolvedValueOnce([serverPlace()]);
+  await useFavoriteStore.getState().hydrate(ownerA);
+  jest
+    .mocked(updateSavedPlace)
+    .mockRejectedValueOnce(
+      new ApiError({ status: 409, code: 'SAVED_PLACE_VERSION_CONFLICT' }),
+    );
+  let resolveRecoveryA!: (places: SavedPlace[]) => void;
+  let markRecoveryStarted!: () => void;
+  const recoveryStarted = new Promise<void>((resolve) => {
+    markRecoveryStarted = resolve;
+  });
+  jest.mocked(fetchAllSavedPlaces).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        markRecoveryStarted();
+        resolveRecoveryA = resolve;
+      }),
+  );
+  const updateA = useFavoriteStore
+    .getState()
+    .updateFavorite(placeId, '필수방문', 'A private memo');
+  await recoveryStarted;
+
+  useUserStore.setState({ userId: ownerB, authGeneration: 2 });
+  jest
+    .mocked(fetchAllSavedPlaces)
+    .mockResolvedValueOnce([serverPlace({ name: 'B의 장소' })]);
+  await useFavoriteStore.getState().hydrate(ownerB);
+  resolveRecoveryA([serverPlace({ memo: 'A 최신 메모' })]);
+  await expect(updateA).rejects.toMatchObject({ status: 409 });
+
+  expect(useFavoriteStore.getState()).toMatchObject({
+    ownerId: ownerB,
+    favorites: [expect.objectContaining({ name: 'B의 장소' })],
+  });
+  expect(useFavoriteStore.getState().conflictDrafts).toEqual({});
+  expect(useFavoriteStore.getState().notice).toBeNull();
+});
+
+test('같은 owner/place 동시 생성은 하나의 durable key와 단일 요청을 공유한다', async () => {
+  jest.mocked(createSavedPlace).mockResolvedValue({
+    data: serverPlace({ memo: '사용자 메모' }),
+    status: 201,
+    etag: etag1,
+    location: `/api/v1/me/saved-places/${placeId}`,
+    idempotencyReplayed: false,
+    traceId: null,
+  });
+
+  await Promise.all([
+    useFavoriteStore.getState().addFavorite(favoriteInput),
+    useFavoriteStore.getState().addFavorite(favoriteInput),
+  ]);
+
+  expect(AsyncStorage.getItem).toHaveBeenCalledTimes(1);
+  expect(AsyncStorage.setItem).toHaveBeenCalledTimes(1);
+  expect(createSavedPlace).toHaveBeenCalledTimes(1);
+  expect(useFavoriteStore.getState().favorites).toHaveLength(1);
+});
+
 test('불확실한 생성 실패는 durable key를 보존하고 사용자의 명시 재시도에 재사용한다', async () => {
   jest
     .mocked(createSavedPlace)

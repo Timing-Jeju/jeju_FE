@@ -62,3 +62,16 @@ GET 401 단일 재요청 제한을 결합했다. saved-place wrapper와 store도
 고정 BE OpenAPI와 실제 `SavedPlacesController`의 DELETE는 모두 request body와 `If-Match`가 없다. 따라서 FE는 재시작 목록에서 ETag가 있는 item에 대해서만 삭제를 시작하고 서버 204 뒤에만 반영할 수 있지만, 서버 원자적 delete CAS는 제공할 수 없다. BE가 DELETE `If-Match`와 409/412 계약을 추가하기 전까지 delete CAS acceptance는 차단된다.
 
 실제 staging/DB/Android/iOS smoke는 요청 범위에 따라 수행하지 않았다.
+
+## 독립 리뷰 동시성 보정
+
+`6a4683b` 독립 리뷰에서 세 race를 동적으로 재현했고 운영 코드보다 먼저 회귀
+테스트를 추가했다.
+
+- mutation 중 시작되어 PATCH 성공 뒤 늦게 도착한 GET이 새 memo/ETag를 덮었다.
+- A의 409 복구 GET을 기다리는 동안 B로 전환하면 A private draft가 B state에 기록됐다.
+- 같은 owner/place의 동시 create가 서로 다른 durable key 두 개와 POST 두 건을 만들었다.
+
+Green에서는 mutation start/success `dataEpoch`로 stale hydration commit을 폐기하고,
+모든 충돌 복구 commit 직전에 owner/authGeneration을 다시 검증했다. create의 durable
+read/write와 POST 전체는 owner+place single-flight로 묶어 같은 요청을 공유한다.
