@@ -38,7 +38,6 @@ jest.mock('expo-notifications', () => ({
   getPermissionsAsync: jest.fn(),
   requestPermissionsAsync: jest.fn(),
   setNotificationHandler: jest.fn(),
-  setAutoServerRegistrationEnabledAsync: jest.fn(() => Promise.resolve()),
   setNotificationChannelAsync: jest.fn(),
   scheduleNotificationAsync: jest.fn(),
   AndroidImportance: { DEFAULT: 3 },

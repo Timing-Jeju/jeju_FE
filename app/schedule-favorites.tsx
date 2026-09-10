@@ -1,6 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
+  Alert,
   FlatList,
   Image,
   Pressable,
@@ -34,6 +35,7 @@ import {
 } from '@/constants';
 import {
   FAVORITE_FILTERS,
+  favoriteErrorMessage,
   matchesFavoriteFilter,
   useFavoriteStore,
   type FavoriteFilter,
@@ -202,9 +204,13 @@ export default function ScheduleFavoritesScreen() {
         initialMemo={memoTarget?.memo ?? ''}
         tabLabels={MEMO_EDIT_TAB_LABELS}
         onClose={() => setMemoTarget(null)}
-        onSave={(visitType, memo) => {
-          if (memoTarget) updateFavorite(memoTarget.placeId, visitType, memo);
+        onSave={async (visitType, memo) => {
+          const target = memoTarget;
           setMemoTarget(null);
+          if (!target) return;
+          const ok = await updateFavorite(target.placeId, visitType, memo);
+          if (!ok)
+            Alert.alert('메모를 저장하지 못했어요', favoriteErrorMessage());
         }}
       />
     </SafeAreaView>

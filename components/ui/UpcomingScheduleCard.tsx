@@ -136,7 +136,7 @@ export function UpcomingScheduleCard({
             <Fragment key={`${point.name}-${index}`}>
               {index > 0 && (
                 <View style={styles.gap}>
-                  <Text style={styles.gapLabel}>
+                  <Text style={styles.gapLabel} numberOfLines={1}>
                     {toMinutes(points[index].time) -
                       toMinutes(points[index - 1].time)}
                     분
@@ -330,8 +330,11 @@ const styles = StyleSheet.create({
   gap: {
     width: GAP_WIDTH,
     paddingTop: 2,
+    alignItems: 'center',
   },
+  // 세 자리 분(105분)도 한 줄에 둔다. 칸보다 넓어 좌우로 조금 넘치지만 핀 사이 빈 공간이라 겹치지 않는다
   gapLabel: {
+    minWidth: 40,
     fontFamily: fontFamily.regular,
     fontSize: fontSize['3xs'],
     lineHeight: 14,

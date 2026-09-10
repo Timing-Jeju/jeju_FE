@@ -258,6 +258,8 @@ export default function HomeScreen() {
             onChangeText={setQuery}
             placeholder="가고싶은 장소를 검색해보세요."
             placeholderTextColor={PLACEHOLDER}
+            autoCapitalize="none"
+            autoCorrect={false}
             returnKeyType="search"
             onSubmitEditing={handleSearch}
           />

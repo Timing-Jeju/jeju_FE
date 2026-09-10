@@ -49,6 +49,7 @@ import {
   formatShort,
   fromKey,
   toKey,
+  toMinutes,
   WEEKDAYS,
 } from '@/utils/date';
 
@@ -867,8 +868,19 @@ function ScheduleSheet({
     setEndDate(key);
   };
 
+  // 당일치기면 떠나는 시각이 도착 시각보다 늦어야 한다
+  const isTimeOrderValid =
+    startDate !== endDate ||
+    !arrivalTime ||
+    !departureTime ||
+    toMinutes(departureTime) > toMinutes(arrivalTime);
+
   const canComplete =
-    !!startDate && !!endDate && !!arrivalTime && !!departureTime;
+    !!startDate &&
+    !!endDate &&
+    !!arrivalTime &&
+    !!departureTime &&
+    isTimeOrderValid;
 
   return (
     <BottomSheet visible={visible} onClose={onClose}>
@@ -1024,6 +1036,8 @@ function DayTimeSheet({
   const [activeField, setActiveField] = useState<'start' | 'end'>(initialField);
 
   const activeTime = activeField === 'start' ? start : end;
+  // 종료가 시작보다 늦어야 하루 활동 시간이 성립한다
+  const isRangeValid = end !== null && toMinutes(end) > toMinutes(start);
   const [activeHour, activeMinute] = (activeTime ?? '9:00')
     .split(':')
     .map(Number);
@@ -1042,7 +1056,7 @@ function DayTimeSheet({
   };
 
   const handleComplete = () => {
-    if (!end) return;
+    if (!end || !isRangeValid) return;
     const time: DayTime = { start, end };
     if (applyAll) {
       const all: Record<string, DayTime> = {};
@@ -1209,7 +1223,11 @@ function DayTimeSheet({
         </View>
       </View>
       <View style={sheetStyles.footer}>
-        <Button title="선택완료" disabled={!end} onPress={handleComplete} />
+        <Button
+          title="선택완료"
+          disabled={!isRangeValid}
+          onPress={handleComplete}
+        />
       </View>
     </BottomSheet>
   );
@@ -1462,6 +1480,8 @@ function LodgingSearchSheet({
             onChangeText={setQuery}
             placeholder={initialSelected?.name ?? '숙소를 입력해주세요'}
             placeholderTextColor={PLACEHOLDER}
+            autoCapitalize="none"
+            autoCorrect={false}
             returnKeyType="search"
             onSubmitEditing={handleSearch}
           />

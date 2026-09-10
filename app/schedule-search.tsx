@@ -199,6 +199,8 @@ export default function ScheduleSearchScreen() {
             }}
             placeholder="장소를 검색해보세요."
             placeholderTextColor={colors.grey[400]}
+            autoCapitalize="none"
+            autoCorrect={false}
             returnKeyType="search"
             onSubmitEditing={handleSearch}
           />

@@ -1,4 +1,4 @@
-import { formatDistance, haversine } from '@/utils/geo';
+import { formatDistance, haversine, regionOf } from '@/utils/geo';
 
 describe('haversine', () => {
   it('같은 좌표는 0m 이다', () => {
@@ -37,5 +37,40 @@ describe('formatDistance', () => {
     expect(formatDistance(1000)).toBe('1.0km');
     expect(formatDistance(1234)).toBe('1.2km');
     expect(formatDistance(12_345)).toBe('12.3km');
+  });
+});
+
+describe('regionOf', () => {
+  const airport = { latitude: 33.5066, longitude: 126.4931 };
+  const seongsan = { latitude: 33.4587, longitude: 126.9425 };
+
+  it('두 좌표가 여백을 두고 모두 들어가는 영역을 만든다', () => {
+    const region = regionOf([airport, seongsan]);
+
+    expect(region.latitude).toBeLessThan(seongsan.latitude);
+    expect(region.longitude).toBeLessThan(airport.longitude);
+    expect(region.latitude + region.latitudeDelta).toBeGreaterThan(
+      airport.latitude,
+    );
+    expect(region.longitude + region.longitudeDelta).toBeGreaterThan(
+      seongsan.longitude,
+    );
+    // 여백은 양쪽에 같은 비율로 붙는다 (경도 폭 0.4494 × 0.35 × 2)
+    expect(region.longitudeDelta).toBeCloseTo(0.4494 * 1.7, 3);
+  });
+
+  it('좌표가 하나면 최소 폭의 영역을 그 좌표 중심으로 만든다', () => {
+    const region = regionOf([airport], 0.35, 0.02);
+
+    expect(region.latitudeDelta).toBeCloseTo(0.02, 6);
+    expect(region.longitudeDelta).toBeCloseTo(0.02, 6);
+    expect(region.latitude + region.latitudeDelta / 2).toBeCloseTo(
+      airport.latitude,
+      6,
+    );
+    expect(region.longitude + region.longitudeDelta / 2).toBeCloseTo(
+      airport.longitude,
+      6,
+    );
   });
 });

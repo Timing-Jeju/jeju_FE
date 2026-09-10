@@ -96,10 +96,8 @@ export function setupPushNotifications() {
     }),
   });
 
-  // Expo 푸시 서비스는 쓰지 않으므로 Expo 서버로의 토큰 자동 등록을 끈다.
-  Notifications.setAutoServerRegistrationEnabledAsync(false).catch((error) =>
-    warn('Expo 토큰 자동 등록 해제 실패', error),
-  );
+  // Expo 푸시 서비스는 쓰지 않는다. Expo 서버로의 토큰 자동 등록은
+  // getExpoPushTokenAsync 를 불러야 켜지므로 따로 끄지 않는다.
 
   createDefaultChannel().catch((error) => warn('알림 채널 생성 실패', error));
 

@@ -179,6 +179,10 @@ export default function LiveMapScreen() {
     return points;
   }, [legs]);
 
+  // 현재 구간 출발지에 좌표가 없으면(빈시간 채우기로 넣은 장소 등) 좌표를 아는 가장 가까운 지점으로 연다
+  const initialCoord =
+    currentLeg?.fromCoord ?? currentLeg?.toCoord ?? markers[0]?.coord ?? null;
+
   /*
    * 현위치 오버레이(파란 점)는 위치 권한이 있어야 그려진다.
    * 좌표는 지도 SDK가 직접 받으므로 여기서는 권한만 확인한다.
@@ -214,9 +218,7 @@ export default function LiveMapScreen() {
           ref={mapRef}
           style={styles.map}
           initialCamera={
-            currentLeg?.fromCoord
-              ? { ...currentLeg.fromCoord, zoom: 13 }
-              : INITIAL_CAMERA
+            initialCoord ? { ...initialCoord, zoom: 13 } : INITIAL_CAMERA
           }
           isShowLocationButton={false}
         >

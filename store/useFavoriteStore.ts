@@ -178,13 +178,14 @@ interface FavoriteState {
   isFavorite: (placeId: string) => boolean;
   /** 찜 목록을 서버에서 다시 불러온다 */
   loadFavorites: () => Promise<void>;
-  addFavorite: (input: AddFavoriteInput) => Promise<void>;
+  /** 아래 세 동작은 성공하면 true, 실패하면 `error`에 사유를 남기고 false를 돌려준다 */
+  addFavorite: (input: AddFavoriteInput) => Promise<boolean>;
   updateFavorite: (
     placeId: string,
     visitType: VisitType,
     memo: string,
-  ) => Promise<void>;
-  removeFavorite: (placeId: string) => Promise<void>;
+  ) => Promise<boolean>;
+  removeFavorite: (placeId: string) => Promise<boolean>;
 }
 
 export const useFavoriteStore = create<FavoriteState>((set, get) => ({
@@ -253,14 +254,16 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
           created,
         ],
       }));
+      return true;
     } catch (error) {
       set({ error: messageOf(error) });
+      return false;
     }
   },
 
   updateFavorite: async (placeId, visitType, memo) => {
     const target = get().favorites.find((place) => place.placeId === placeId);
-    if (!target) return;
+    if (!target) return false;
 
     set({ error: null });
 
@@ -294,6 +297,7 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
 
     try {
       await apply(target);
+      return true;
     } catch (error) {
       /*
        * 들고 있던 값이 낡으면 ETag 읽기는 409 SAVED_PLACE_ALREADY_EXISTS,
@@ -308,18 +312,20 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
         )
       ) {
         set({ error: messageOf(error) });
-        return;
+        return false;
       }
 
       await get().loadFavorites();
       const latest = get().favorites.find((place) => place.placeId === placeId);
-      if (!latest) return;
+      if (!latest) return false;
 
       try {
         // 다시 불러와도 들고 있던 ETag 는 그대로 남으므로, 낡은 값을 버리고 서버의 현재 값으로 다시 읽는다
         await apply({ ...latest, etag: null });
+        return true;
       } catch (retryError) {
         set({ error: messageOf(retryError) });
+        return false;
       }
     }
   },
@@ -331,6 +337,7 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
       set((state) => ({
         favorites: state.favorites.filter((place) => place.placeId !== placeId),
       }));
+      return true;
     } catch (error) {
       // 이미 지워졌으면 화면에서도 지우는 게 맞다
       if (hasCode(error, 'SAVED_PLACE_NOT_FOUND')) {
@@ -339,9 +346,14 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
             (place) => place.placeId !== placeId,
           ),
         }));
-        return;
+        return true;
       }
       set({ error: messageOf(error) });
+      return false;
     }
   },
 }));
+
+/** 마지막 실패 사유 — 화면이 Alert 로 그대로 보여준다 */
+export const favoriteErrorMessage = () =>
+  useFavoriteStore.getState().error ?? '요청을 처리하지 못했습니다.';

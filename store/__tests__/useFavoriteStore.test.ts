@@ -11,6 +11,7 @@ import {
   type SavedPlace,
 } from '@/services/api';
 import {
+  favoriteErrorMessage,
   matchesFavoriteFilter,
   useFavoriteStore,
   type FavoritePlace,
@@ -116,6 +117,14 @@ beforeEach(() => {
   mocked.fetchAllSavedPlaces.mockResolvedValue([]);
   mocked.fetchAllPlaces.mockResolvedValue([]);
   useFavoriteStore.setState({ favorites: [], loading: false, error: null });
+});
+
+describe('favoriteErrorMessage', () => {
+  it('store 의 실패 사유를 돌려주고, 없으면 기본 문구다', () => {
+    expect(favoriteErrorMessage()).toBe('요청을 처리하지 못했습니다.');
+    useFavoriteStore.setState({ error: '서버 점검 중' });
+    expect(favoriteErrorMessage()).toBe('서버 점검 중');
+  });
 });
 
 describe('matchesFavoriteFilter', () => {
@@ -247,13 +256,15 @@ describe('addFavorite', () => {
       ),
     );
 
-    await store().addFavorite({
-      placeId: 'p1',
-      visitType: '필수방문',
-      memo: '   ',
-      address: '직접 넘긴 주소',
-      coord: { latitude: 33.4, longitude: 126.3 },
-    });
+    await expect(
+      store().addFavorite({
+        placeId: 'p1',
+        visitType: '필수방문',
+        memo: '   ',
+        address: '직접 넘긴 주소',
+        coord: { latitude: 33.4, longitude: 126.3 },
+      }),
+    ).resolves.toBe(true);
 
     expect(mocked.createSavedPlace).toHaveBeenCalledWith({
       placeId: 'p1',
@@ -293,11 +304,13 @@ describe('addFavorite', () => {
       apiError('PLACE_NOT_FOUND', '없는 장소'),
     );
 
-    await store().addFavorite({
-      placeId: 'p1',
-      visitType: '선택방문',
-      memo: '',
-    });
+    await expect(
+      store().addFavorite({
+        placeId: 'p1',
+        visitType: '선택방문',
+        memo: '',
+      }),
+    ).resolves.toBe(false);
 
     expect(store().favorites).toEqual([]);
     expect(store().error).toBe('없는 장소');
@@ -314,7 +327,9 @@ describe('updateFavorite', () => {
       ),
     );
 
-    await store().updateFavorite('p1', '필수방문', '수정');
+    await expect(
+      store().updateFavorite('p1', '필수방문', '수정'),
+    ).resolves.toBe(true);
 
     expect(mocked.readSavedPlaceEtag).not.toHaveBeenCalled();
     expect(mocked.updateSavedPlace).toHaveBeenCalledWith(
@@ -371,7 +386,9 @@ describe('updateFavorite', () => {
     ]);
     mocked.readSavedPlaceEtag.mockResolvedValue('"latest"');
 
-    await store().updateFavorite('p1', '선택방문', '수정');
+    await expect(
+      store().updateFavorite('p1', '선택방문', '수정'),
+    ).resolves.toBe(true);
 
     expect(mocked.fetchAllSavedPlaces).toHaveBeenCalledTimes(1);
     // 다시 불러온 항목은 ETag 가 없으므로 현재 서버 값으로 ETag 를 읽는다
@@ -396,7 +413,9 @@ describe('updateFavorite', () => {
     mocked.fetchAllSavedPlaces.mockResolvedValue([savedPlace()]);
     mocked.readSavedPlaceEtag.mockResolvedValue('"latest"');
 
-    await store().updateFavorite('p1', '선택방문', '수정');
+    await expect(
+      store().updateFavorite('p1', '선택방문', '수정'),
+    ).resolves.toBe(false);
 
     expect(mocked.updateSavedPlace).toHaveBeenCalledTimes(2);
     expect(store().error).toBe('충돌');
@@ -416,7 +435,9 @@ describe('updateFavorite', () => {
   });
 
   it('목록에 없는 장소는 아무것도 하지 않는다', async () => {
-    await store().updateFavorite('unknown', '선택방문', '');
+    await expect(
+      store().updateFavorite('unknown', '선택방문', ''),
+    ).resolves.toBe(false);
     expect(mocked.updateSavedPlace).not.toHaveBeenCalled();
     expect(mocked.readSavedPlaceEtag).not.toHaveBeenCalled();
   });
@@ -432,7 +453,7 @@ describe('removeFavorite', () => {
   it('삭제하면 목록에서 뺀다', async () => {
     mocked.deleteSavedPlace.mockResolvedValue();
 
-    await store().removeFavorite('p1');
+    await expect(store().removeFavorite('p1')).resolves.toBe(true);
 
     expect(store().favorites.map((place) => place.placeId)).toEqual(['p2']);
     expect(store().error).toBeNull();
@@ -443,7 +464,7 @@ describe('removeFavorite', () => {
       apiError('SAVED_PLACE_NOT_FOUND'),
     );
 
-    await store().removeFavorite('p1');
+    await expect(store().removeFavorite('p1')).resolves.toBe(true);
 
     expect(store().favorites.map((place) => place.placeId)).toEqual(['p2']);
     expect(store().error).toBeNull();
@@ -452,7 +473,7 @@ describe('removeFavorite', () => {
   it('다른 오류면 목록을 유지하고 error 를 남긴다', async () => {
     mocked.deleteSavedPlace.mockRejectedValue(apiError('X', '잠시 후'));
 
-    await store().removeFavorite('p1');
+    await expect(store().removeFavorite('p1')).resolves.toBe(false);
 
     expect(store().favorites).toHaveLength(2);
     expect(store().error).toBe('잠시 후');

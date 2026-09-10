@@ -33,6 +33,7 @@ import {
 } from '@/constants';
 import {
   FAVORITE_FILTERS,
+  favoriteErrorMessage,
   matchesFavoriteFilter,
   useFavoriteStore,
   type FavoriteFilter,
@@ -190,9 +191,13 @@ export default function FavoriteScreen() {
         initialMemo={memoTarget?.memo ?? ''}
         tabLabels={MEMO_EDIT_TAB_LABELS}
         onClose={() => setMemoTarget(null)}
-        onSave={(visitType, memo) => {
-          if (memoTarget) updateFavorite(memoTarget.placeId, visitType, memo);
+        onSave={async (visitType, memo) => {
+          const target = memoTarget;
           setMemoTarget(null);
+          if (!target) return;
+          const ok = await updateFavorite(target.placeId, visitType, memo);
+          if (!ok)
+            Alert.alert('메모를 저장하지 못했어요', favoriteErrorMessage());
         }}
       />
 
@@ -202,14 +207,16 @@ export default function FavoriteScreen() {
         title="해당 장소 찜을 삭제할까요?"
         description="찜 목록에서 삭제되며 저장한 메모도 함께 사라져요"
         onCancel={() => setDeleteTarget(null)}
-        onConfirm={() => {
-          if (deleteTarget) {
-            removeFavorite(deleteTarget.placeId);
-            setSelectedIds((prev) =>
-              prev.filter((placeId) => placeId !== deleteTarget.placeId),
-            );
-          }
+        onConfirm={async () => {
+          const target = deleteTarget;
           setDeleteTarget(null);
+          if (!target) return;
+          setSelectedIds((prev) =>
+            prev.filter((placeId) => placeId !== target.placeId),
+          );
+          const ok = await removeFavorite(target.placeId);
+          if (!ok)
+            Alert.alert('찜을 삭제하지 못했어요', favoriteErrorMessage());
         }}
       />
     </SafeAreaView>

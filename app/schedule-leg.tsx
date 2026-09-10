@@ -44,6 +44,7 @@ import {
 import { getDrivingRoute, type Coord } from '@/services/naverApi';
 import { useScheduleStore, type RouteLeg } from '@/store/useScheduleStore';
 import { formatTime } from '@/utils/date';
+import { regionOf } from '@/utils/geo';
 import { buildAlternatives } from '@/utils/schedule';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
@@ -158,6 +159,17 @@ export default function ScheduleLegScreen() {
     Boolean(marker.coord),
   );
 
+  // 두 지점을 모두 알면 둘 다 보이는 영역으로, 아니면 아는 지점(없으면 제주시)으로 연다
+  const knownCoord = fromCoord ?? toCoord;
+  const mapCameraProps =
+    fromCoord && toCoord
+      ? { initialRegion: regionOf([fromCoord, toCoord]) }
+      : {
+          initialCamera: knownCoord
+            ? { ...knownCoord, zoom: 12 }
+            : INITIAL_CAMERA,
+        };
+
   const handleApply = () => {
     const alternative = alternatives.find(
       (item) => item.id === selectedAlternative,
@@ -223,12 +235,7 @@ export default function ScheduleLegScreen() {
             </Text>
           </View>
         ) : (
-          <NaverMapView
-            style={styles.map}
-            initialCamera={
-              fromCoord ? { ...fromCoord, zoom: 12 } : INITIAL_CAMERA
-            }
-          >
+          <NaverMapView style={styles.map} {...mapCameraProps}>
             {markers.map((marker) => (
               <NaverMapMarkerOverlay
                 key={marker.label}

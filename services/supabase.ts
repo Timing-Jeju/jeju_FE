@@ -2,6 +2,8 @@ import 'react-native-url-polyfill/auto';
 
 import { createClient } from '@supabase/supabase-js';
 
+import { installWebCrypto } from './webCrypto';
+
 /**
  * Supabase Auth 클라이언트.
  *
@@ -27,6 +29,9 @@ export const isSupabaseConfigured = () =>
  */
 const PLACEHOLDER_URL = 'https://placeholder.supabase.co';
 const PLACEHOLDER_KEY = 'placeholder-anon-key';
+
+// PKCE code challenge 를 S256 으로 만들 수 있게 createClient 전에 WebCrypto 를 채운다
+installWebCrypto();
 
 export const supabase = createClient(
   SUPABASE_URL || PLACEHOLDER_URL,

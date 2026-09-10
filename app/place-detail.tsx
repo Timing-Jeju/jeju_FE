@@ -30,7 +30,10 @@ import {
   radius,
   spacing,
 } from '@/constants';
-import { useFavoriteStore } from '@/store/useFavoriteStore';
+import {
+  favoriteErrorMessage,
+  useFavoriteStore,
+} from '@/store/useFavoriteStore';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
 const MEMO_BACKGROUND = '#F5F6F9';
@@ -263,11 +266,18 @@ export default function PlaceDetailScreen() {
       <FavoriteMemoModal
         visible={memoModalVisible}
         onClose={() => setMemoModalVisible(false)}
-        onSave={(visitType, memo) => {
-          // 이름 / 분류 / 추천 체류 시간은 서버 응답에서 채운다
-          if (placeId)
-            addFavorite({ placeId, visitType, memo, address, coord });
+        onSave={async (visitType, memo) => {
           setMemoModalVisible(false);
+          if (!placeId) return;
+          // 이름 / 분류 / 추천 체류 시간은 서버 응답에서 채운다
+          const ok = await addFavorite({
+            placeId,
+            visitType,
+            memo,
+            address,
+            coord,
+          });
+          if (!ok) Alert.alert('찜하지 못했어요', favoriteErrorMessage());
         }}
       />
 
@@ -277,9 +287,12 @@ export default function PlaceDetailScreen() {
         title="해당 장소 찜을 삭제할까요?"
         description="찜 목록에서 삭제되며 저장한 메모도 함께 사라져요"
         onCancel={() => setDeleteModalVisible(false)}
-        onConfirm={() => {
-          if (placeId) removeFavorite(placeId);
+        onConfirm={async () => {
           setDeleteModalVisible(false);
+          if (!placeId) return;
+          const ok = await removeFavorite(placeId);
+          if (!ok)
+            Alert.alert('찜을 삭제하지 못했어요', favoriteErrorMessage());
         }}
       />
     </View>
