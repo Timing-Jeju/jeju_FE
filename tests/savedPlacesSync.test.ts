@@ -239,6 +239,113 @@ test('같은 owner/place 동시 생성은 하나의 durable key와 단일 요청
   expect(useFavoriteStore.getState().favorites).toHaveLength(1);
 });
 
+test('이전 A flight 대기 중 B로 전환되면 A intent를 B 요청으로 재귀 전송하지 않는다', async () => {
+  let resolveFirst!: (
+    value: Awaited<ReturnType<typeof createSavedPlace>>,
+  ) => void;
+  let markFirstStarted!: () => void;
+  const firstStarted = new Promise<void>((resolve) => {
+    markFirstStarted = resolve;
+  });
+  jest.mocked(createSavedPlace).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        markFirstStarted();
+        resolveFirst = resolve;
+      }),
+  );
+  const first = useFavoriteStore.getState().addFavorite(favoriteInput);
+  await firstStarted;
+
+  useUserStore.setState({ userId: ownerA, authGeneration: 3 });
+  const waiting = useFavoriteStore
+    .getState()
+    .addFavorite({ ...favoriteInput, memo: 'A gen3 memo' });
+  const waitingResult = expect(waiting).rejects.toMatchObject({
+    status: 401,
+    code: 'AUTHENTICATION_REQUIRED',
+  });
+  useUserStore.setState({ userId: ownerB, authGeneration: 4 });
+  resolveFirst({
+    data: serverPlace({ memo: '사용자 메모' }),
+    status: 201,
+    etag: etag1,
+    location: `/api/v1/me/saved-places/${placeId}`,
+    idempotencyReplayed: false,
+    traceId: null,
+  });
+
+  await first;
+  await waitingResult;
+  expect(createSavedPlace).toHaveBeenCalledTimes(1);
+});
+
+test('같은 owner/place의 다른 create intent는 기존 성공 promise로 합치지 않는다', async () => {
+  let resolveFirst!: (
+    value: Awaited<ReturnType<typeof createSavedPlace>>,
+  ) => void;
+  let markFirstStarted!: () => void;
+  const firstStarted = new Promise<void>((resolve) => {
+    markFirstStarted = resolve;
+  });
+  jest.mocked(createSavedPlace).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        markFirstStarted();
+        resolveFirst = resolve;
+      }),
+  );
+  const first = useFavoriteStore.getState().addFavorite(favoriteInput);
+  await firstStarted;
+
+  const differentIntent = useFavoriteStore
+    .getState()
+    .addFavorite({ ...favoriteInput, memo: '두 번째 memo' });
+  const differentIntentResult = expect(differentIntent).rejects.toMatchObject({
+    status: 409,
+    code: 'CONFLICT',
+  });
+  resolveFirst({
+    data: serverPlace({ memo: '사용자 메모' }),
+    status: 201,
+    etag: etag1,
+    location: `/api/v1/me/saved-places/${placeId}`,
+    idempotencyReplayed: false,
+    traceId: null,
+  });
+  await first;
+  await differentIntentResult;
+
+  expect(createSavedPlace).toHaveBeenCalledTimes(1);
+  expect(useFavoriteStore.getState().favorites[0].memo).toBe('사용자 메모');
+});
+
+test('초기 hydrate 중 create가 실패해도 안전한 GET 결과를 버리지 않는다', async () => {
+  let resolveHydration!: (places: SavedPlace[]) => void;
+  jest.mocked(fetchAllSavedPlaces).mockReturnValueOnce(
+    new Promise((resolve) => {
+      resolveHydration = resolve;
+    }),
+  );
+  const hydration = useFavoriteStore.getState().hydrate(ownerA);
+  jest
+    .mocked(createSavedPlace)
+    .mockRejectedValueOnce(
+      new ApiError({ status: 0, code: 'CLIENT_NETWORK_ERROR' }),
+    );
+
+  await expect(
+    useFavoriteStore.getState().addFavorite(favoriteInput),
+  ).rejects.toMatchObject({ code: 'CLIENT_NETWORK_ERROR' });
+  resolveHydration([serverPlace({ name: '서버 기존 장소' })]);
+  await hydration;
+
+  expect(useFavoriteStore.getState()).toMatchObject({
+    status: 'ready',
+    favorites: [expect.objectContaining({ name: '서버 기존 장소' })],
+  });
+});
+
 test('불확실한 생성 실패는 durable key를 보존하고 사용자의 명시 재시도에 재사용한다', async () => {
   jest
     .mocked(createSavedPlace)

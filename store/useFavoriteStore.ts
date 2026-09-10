@@ -167,7 +167,7 @@ let hydration: {
 } | null = null;
 const createFlights = new Map<
   string,
-  { authGeneration: number; promise: Promise<void> }
+  { authGeneration: number; intent: string; promise: Promise<void> }
 >();
 
 const currentAuth = () => {
@@ -262,70 +262,88 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
     requireCanonicalPlaceId(place.placeId);
     const { ownerId, authGeneration } = currentAuth();
     const flightKey = durableKeyName(ownerId, place.placeId);
-    const existing = createFlights.get(flightKey);
-    if (existing) {
-      if (existing.authGeneration === authGeneration) return existing.promise;
-      try {
-        await existing.promise;
-      } catch {
-        // 이전 인증 세대의 요청 종료만 기다리고 현재 세대에서 다시 판단한다.
-      }
-      return get().addFavorite(place);
-    }
     const authContextIsCurrent = authContext(ownerId, authGeneration);
-    const promise = (async () => {
-      dataEpoch += 1;
-      const body = createBody(place);
-      const pending = await durableCreate(ownerId, body);
-      try {
-        const response = await createSavedPlace(
-          body,
-          pending.value.key,
-          authContextIsCurrent,
-        );
-        if (response.etag && response.etag !== response.data.etag)
-          throw new ApiError({ status: 0, code: 'INVALID_ETAG' });
-        await AsyncStorage.removeItem(pending.storageKey);
-        if (!authContextIsCurrent()) return;
-        dataEpoch += 1;
-        set((state) => ({
-          ownerId,
-          status: 'ready',
-          favorites: [
-            ...state.favorites.filter((item) => item.placeId !== place.placeId),
-            fromServer(response.data),
-          ],
-        }));
-      } catch (error) {
-        if (isApiError(error) && error.status > 0 && error.status < 500) {
-          try {
-            await AsyncStorage.removeItem(pending.storageKey);
-          } catch {
-            // definitive API 오류를 storage 정리 오류로 바꾸지 않는다.
-          }
+    const body = createBody(place);
+    const intent = JSON.stringify(body);
+
+    const startOrJoin = async (): Promise<void> => {
+      const existing = createFlights.get(flightKey);
+      if (existing) {
+        if (existing.authGeneration === authGeneration) {
+          if (existing.intent === intent) return existing.promise;
+          throw new ApiError({ status: 409, code: 'CONFLICT' });
         }
-        if (isConflict(error) && authContextIsCurrent()) {
-          await get().hydrate(ownerId);
-          if (authContextIsCurrent() && get().ownerId === ownerId)
-            set({ notice: conflictNotice });
+        try {
+          await existing.promise;
+        } catch {
+          // 이전 인증 세대의 요청 종료만 기다린다.
         }
-        throw error;
+        if (!authContextIsCurrent())
+          throw new ApiError({
+            status: 401,
+            code: 'AUTHENTICATION_REQUIRED',
+          });
+        return startOrJoin();
       }
-    })();
-    createFlights.set(flightKey, { authGeneration, promise });
-    try {
-      await promise;
-    } finally {
-      if (createFlights.get(flightKey)?.promise === promise)
-        createFlights.delete(flightKey);
-    }
+
+      const operation = (async () => {
+        const pending = await durableCreate(ownerId, body);
+        try {
+          const response = await createSavedPlace(
+            body,
+            pending.value.key,
+            authContextIsCurrent,
+          );
+          if (response.etag && response.etag !== response.data.etag)
+            throw new ApiError({ status: 0, code: 'INVALID_ETAG' });
+          await AsyncStorage.removeItem(pending.storageKey);
+          if (!authContextIsCurrent()) return;
+          dataEpoch += 1;
+          set((state) => ({
+            ownerId,
+            status: 'ready',
+            favorites: [
+              ...state.favorites.filter(
+                (item) => item.placeId !== place.placeId,
+              ),
+              fromServer(response.data),
+            ],
+          }));
+        } catch (error) {
+          if (isApiError(error) && error.status > 0 && error.status < 500) {
+            try {
+              await AsyncStorage.removeItem(pending.storageKey);
+            } catch {
+              // definitive API 오류를 storage 정리 오류로 바꾸지 않는다.
+            }
+          }
+          if (isConflict(error) && authContextIsCurrent()) {
+            await get().hydrate(ownerId);
+            if (authContextIsCurrent() && get().ownerId === ownerId)
+              set({ notice: conflictNotice });
+          }
+          throw error;
+        }
+      })();
+      const tracked = operation.finally(() => {
+        if (createFlights.get(flightKey)?.promise === tracked)
+          createFlights.delete(flightKey);
+      });
+      createFlights.set(flightKey, {
+        authGeneration,
+        intent,
+        promise: tracked,
+      });
+      return tracked;
+    };
+
+    return startOrJoin();
   },
   updateFavorite: async (placeId, visitType, memo) => {
     const { ownerId, authGeneration } = currentAuth();
     const authContextIsCurrent = authContext(ownerId, authGeneration);
     const current = get().favorites.find((place) => place.placeId === placeId);
     if (!current?.etag) throw new ApiError({ status: 0, code: 'INVALID_ETAG' });
-    dataEpoch += 1;
     try {
       const response = await updateSavedPlace(
         placeId,
@@ -363,7 +381,6 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
     const authContextIsCurrent = authContext(ownerId, authGeneration);
     const current = get().favorites.find((place) => place.placeId === placeId);
     if (!current?.etag) throw new ApiError({ status: 0, code: 'INVALID_ETAG' });
-    dataEpoch += 1;
     try {
       await deleteSavedPlace(placeId, authContextIsCurrent);
       if (!authContextIsCurrent()) return;

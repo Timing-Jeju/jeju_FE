@@ -60,6 +60,24 @@ Red로 확인한 뒤 #12의 찜 hydration, 실제 PATCH 메모 수정, 미제공
 - typecheck, lint, api:check, ui:check: Green
 - Expo web static export: 23 routes Green
 
+## 재리뷰 create scope/intent 보정
+
+`9fd0df8` 재리뷰에서 세 race를 Red 테스트로 재현했다.
+
+- A(gen1) create flight를 기다리던 A(gen3) intent가 B(gen4) 전환 뒤 B 요청으로 재귀 전송됐다.
+- 같은 owner/place의 다른 memo intent가 기존 promise에 합쳐져 미전송인데도 성공 반환됐다.
+- 초기 hydrate 중 실패한 create가 hydration epoch를 무효화해 정상 GET 결과를 버렸다.
+
+Green에서는 create flight가 최초 owner/authGeneration/body intent를 끝까지 보존한다. 같은
+scope라도 body가 다르면 `409 CONFLICT`, scope가 바뀌면 `401
+AUTHENTICATION_REQUIRED`로 실제 발송 없이 종료한다. hydration `dataEpoch`는 서버 mutation
+성공 때만 전진해 실패한 mutation이 안전한 in-flight GET을 폐기하지 않는다.
+
+- focused saved-place Jest: 13/13 Green
+- 전체 Jest: 39 suites, 231/231 Green
+- typecheck, lint, api:check, ui:check: Green
+- Expo web static export: 23 routes Green
+
 ## #11 main 통합
 
 #12 단독 Green commit 뒤 갱신된 `origin/main`을 merge했다. 충돌은 공용
