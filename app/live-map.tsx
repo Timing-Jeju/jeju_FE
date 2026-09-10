@@ -125,7 +125,9 @@ function LiveLegCard({ leg, current, expanded, onToggle }: LiveLegCardProps) {
                         {formatTime(leg.startTime)} - {formatTime(leg.endTime)}
                       </Text>
                       <Text style={styles.stopBusLabel}>
-                        {leg.cost.toLocaleString()}원
+                        {leg.cost === null
+                          ? '요금 정보 없음'
+                          : `${leg.cost.toLocaleString()}원`}
                       </Text>
                     </View>
                   ))}

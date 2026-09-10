@@ -49,6 +49,7 @@ import {
   favoriteMutationErrorMessage,
   useFavoriteSync,
 } from '@/hooks/useFavoriteSync';
+import { useSchedulePersistence } from '@/hooks/useSchedulePersistence';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
 const TITLE = '#191919';
@@ -67,11 +68,13 @@ export default function ScheduleFavoritesScreen() {
 
   const favorites = useFavoriteStore((state) => state.favorites);
   const updateFavorite = useFavoriteStore((state) => state.updateFavorite);
-  const addPlaces = useScheduleStore((state) => state.addPlaces);
+  const activeVersionId = useScheduleStore((state) => state.activeVersionId);
+  const { createPlace } = useSchedulePersistence();
 
   const [filter, setFilter] = useState<FavoriteFilter>('전체');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [memoTarget, setMemoTarget] = useState<FavoritePlace | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const visiblePlaces = favorites.filter((place) =>
     matchesFavoriteFilter(place, filter),
@@ -85,7 +88,7 @@ export default function ScheduleFavoritesScreen() {
     );
   };
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     const selected = favorites.filter((place) =>
       selectedIds.includes(place.placeId),
     );
@@ -96,21 +99,41 @@ export default function ScheduleFavoritesScreen() {
       );
       return;
     }
-    addPlaces(
-      day,
-      selected.map(
-        (place): SchedulePlace => ({
-          placeId: place.placeId,
-          name: place.name,
-          category: place.category,
-          address: place.address,
-          visitType: place.visitType,
-          stayMinutes: place.stayMinutes!,
-          coord: place.coord,
-        }),
-      ),
+    const places = selected.map(
+      (place): SchedulePlace => ({
+        placeId: place.placeId,
+        name: place.name,
+        category: place.category,
+        address: place.address,
+        visitType: place.visitType,
+        stayMinutes: place.stayMinutes!,
+        coord: place.coord,
+      }),
     );
-    router.back();
+    if (!activeVersionId) {
+      Alert.alert(
+        '활성 일정이 필요해요',
+        '서버 일정을 다시 불러온 뒤 장소를 추가해 주세요.',
+      );
+      return;
+    }
+    setSubmitting(true);
+    try {
+      for (const place of places) {
+        await createPlace(day, place);
+        setSelectedIds((current) =>
+          current.filter((placeId) => placeId !== place.placeId),
+        );
+      }
+      router.back();
+    } catch (error) {
+      Alert.alert(
+        '장소를 추가하지 못했어요',
+        error instanceof Error ? error.message : '다시 시도해 주세요.',
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -203,8 +226,8 @@ export default function ScheduleFavoritesScreen() {
               ? `선택한 ${selectedIds.length}개의 장소 추가`
               : '선택 장소 추가'
           }
-          disabled={selectedIds.length === 0}
-          onPress={handleAdd}
+          disabled={selectedIds.length === 0 || submitting}
+          onPress={() => void handleAdd()}
         />
       </View>
 

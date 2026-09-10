@@ -8,6 +8,7 @@
 - 최초 #12 commit: `c554bec`
 - #11 통합 FE base: `origin/main f3af3d340ec216fcec02413abf80435857fa8951`
 - 최종 #15 통합 FE base: `origin/main d5163ab265494da5478419bd014a3b11613f0590`
+- 최종 #14 통합 FE base: `origin/main 052a3fd624f6116fce96e0d595b4070f21f0f91c`
 
 ## Red
 
@@ -44,6 +45,19 @@ npm test -- --no-watchman --runTestsByPath \
 - `npm run lint`: Green
 - `npm run api:check`: Green
 - `npm run ui:check`: 기존 58개 StyleSheet 일치
+- Expo web static export: 23 routes Green
+
+## #14 main 통합
+
+`origin/main 052a3fd624f6116fce96e0d595b4070f21f0f91c` 통합에서
+`app/schedule-favorites.tsx` 한 파일이 충돌했다. typecheck의 conflict-marker 실패를
+Red로 확인한 뒤 #12의 찜 hydration, 실제 PATCH 메모 수정, 미제공 체류시간 차단과
+#14의 active schedule 확인, 서버 `createPlace` 순차 저장, submitting 중복 방지를 모두
+보존했다.
+
+- focused schedule + saved-place Jest: 34/34 Green
+- 전체 Jest: 39 suites, 228/228 Green
+- typecheck, lint, api:check, ui:check: Green
 - Expo web static export: 23 routes Green
 
 ## #11 main 통합
