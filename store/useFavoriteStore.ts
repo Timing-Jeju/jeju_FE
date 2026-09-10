@@ -8,6 +8,7 @@ import {
   fetchAllSavedPlaces,
   hasCode,
   isApiError,
+  isAttractionLabel,
   readSavedPlaceEtag,
   updateSavedPlace,
   type PlaceListItem,
@@ -41,8 +42,8 @@ export interface FavoritePlace {
 }
 
 /*
- * '카페'는 대응하는 TourAPI 분류 코드가 없어 서버가 절대 내려주지 않는다.
- * 항상 빈 목록이 되는 칩이라 빼 둔다. (분류 정보가 생기면 다시 넣는다)
+ * '카페'는 대응하는 TourAPI 분류 코드가 없어 장소 라벨로는 절대 내려오지 않는다.
+ * (검색 화면은 음식점 이름으로 거르지만 찜 목록은 라벨로만 거른다) 분류 정보가 생기면 넣는다.
  */
 export const FAVORITE_FILTERS = [
   '전체',
@@ -62,7 +63,7 @@ export const matchesFavoriteFilter = (
     case '전체':
       return true;
     case '관광지':
-      return place.category !== '식당';
+      return isAttractionLabel(place.category);
     case '식당':
       return place.category === filter;
     case '필수방문':

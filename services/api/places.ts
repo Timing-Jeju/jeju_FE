@@ -1,3 +1,4 @@
+import { FILTER_CODES, isCafeName, type PlaceFilter } from './category';
 import { requestData } from './http';
 import { collectPages } from './pagination';
 import type { CursorPageResponse, DataFreshness, GeoLocation } from './types';
@@ -96,6 +97,52 @@ export const fetchAllPlaces = (query: PlacesListQuery = {}) =>
   collectPages<PlaceListItem>((cursor) =>
     fetchPlaces({ ...query, size: query.size ?? 100, cursor }),
   );
+
+/** 카페는 음식 안에서 이름으로 거르므로 넉넉히 받아야 몇 개라도 남는다 */
+const CAFE_PAGE_SIZE = 100;
+
+/** 좌표 검색이면 거리순, 아니면 이름순 (서버 정렬과 같은 기준) */
+const byDistanceThenName = (a: PlaceListItem, b: PlaceListItem) => {
+  if (
+    a.distanceMeters !== null &&
+    b.distanceMeters !== null &&
+    a.distanceMeters !== b.distanceMeters
+  ) {
+    return a.distanceMeters - b.distanceMeters;
+  }
+  return a.name.localeCompare(b.name, 'ko');
+};
+
+/**
+ * 화면 필터(관광지 / 식당 / 카페, null이면 전체)로 장소를 모은다.
+ *
+ * 서버는 요청당 category 하나만 받으므로 필터 묶음의 코드마다 첫 페이지를 받아 합친다.
+ * placeId로 중복을 빼고 거리순(좌표 검색) 또는 이름순으로 다시 정렬한다.
+ * 페이지를 이어 받지 않으므로 지도 마커나 추천 목록처럼 "앞쪽 N개"가 필요한 곳에 쓴다.
+ */
+export const fetchPlacesByFilter = async (
+  filter: PlaceFilter | null,
+  query: Omit<PlacesListQuery, 'category' | 'cursor'> = {},
+): Promise<PlaceListItem[]> => {
+  const codes: (string | undefined)[] = filter
+    ? [...FILTER_CODES[filter]]
+    : [undefined];
+  const size = filter === '카페' ? CAFE_PAGE_SIZE : query.size;
+  const pages = await Promise.all(
+    codes.map((category) => fetchPlaces({ ...query, size, category })),
+  );
+
+  const seen = new Set<string>();
+  const items = pages
+    .flatMap((page) => page.items)
+    .filter((item) => {
+      if (seen.has(item.placeId)) return false;
+      seen.add(item.placeId);
+      return filter !== '카페' || isCafeName(item.name);
+    });
+
+  return items.sort(byDistanceThenName);
+};
 
 /** 상세에서의 개인화 정보 */
 export interface SavedPlaceState {

@@ -1,4 +1,9 @@
-import { formatDistance, haversine, regionOf } from '@/utils/geo';
+import {
+  formatDistance,
+  haversine,
+  radiusForZoom,
+  regionOf,
+} from '@/utils/geo';
 
 describe('haversine', () => {
   it('같은 좌표는 0m 이다', () => {
@@ -72,5 +77,23 @@ describe('regionOf', () => {
       airport.longitude,
       6,
     );
+  });
+});
+
+describe('radiusForZoom', () => {
+  it('줌이 작을수록(넓게 볼수록) 반경이 커진다', () => {
+    const wide = radiusForZoom(11, 33.5, 402);
+    const close = radiusForZoom(14, 33.5, 402);
+
+    expect(wide).toBeGreaterThan(close);
+    // 제주 위도 · 줌 11 · 402pt 폭이면 화면 절반이 대략 12~13km 다
+    expect(wide).toBeGreaterThan(12_000);
+    expect(wide).toBeLessThan(13_500);
+  });
+
+  it('서버 허용 범위 안으로 자른다', () => {
+    expect(radiusForZoom(20, 33.5, 402)).toBe(500);
+    expect(radiusForZoom(5, 33.5, 402)).toBe(20000);
+    expect(radiusForZoom(5, 33.5, 402, 100, 50000)).toBe(50000);
   });
 });

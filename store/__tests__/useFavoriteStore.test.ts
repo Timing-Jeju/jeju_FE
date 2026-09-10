@@ -20,6 +20,8 @@ import {
 jest.mock('@/services/api', () => ({
   ...jest.requireActual('@/services/api/problem'),
   categoryLabel: jest.requireActual('@/services/api/category').categoryLabel,
+  isAttractionLabel: jest.requireActual('@/services/api/category')
+    .isAttractionLabel,
   createSavedPlace: jest.fn(),
   deleteSavedPlace: jest.fn(),
   fetchAllPlaces: jest.fn(),
@@ -128,12 +130,14 @@ describe('favoriteErrorMessage', () => {
 });
 
 describe('matchesFavoriteFilter', () => {
-  it('전체는 모두, 관광지는 식당이 아닌 것, 식당은 식당만 고른다', () => {
+  it('전체는 모두, 관광지는 식당 · 쇼핑 · 숙박이 아닌 것, 식당은 식당만 고른다', () => {
     const restaurant = favorite({ category: '식당' });
     const museum = favorite({ category: '문화시설' });
+    const shop = favorite({ category: '쇼핑' });
 
     expect(matchesFavoriteFilter(restaurant, '전체')).toBe(true);
     expect(matchesFavoriteFilter(restaurant, '관광지')).toBe(false);
+    expect(matchesFavoriteFilter(shop, '관광지')).toBe(false);
     expect(matchesFavoriteFilter(museum, '관광지')).toBe(true);
     expect(matchesFavoriteFilter(restaurant, '식당')).toBe(true);
     expect(matchesFavoriteFilter(museum, '식당')).toBe(false);

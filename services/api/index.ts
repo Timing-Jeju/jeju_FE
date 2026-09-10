@@ -42,4 +42,10 @@ export * from './accommodations';
 export * from './transportEvents';
 export * from './scheduleItems';
 export * from './profileImage';
-export { categoryCode, categoryLabel } from './category';
+export {
+  categoryLabel,
+  FILTER_CODES,
+  isAttractionLabel,
+  isCafeName,
+  type PlaceFilter,
+} from './category';

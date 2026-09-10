@@ -4,7 +4,7 @@ import {
   type NaverMapViewRef,
 } from '@mj-studio/react-native-naver-map';
 import { useRouter } from 'expo-router';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -18,11 +18,19 @@ import {
   ScrollView,
   StyleSheet,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Button, LikeIcon, Text, UpcomingScheduleCard } from '@/components/ui';
+import {
+  Button,
+  ConfirmModal,
+  FavoriteMemoModal,
+  LikeIcon,
+  Text,
+  UpcomingScheduleCard,
+} from '@/components/ui';
 import {
   colors,
   fontFamily,
@@ -31,10 +39,21 @@ import {
   radius,
   spacing,
 } from '@/constants';
+import {
+  categoryLabel,
+  fetchPlacesByFilter,
+  isApiError,
+  type PlaceFilter,
+  type PlaceListItem,
+} from '@/services/api';
 import { getCurrentLocation } from '@/services/location';
-import { searchPlaces, type Place } from '@/services/naverApi';
+import { searchPlaces, type Coord, type Place } from '@/services/naverApi';
+import {
+  favoriteErrorMessage,
+  useFavoriteStore,
+} from '@/store/useFavoriteStore';
 import { useScheduleStore } from '@/store/useScheduleStore';
-import { formatDistance, haversine } from '@/utils/geo';
+import { formatDistance, haversine, radiusForZoom } from '@/utils/geo';
 import { activeReview } from '@/utils/schedule';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
@@ -51,6 +70,7 @@ const coffeeIcon = require('../../assets/images/icon-coffee.png');
 const targetIcon = require('../../assets/images/icon-target.png');
 const placeholderPlace = require('../../assets/images/placeholder-place.png');
 const pinMarker = require('../../assets/images/pin-marker.png');
+const trashIllust = require('../../assets/images/illust-trash.png');
 
 /** 지도 마커 크기 (UpcomingScheduleCard의 핀과 같은 크기로 맞춘다) */
 const MARKER_SIZE = 32;
@@ -82,24 +102,99 @@ const CATEGORIES = [
 
 type CategoryKey = (typeof CATEGORIES)[number]['key'];
 
-// TODO: 주변 식당/카페 API 연동 전 임시 데이터
-const MOCK_NEARBY = [
-  { name: '소심한 브런치', category: '카페', distance: '25m' },
-  { name: '오른', category: '카페', distance: '130m' },
-];
+/** 칩 → 목록 API 필터 (전체 · 내 근처는 분류를 걸지 않는다) */
+const FILTER_OF: Record<CategoryKey, PlaceFilter | null> = {
+  all: null,
+  tour: '관광지',
+  food: '식당',
+  cafe: '카페',
+  near: null,
+};
+
+/** 내 근처 칩이 찾는 반경 (m) */
+const NEAR_ME_RADIUS_METERS = 3000;
+/** 선택한 장소 주변 식당 · 카페를 찾는 반경 (m) */
+const NEARBY_FOOD_RADIUS_METERS = 2000;
+/** 코드 하나당 받는 마커 수 — 관광지는 코드가 여섯이라 최대 여섯 배가 된다 */
+const MARKERS_PER_CODE = 20;
+
+/** 지도에 찍는 장소. 백엔드 장소는 placeId가 있고, 네이버 검색 결과는 없다 */
+interface MapPlace {
+  placeId: string | null;
+  name: string;
+  address: string;
+  coord: Coord;
+  /** 관광지 / 식당 … (네이버 검색 결과는 빈 문자열) */
+  category: string;
+  /** 조회 기준점에서의 거리 — 좌표로 검색했을 때만 있다 */
+  distanceMeters: number | null;
+}
+
+const toMapPlace = (item: PlaceListItem): MapPlace => ({
+  placeId: item.placeId,
+  name: item.name,
+  address: item.address ?? item.regionLabel ?? '',
+  coord: { latitude: item.location.lat, longitude: item.location.lng },
+  category: categoryLabel(item.category),
+  distanceMeters: item.distanceMeters,
+});
+
+const fromSearchPlace = (place: Place): MapPlace => ({
+  placeId: null,
+  name: place.name,
+  address: place.roadAddress,
+  coord: place.coord,
+  category: '',
+  distanceMeters: null,
+});
+
+const isSamePlace = (a: MapPlace, b: MapPlace) =>
+  a.placeId
+    ? a.placeId === b.placeId
+    : a.name === b.name &&
+      a.coord.latitude === b.coord.latitude &&
+      a.coord.longitude === b.coord.longitude;
+
+const errorMessage = (error: unknown) => {
+  if (isApiError(error)) return error.detail;
+  return error instanceof Error ? error.message : '알 수 없는 오류';
+};
 
 export default function HomeScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const mapRef = useRef<NaverMapViewRef>(null);
 
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Place[]>([]);
   const [category, setCategory] = useState<CategoryKey>('all');
-  const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
+  /** 칩으로 불러온 주변 장소 마커 */
+  const [markers, setMarkers] = useState<MapPlace[]>([]);
+  const [selectedPlace, setSelectedPlace] = useState<MapPlace | null>(null);
+  /** 선택한 장소 주변의 식당 · 카페 (null이면 아직 불러오는 중) */
+  const [nearby, setNearby] = useState<MapPlace[] | null>(null);
   const [distance, setDistance] = useState<number | null>(null);
-  const [liked, setLiked] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [memoModalVisible, setMemoModalVisible] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  /** 마지막으로 멈춘 카메라 — 칩 조회의 기준점과 반경을 여기서 정한다 */
+  const camera = useRef({ ...INITIAL_CAMERA });
+  /** 장소를 빠르게 바꿔 눌렀을 때 늦게 온 주변 목록이 덮어쓰지 않게 한다 */
+  const nearbyRequest = useRef(0);
+
+  const favorites = useFavoriteStore((state) => state.favorites);
+  const loadFavorites = useFavoriteStore((state) => state.loadFavorites);
+  const addFavorite = useFavoriteStore((state) => state.addFavorite);
+  const removeFavorite = useFavoriteStore((state) => state.removeFavorite);
+  const liked =
+    !!selectedPlace?.placeId &&
+    favorites.some((place) => place.placeId === selectedPlace.placeId);
+
+  // 관심장소 탭에 들어간 적이 없어도 하트 상태를 맞게 보여준다
+  useEffect(() => {
+    loadFavorites();
+  }, [loadFavorites]);
 
   // 여행 중이면 지도 아래에 다가오는 일정 카드를 띄운다
   const reviews = useScheduleStore((state) => state.reviews);
@@ -177,11 +272,46 @@ export default function HomeScreen() {
     }
   };
 
-  const handleSelectPlace = async (place: Place) => {
+  /** 칩을 누르면 지금 보이는 지도 범위(내 근처는 현재 위치 주변)의 장소를 마커로 찍는다 */
+  const handleSelectCategory = async (key: CategoryKey) => {
+    setCategory(key);
+    setLoading(true);
+    try {
+      const center =
+        key === 'near' ? await getCurrentLocation() : camera.current;
+      const radiusMeters =
+        key === 'near'
+          ? NEAR_ME_RADIUS_METERS
+          : radiusForZoom(camera.current.zoom, center.latitude, windowWidth);
+      const places = await fetchPlacesByFilter(FILTER_OF[key], {
+        lat: center.latitude,
+        lng: center.longitude,
+        radiusMeters,
+        size: MARKERS_PER_CODE,
+      });
+
+      setMarkers(places.map(toMapPlace));
+      if (key === 'near') {
+        mapRef.current?.animateCameraTo({ ...center, zoom: 14, duration: 600 });
+      }
+      if (places.length === 0) {
+        Alert.alert(
+          '주변에 장소가 없어요',
+          '지도를 옮기거나 다른 분류를 골라보세요.',
+        );
+      }
+    } catch (error) {
+      Alert.alert('장소를 불러오지 못했어요', errorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSelectPlace = async (place: MapPlace) => {
     setResults([]);
     setQuery(place.name);
     setSelectedPlace(place);
-    setLiked(false);
+    setNearby(null);
     setDistance(null);
     sheetHeight.setValue(SHEET_COLLAPSED);
     sheetSnap.current = SHEET_COLLAPSED;
@@ -191,6 +321,25 @@ export default function HomeScreen() {
       zoom: 14,
       duration: 600,
     });
+
+    // 주변 식당 · 카페는 선택 장소 좌표 기준으로 받는다 (자기 자신은 뺀다)
+    const request = ++nearbyRequest.current;
+    fetchPlacesByFilter('식당', {
+      lat: place.coord.latitude,
+      lng: place.coord.longitude,
+      radiusMeters: NEARBY_FOOD_RADIUS_METERS,
+      size: 10,
+    })
+      .then((items) => {
+        if (request !== nearbyRequest.current) return;
+        setNearby(
+          items.map(toMapPlace).filter((item) => !isSamePlace(item, place)),
+        );
+      })
+      .catch(() => {
+        // 주변 목록은 실패해도 시트는 보여준다
+        if (request === nearbyRequest.current) setNearby([]);
+      });
 
     try {
       const current = await getCurrentLocation();
@@ -205,15 +354,30 @@ export default function HomeScreen() {
     router.push({
       pathname: '/place-detail',
       params: {
+        ...(selectedPlace.placeId ? { placeId: selectedPlace.placeId } : {}),
         name: selectedPlace.name,
-        address: selectedPlace.roadAddress,
+        address: selectedPlace.address,
         latitude: String(selectedPlace.coord.latitude),
         longitude: String(selectedPlace.coord.longitude),
       },
     });
   };
 
-  // TODO: 백엔드 주변 장소 API 연동 전까지는 탭하면 열려 있던 시트만 닫는다
+  // 찜 안 한 상태면 메모 모달로 찜하기, 찜한 상태면 삭제 확인 모달을 띄운다 (장소 상세와 같다)
+  const handleToggleFavorite = () => {
+    if (!selectedPlace) return;
+    if (!selectedPlace.placeId) {
+      Alert.alert(
+        '찜할 수 없어요',
+        '검색 결과에서 바로 찜하는 기능은 준비 중이에요.',
+      );
+      return;
+    }
+    if (liked) setDeleteModalVisible(true);
+    else setMemoModalVisible(true);
+  };
+
+  // 마커가 아닌 지도를 누르면 열려 있던 시트만 닫는다
   const handleTapMap = () => {
     setSelectedPlace(null);
   };
@@ -235,18 +399,41 @@ export default function HomeScreen() {
         style={StyleSheet.absoluteFill}
         initialCamera={INITIAL_CAMERA}
         onTapMap={handleTapMap}
+        onCameraIdle={({ latitude, longitude, zoom }) => {
+          camera.current = {
+            latitude,
+            longitude,
+            zoom: zoom ?? camera.current.zoom,
+          };
+        }}
       >
-        {selectedPlace && (
+        {markers.map((place) => (
           <NaverMapMarkerOverlay
-            latitude={selectedPlace.coord.latitude}
-            longitude={selectedPlace.coord.longitude}
-            caption={{ text: selectedPlace.name }}
+            key={place.placeId ?? place.name}
+            latitude={place.coord.latitude}
+            longitude={place.coord.longitude}
+            caption={{ text: place.name }}
+            isHideCollidedCaptions
             image={pinMarker}
             width={MARKER_SIZE}
             height={MARKER_SIZE}
             anchor={MARKER_ANCHOR}
+            onTap={() => handleSelectPlace(place)}
           />
-        )}
+        ))}
+        {/* 검색으로 고른 장소처럼 마커 목록에 없는 선택 장소도 찍는다 */}
+        {selectedPlace &&
+          !markers.some((place) => isSamePlace(place, selectedPlace)) && (
+            <NaverMapMarkerOverlay
+              latitude={selectedPlace.coord.latitude}
+              longitude={selectedPlace.coord.longitude}
+              caption={{ text: selectedPlace.name }}
+              image={pinMarker}
+              width={MARKER_SIZE}
+              height={MARKER_SIZE}
+              anchor={MARKER_ANCHOR}
+            />
+          )}
       </NaverMapView>
 
       {/* 상단 검색 + 카테고리 칩 */}
@@ -280,7 +467,7 @@ export default function HomeScreen() {
               <Pressable
                 key={item.key}
                 style={[styles.chip, isActive && styles.chipActive]}
-                onPress={() => setCategory(item.key)}
+                onPress={() => handleSelectCategory(item.key)}
               >
                 {/*
                   선택해도 아이콘은 그대로 두고 색만 바꾼다 (전체만 아이콘 없음).
@@ -313,7 +500,7 @@ export default function HomeScreen() {
             renderItem={({ item }) => (
               <Pressable
                 style={styles.resultItem}
-                onPress={() => handleSelectPlace(item)}
+                onPress={() => handleSelectPlace(fromSearchPlace(item))}
               >
                 <Text style={styles.resultName}>{item.name}</Text>
                 <Text style={styles.resultAddress}>{item.roadAddress}</Text>
@@ -376,14 +563,9 @@ export default function HomeScreen() {
             <View style={styles.placeInfo}>
               <View style={styles.placeTitleRow}>
                 <Text style={styles.placeName}>{selectedPlace.name}</Text>
-                <LikeIcon
-                  liked={liked}
-                  onPress={() => setLiked((prev) => !prev)}
-                />
+                <LikeIcon liked={liked} onPress={handleToggleFavorite} />
               </View>
-              <Text style={styles.placeAddress}>
-                {selectedPlace.roadAddress}
-              </Text>
+              <Text style={styles.placeAddress}>{selectedPlace.address}</Text>
               {distance !== null && (
                 <View style={styles.distanceRow}>
                   <Text style={styles.distanceLabel}>내 위치로부터 </Text>
@@ -408,8 +590,12 @@ export default function HomeScreen() {
             </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <View style={styles.nearbyCards}>
-                {MOCK_NEARBY.map((item) => (
-                  <View key={item.name} style={styles.nearbyCard}>
+                {nearby?.map((item) => (
+                  <Pressable
+                    key={item.placeId ?? item.name}
+                    style={styles.nearbyCard}
+                    onPress={() => handleSelectPlace(item)}
+                  >
                     <View style={styles.nearbyImageWrap}>
                       <Image
                         source={placeholderPlace}
@@ -417,7 +603,9 @@ export default function HomeScreen() {
                       />
                       <View style={styles.nearbyImageOverlay} />
                       <View style={styles.nearbyCaption}>
-                        <Text style={styles.nearbyName}>{item.name}</Text>
+                        <Text style={styles.nearbyName} numberOfLines={1}>
+                          {item.name}
+                        </Text>
                         <Text style={styles.nearbyCategory}>
                           {item.category}
                         </Text>
@@ -428,16 +616,53 @@ export default function HomeScreen() {
                         {selectedPlace.name}에서{' '}
                       </Text>
                       <Text style={styles.nearbyDistanceValue}>
-                        {item.distance}
+                        {formatDistance(item.distanceMeters ?? 0)}
                       </Text>
                     </View>
-                  </View>
+                  </Pressable>
                 ))}
+                {nearby?.length === 0 && (
+                  <Text style={styles.nearbyEmpty}>
+                    주변에 식당 · 카페가 없어요
+                  </Text>
+                )}
               </View>
             </ScrollView>
           </View>
         </Animated.View>
       )}
+
+      <FavoriteMemoModal
+        visible={memoModalVisible}
+        onClose={() => setMemoModalVisible(false)}
+        onSave={async (visitType, memo) => {
+          setMemoModalVisible(false);
+          if (!selectedPlace?.placeId) return;
+          const ok = await addFavorite({
+            placeId: selectedPlace.placeId,
+            visitType,
+            memo,
+            address: selectedPlace.address,
+            coord: selectedPlace.coord,
+          });
+          if (!ok) Alert.alert('찜하지 못했어요', favoriteErrorMessage());
+        }}
+      />
+
+      <ConfirmModal
+        visible={deleteModalVisible}
+        image={trashIllust}
+        title="해당 장소 찜을 삭제할까요?"
+        description="찜 목록에서 삭제되며 저장한 메모도 함께 사라져요"
+        onCancel={() => setDeleteModalVisible(false)}
+        onConfirm={async () => {
+          setDeleteModalVisible(false);
+          if (!selectedPlace?.placeId) return;
+          const ok = await removeFavorite(selectedPlace.placeId);
+          if (!ok)
+            Alert.alert('찜을 삭제하지 못했어요', favoriteErrorMessage());
+        }}
+      />
     </View>
   );
 }
@@ -721,6 +946,12 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xs,
     lineHeight: lineHeight.sm,
     color: colors.grey[900],
+  },
+  nearbyEmpty: {
+    paddingVertical: spacing.sm,
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.sm,
+    color: CHIP_TEXT,
   },
   nearbyDistanceValue: {
     fontFamily: fontFamily.bold,

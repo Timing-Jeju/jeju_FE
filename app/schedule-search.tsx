@@ -36,9 +36,9 @@ import {
   spacing,
 } from '@/constants';
 import {
-  categoryCode,
   categoryLabel,
   fetchPlaces,
+  fetchPlacesByFilter,
   isApiError,
   type PlaceListItem,
 } from '@/services/api';
@@ -62,8 +62,8 @@ const SORT_OPTIONS = ['인기순', '정확도', '최신순'] as const;
 
 type SortOption = (typeof SORT_OPTIONS)[number];
 
-// '카페'는 대응하는 TourAPI 분류 코드가 없어 서버로 걸러낼 수 없다
-const SEARCH_FILTERS = ['전체', '관광지', '식당'] as const;
+// 관광지 · 식당 · 카페는 fetchPlacesByFilter 의 코드 묶음으로 거른다 (카페는 음식점 이름 기준)
+const SEARCH_FILTERS = ['전체', '관광지', '식당', '카페'] as const;
 
 type SearchFilter = (typeof SEARCH_FILTERS)[number];
 
@@ -125,9 +125,9 @@ export default function ScheduleSearchScreen() {
   useEffect(() => {
     let cancelled = false;
 
-    fetchPlaces({ category: categoryCode(filter), size: 20 })
-      .then((page) => {
-        if (!cancelled) setRecommended(page.items.map(toSearchPlace));
+    fetchPlacesByFilter(filter === '전체' ? null : filter, { size: 20 })
+      .then((items) => {
+        if (!cancelled) setRecommended(items.map(toSearchPlace));
       })
       .catch(() => {
         // 추천 목록은 실패해도 검색은 쓸 수 있어야 하므로 화면을 막지 않는다

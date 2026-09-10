@@ -213,11 +213,17 @@ key는 항상 있고 값이 null일 수 있다.
 현재 resource와 ETag가 돌아온다 (`readSavedPlaceEtag`).
 들고 있던 값이 낡아서 409가 나면 목록을 다시 불러 한 번 재시도한다.
 
+### 분류 필터는 코드 묶음으로 부른다
+
+실제 데이터의 `category`는 전부 두 글자 대분류 코드(`FD` 음식, `NA` 자연 …)이고
+서버는 요청당 코드 하나만 받는다. 화면 필터 한 칸(관광지 / 식당 / 카페)은
+`fetchPlacesByFilter`가 `FILTER_CODES`의 코드마다 첫 페이지를 받아 합친다.
+`카페`는 분류에 없어 음식(`FD`) 중 이름에 카페 · 커피가 들어간 것만 남긴다.
+
 ### 아직 안 되는 것
 
-- `카페` 필터: 대응하는 TourAPI 분류 코드가 없어 항상 빈 목록이다.
-- 홈 화면 지도 검색 → 장소 상세 경로는 `placeId`가 없어 찜할 수 없다.
-  (외부 검색 결과라 백엔드 장소와 이어지지 않는다)
+- 홈 화면의 네이버 검색 결과 → 장소 상세 경로는 `placeId`가 없어 찜할 수 없다.
+  (칩으로 불러온 백엔드 장소는 찜할 수 있다)
 
 ## 로컬에서 테스트하기
 
@@ -317,7 +323,7 @@ token에 박힌 값(`http://127.0.0.1:54321/auth/v1`)이므로 **바꾸지 않�
 | 호출                                                           | If-Match | Idempotency-Key |
 | -------------------------------------------------------------- | -------- | --------------- |
 | `updateTrip` `deleteTrip`                                      | 필수     | -               |
-| `replaceTripPreferences` `replaceTripPlacePreferences`          | 필수     | -               |
+| `replaceTripPreferences` `replaceTripPlacePreferences`         | 필수     | -               |
 | `createAccommodation`                                          | 필수     | 필수            |
 | `updateAccommodation` `deleteAccommodation`                    | 필수     | -               |
 | `putTransportEvent` `deleteTransportEvent`                     | 필수     | -               |

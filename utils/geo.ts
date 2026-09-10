@@ -53,6 +53,27 @@ export const regionOf = (
   };
 };
 
+/** 위도 0도 · 줌 0에서 화면 1px가 덮는 거리 (m) — Web Mercator 기준 */
+const METERS_PER_PIXEL_AT_ZOOM_0 = 156543.03;
+
+/**
+ * 지도 줌 레벨에서 화면 너비의 절반에 해당하는 거리 (m).
+ * 칩으로 주변 장소를 찾을 때 "지금 보이는 만큼"을 반경으로 쓴다.
+ * 서버 허용 범위(100..50000) 안에서 min · max로 자른다.
+ */
+export const radiusForZoom = (
+  zoom: number,
+  latitude: number,
+  widthPx: number,
+  min = 500,
+  max = 20000,
+) => {
+  const metersPerPixel =
+    (METERS_PER_PIXEL_AT_ZOOM_0 * Math.cos(toRad(latitude))) / 2 ** zoom;
+  const halfWidth = (metersPerPixel * widthPx) / 2;
+  return Math.round(Math.min(Math.max(halfWidth, min), max));
+};
+
 /** 1km 미만은 m, 이상은 소수 첫째 자리 km (25m / 1.3km) */
 export const formatDistance = (meters: number) =>
   meters >= 1000 ? `${(meters / 1000).toFixed(1)}km` : `${Math.round(meters)}m`;
