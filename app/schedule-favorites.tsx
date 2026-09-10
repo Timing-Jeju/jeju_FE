@@ -86,21 +86,29 @@ export default function ScheduleFavoritesScreen() {
   };
 
   const handleAdd = () => {
+    const selected = favorites.filter((place) =>
+      selectedIds.includes(place.placeId),
+    );
+    if (selected.some((place) => place.stayMinutes === null)) {
+      Alert.alert(
+        '체류 시간 확인이 필요해요',
+        '체류 시간이 제공되지 않은 장소는 일정에 추가할 수 없어요.',
+      );
+      return;
+    }
     addPlaces(
       day,
-      favorites
-        .filter((place) => selectedIds.includes(place.placeId))
-        .map(
-          (place): SchedulePlace => ({
-            placeId: place.placeId,
-            name: place.name,
-            category: place.category,
-            address: place.address,
-            visitType: place.visitType,
-            stayMinutes: place.stayMinutes,
-            coord: place.coord,
-          }),
-        ),
+      selected.map(
+        (place): SchedulePlace => ({
+          placeId: place.placeId,
+          name: place.name,
+          category: place.category,
+          address: place.address,
+          visitType: place.visitType,
+          stayMinutes: place.stayMinutes!,
+          coord: place.coord,
+        }),
+      ),
     );
     router.back();
   };
@@ -161,7 +169,9 @@ export default function ScheduleFavoritesScreen() {
                       <PlaceTag label={item.visitType} />
                     </View>
                     <Text style={styles.stayText}>
-                      설정 체류 {item.stayMinutes}분
+                      {item.stayMinutes === null
+                        ? '체류 시간 미제공'
+                        : `설정 체류 ${item.stayMinutes}분`}
                     </Text>
                   </View>
                 </View>

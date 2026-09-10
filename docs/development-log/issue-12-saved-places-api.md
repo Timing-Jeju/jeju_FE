@@ -53,7 +53,7 @@ npm test -- --no-watchman --runTestsByPath \
 GET 401 단일 재요청 제한을 결합했다. saved-place wrapper와 store도 같은 auth context를
 모든 요청에 전달한다.
 
-- #11 + #12 전체 Jest: 160/160 Green
+- #11 + #12 전체 Jest: 161/161 Green
 - typecheck, lint, api:check, ui:check: Green
 - merge 뒤 Expo web static export: 23 routes Green
 

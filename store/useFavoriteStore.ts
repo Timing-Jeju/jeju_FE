@@ -28,7 +28,7 @@ export interface FavoritePlace {
   visitType: VisitType;
   memo: string;
   /** 사용자가 변경할 수 있는 일정 초안 체류 시간 (분) */
-  stayMinutes: number;
+  stayMinutes: number | null;
   /** 제주 기준 방향 (동쪽 / 서쪽 …) */
   direction: string;
   /** 일정에 담았을 때 지도에 마커를 찍으려면 필요하다 (모르면 null) */
@@ -112,7 +112,7 @@ const fromServer = (place: SavedPlace): FavoritePlace => {
     address: place.regionLabel ?? '미제공',
     visitType: place.priority === 5 ? '필수방문' : '선택방문',
     memo: place.memo ?? '',
-    stayMinutes: place.recommendedStayMinutes ?? 60,
+    stayMinutes: place.recommendedStayMinutes,
     direction: '',
     // 저장 장소 계약에는 좌표가 없으며 GPS/간접 위치를 Spring에 전달하지 않는다.
     coord: null,
@@ -276,8 +276,13 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
         ],
       }));
     } catch (error) {
-      if (isApiError(error) && error.status > 0 && error.status < 500)
-        await AsyncStorage.removeItem(pending.storageKey);
+      if (isApiError(error) && error.status > 0 && error.status < 500) {
+        try {
+          await AsyncStorage.removeItem(pending.storageKey);
+        } catch {
+          // definitive API 오류를 storage 정리 오류로 바꾸지 않는다.
+        }
+      }
       if (isConflict(error) && authContextIsCurrent()) {
         await get().hydrate(ownerId);
         set({ notice: conflictNotice });

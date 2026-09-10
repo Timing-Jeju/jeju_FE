@@ -131,7 +131,9 @@ export default function FavoriteScreen() {
                     <View style={styles.tagRow}>
                       <PlaceTag label={item.visitType} />
                       <Text style={styles.stayText}>
-                        설정 체류 {item.stayMinutes}분
+                        {item.stayMinutes === null
+                          ? '체류 시간 미제공'
+                          : `설정 체류 ${item.stayMinutes}분`}
                       </Text>
                     </View>
                   </View>

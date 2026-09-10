@@ -96,6 +96,16 @@ test('로그인 사용자의 실제 목록과 item strong ETag를 hydrate한다'
   });
 });
 
+test('서버가 체류 시간을 주지 않으면 60분 같은 값을 만들지 않는다', async () => {
+  jest
+    .mocked(fetchAllSavedPlaces)
+    .mockResolvedValue([serverPlace({ recommendedStayMinutes: null })]);
+
+  await useFavoriteStore.getState().hydrate(ownerA);
+
+  expect(useFavoriteStore.getState().favorites[0].stayMinutes).toBeNull();
+});
+
 test('계정 generation이 바뀐 뒤 끝난 이전 GET은 새 사용자 상태를 덮지 않는다', async () => {
   let resolveA!: (places: SavedPlace[]) => void;
   const pendingA = new Promise<SavedPlace[]>((resolve) => {
