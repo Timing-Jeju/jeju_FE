@@ -1,6 +1,6 @@
 # Issue #10 화면 → Spring API 감사
 
-기준 FE commit은 `26f207e170fb077e9b6dc7716c6f165d9e2a1367`, 고정 Spring contract는 `d1fa8184bb56b60febd483ad82d8ea16b5bb4774`다. 기계 판독 원본과 증거 경로는 `contracts/screen-api.matrix.json`에 있고, 테스트가 runtime 37개 operation의 누락·중복과 호출/응답/error/restart-hydration 증거를 검사한다.
+기준 FE main commit은 `1530d5db614ad7a7e1681e45fd271c69dd2a7b28`, 고정 Spring contract는 `f91c9c4fac1a162f1e20af096280c47ee0fe69e6`다. 기계 판독 원본과 증거 경로는 `contracts/screen-api.matrix.json`에 있고, 테스트가 runtime 37개 operation의 누락·중복과 호출/응답/error/restart-hydration 증거를 검사한다.
 
 | 화면/도메인             | endpoint 범위                 | 응답·오류·재시작 결과                                       | staging 상태                       |
 | ----------------------- | ----------------------------- | ----------------------------------------------------------- | ---------------------------------- |
@@ -19,6 +19,6 @@
 
 `npm run staging:e2e`는 mock 없이 HTTPS Spring에 직접 요청한다. `STAGING_API_BASE_URL`과 격리 계정의 짧은 수명 `STAGING_ACCESS_TOKEN`이 반드시 필요하며, 누락 시 exit code 2와 `blocked` JSON을 반환한다. 토큰과 Problem 원문은 출력하지 않는다.
 
-현재 harness는 legal/place 공개 응답, profile/saved-place/trip/notification-preference 인증 응답, saved-place/trip의 전체 item 반복 조회 일관성, 그리고 seeded trip이 있을 때 trip detail/schedule 서버 응답을 검증한다. HTTP 2xx라도 `application/problem+json`, 비 JSON media type, endpoint 최소 response shape 불일치는 실패한다. 이 반복 GET은 실제 앱/session/store dispose와 재생성을 수행하지 않으므로 앱 재시작 hydration 완료 증거로 사용하지 않으며, 해당 staging 항목은 명시적으로 blocked다. 쓰기 workflow는 disposable 계정·canonical place·seeded schedule과 확정된 DELETE concurrency 계약 없이는 실행하지 않는다.
+현재 harness는 legal/place 공개 응답, profile/saved-place/trip/notification-preference 인증 응답, saved-place/trip의 전체 item 반복 조회 일관성, 그리고 seeded trip이 있을 때 trip detail/schedule 서버 응답을 검증한다. HTTP 2xx라도 `application/problem+json`, 비 JSON media type, endpoint 최소 response shape 불일치는 실패한다. 이 반복 GET은 실제 앱/session/store dispose와 재생성을 수행하지 않으므로 앱 재시작 hydration 완료 증거로 사용하지 않으며, 해당 staging 항목은 명시적으로 blocked다. 쓰기 workflow는 #22의 strong CAS 계약을 보존하며 disposable 계정·canonical place·seeded schedule이 없으면 실행하지 않는다.
 
 AI/FastAPI/Spring 생성·평가·적용 endpoint는 공개 Spring contract에 없으므로 성공으로 대체하지 않으며 `PLANNER_AVAILABLE=false`를 유지한다. 현재 또는 간접 GPS field는 공통 HTTP transport에서 전송 전에 차단한다.

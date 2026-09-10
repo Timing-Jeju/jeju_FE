@@ -1,5 +1,5 @@
 {
-  "sourceFrontendCommit": "26f207e170fb077e9b6dc7716c6f165d9e2a1367",
+  "sourceFrontendCommit": "1530d5db614ad7a7e1681e45fd271c69dd2a7b28",
   "stagingVerification": {
     "serverReadConsistency": "blocked: STAGING_API_BASE_URL and STAGING_ACCESS_TOKEN are missing",
     "appRestartHydration": "blocked: no staging account/session and native or browser runtime were supplied"
@@ -76,7 +76,7 @@
         "GET /api/v1/me/saved-places": "store/useFavoriteStore.ts#fetchAllSavedPlaces({}, authContextIsCurrent)",
         "POST /api/v1/me/saved-places": "store/useFavoriteStore.ts#await createSavedPlace(",
         "PATCH /api/v1/me/saved-places/{placeId}": "store/useFavoriteStore.ts#await updateSavedPlace(",
-        "DELETE /api/v1/me/saved-places/{placeId}": "store/useFavoriteStore.ts#await deleteSavedPlace(placeId, authContextIsCurrent)"
+        "DELETE /api/v1/me/saved-places/{placeId}": "store/useFavoriteStore.ts#await deleteSavedPlace(placeId, current.etag, authContextIsCurrent)"
       },
       "responseEvidence": "tests/savedPlacesSync.test.ts#hydrate",
       "errorEvidence": "hooks/useFavoriteSync.ts#favoriteMutationErrorMessage",

@@ -2,10 +2,11 @@
 
 ## 기준과 보호 범위
 
-- 시작 및 최종 확인 `origin/main`: `26f207e170fb077e9b6dc7716c6f165d9e2a1367`
-- 고정 Spring contract: `Timing-Jeju/jeju_BE@d1fa8184bb56b60febd483ad82d8ea16b5bb4774`
+- 시작 `origin/main`: `26f207e170fb077e9b6dc7716c6f165d9e2a1367`
+- 최종 통합 `origin/main`: `1530d5db614ad7a7e1681e45fd271c69dd2a7b28` (#22 saved-place DELETE strong CAS)
+- 고정 Spring contract: `Timing-Jeju/jeju_BE@f91c9c4fac1a162f1e20af096280c47ee0fe69e6`
 - #11/#12/#14/#15 병합 코드를 유지했다.
-- 진행 중인 saved-place DELETE strong CAS와 #13 숙소·교통 projection 파일은 수정하지 않았다.
+- #22 saved-place DELETE strong CAS를 일반 merge로 통합·보존했고 #13 숙소·교통 projection 파일은 수정하지 않았다.
 - AI/FastAPI/Spring 연결을 추가하지 않았고 `PLANNER_AVAILABLE=false`를 유지했다.
 - 화면 StyleSheet, 레이아웃, 컴포넌트는 수정하지 않았다.
 
@@ -22,7 +23,7 @@
 
 | 명령                                               | 결과                                                                   |
 | -------------------------------------------------- | ---------------------------------------------------------------------- |
-| `CI=1 npm test -- --no-watchman`                   | 41 suites, 248 tests 통과                                              |
+| `CI=1 npm test -- --no-watchman`                   | 최종 통합 HEAD에서 41 suites, 264 tests 통과                           |
 | `npm run typecheck`                                | 통과                                                                   |
 | `npm run lint`                                     | 통과                                                                   |
 | `npm run api:check`                                | 통과                                                                   |
@@ -31,7 +32,7 @@
 | `npm run staging:e2e`                              | exit 2, `STAGING_API_BASE_URL`/`STAGING_ACCESS_TOKEN` 누락으로 blocked |
 | `git diff --check`                                 | 통과                                                                   |
 
-첫 baseline 전체 Jest 실행에서 `tests/signupLegal.test.tsx` 2개가 timeout/후속 assertion으로 실패했지만, 변경 없이 최종 CI 실행에서 포함한 248개 전체 테스트가 통과했다. sandbox의 Watchman state 권한 때문에 Jest는 `--no-watchman`으로 실행했다. Expo export는 성공했으나 Node 20 지원 중단 예정 경고가 있어 이후 Node 22+ 환경 검증이 필요하다.
+첫 baseline 전체 Jest 실행에서 `tests/signupLegal.test.tsx` 2개가 timeout/후속 assertion으로 실패했지만, 변경 없이 단독 직렬 실행 8개와 최종 CI 전체 264개 테스트가 모두 통과해 baseline flake로 분리했다. sandbox의 Watchman state 권한 때문에 Jest는 `--no-watchman`으로 실행했다. Expo export는 성공했으나 Node 20 지원 중단 예정 경고가 있어 이후 Node 22+ 환경 검증이 필요하다.
 
 ## 남은 staging 입력과 차단 사유
 
@@ -42,7 +43,6 @@
 - push smoke용 Android/iOS 기기와 유효한 push registration token
 - profile image smoke용 격리 storage object
 - 소셜 인증 smoke용 provider configuration/token
-- 확정된 saved-place DELETE strong CAS 계약
 - #13 숙소·교통 projection 병합
 - AI 생성·평가·적용용 공개 Spring endpoint와 Spring runtime SHA
 
