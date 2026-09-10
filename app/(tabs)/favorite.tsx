@@ -38,6 +38,10 @@ import {
   type FavoriteFilter,
   type FavoritePlace,
 } from '@/store/useFavoriteStore';
+import {
+  favoriteMutationErrorMessage,
+  useFavoriteSync,
+} from '@/hooks/useFavoriteSync';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
 const CARD_BORDER = '#F0F0F0';
@@ -48,6 +52,7 @@ const placeholderPlace = require('../../assets/images/placeholder-place.png');
 
 export default function FavoriteScreen() {
   const router = useRouter();
+  useFavoriteSync();
 
   const favorites = useFavoriteStore((state) => state.favorites);
   const updateFavorite = useFavoriteStore((state) => state.updateFavorite);
@@ -169,8 +174,15 @@ export default function FavoriteScreen() {
         tabLabels={MEMO_EDIT_TAB_LABELS}
         onClose={() => setMemoTarget(null)}
         onSave={(visitType, memo) => {
-          if (memoTarget) updateFavorite(memoTarget.placeId, visitType, memo);
-          setMemoTarget(null);
+          if (!memoTarget) return;
+          void updateFavorite(memoTarget.placeId, visitType, memo)
+            .then(() => setMemoTarget(null))
+            .catch((error) =>
+              Alert.alert(
+                '찜을 수정하지 못했어요',
+                favoriteMutationErrorMessage(error),
+              ),
+            );
         }}
       />
 
@@ -181,13 +193,21 @@ export default function FavoriteScreen() {
         description="찜 목록에서 삭제되며 저장한 메모도 함께 사라져요"
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => {
-          if (deleteTarget) {
-            removeFavorite(deleteTarget.placeId);
-            setSelectedIds((prev) =>
-              prev.filter((name) => name !== deleteTarget.placeId),
+          if (!deleteTarget) return;
+          const targetId = deleteTarget.placeId;
+          void removeFavorite(targetId)
+            .then(() => {
+              setSelectedIds((prev) =>
+                prev.filter((name) => name !== targetId),
+              );
+              setDeleteTarget(null);
+            })
+            .catch((error) =>
+              Alert.alert(
+                '찜을 삭제하지 못했어요',
+                favoriteMutationErrorMessage(error),
+              ),
             );
-          }
-          setDeleteTarget(null);
         }}
       />
     </SafeAreaView>

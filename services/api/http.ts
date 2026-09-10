@@ -5,7 +5,6 @@ import axios, {
   type Method,
 } from 'axios';
 
-import { getAccessToken } from '../auth';
 import { serverOrigin } from '../environment';
 import {
   STABLE_PROBLEM_CODES,
@@ -18,6 +17,7 @@ import {
   CLIENT_NETWORK_ERROR,
   CLIENT_NOT_CONFIGURED,
 } from './problem';
+import { getAccessToken, refreshAccessToken } from './session';
 
 export type AuthMode = 'none' | 'optional' | 'required' | 'naver';
 
@@ -143,6 +143,7 @@ const defaultAccessToken: AccessTokenProvider = async () => getAccessToken();
 export function createApiTransport(
   baseURL: string | undefined,
   accessToken: AccessTokenProvider = defaultAccessToken,
+  refreshToken: AccessTokenProvider = refreshAccessToken,
 ): ApiTransport {
   let origin: string;
   try {
@@ -181,8 +182,8 @@ export function createApiTransport(
       throw new ApiError({ status: 401, code: 'AUTHENTICATION_REQUIRED' });
     }
 
-    try {
-      const response = await client.request<T>({
+    const send = (token: string | null) =>
+      client.request<T>({
         method: options.method,
         url,
         params: compactParams(options.params),
@@ -193,10 +194,33 @@ export function createApiTransport(
           ...(options.body === undefined
             ? {}
             : { 'Content-Type': 'application/json' }),
-          ...(authorization ? { Authorization: authorization } : {}),
+          ...(token ? { Authorization: token } : {}),
           ...options.headers,
         },
       });
+
+    try {
+      let response: AxiosResponse<T>;
+      try {
+        response = await send(authorization);
+      } catch (error) {
+        const status = axios.isAxiosError(error)
+          ? error.response?.status
+          : null;
+        const canRefresh =
+          status === 401 &&
+          options.method.toUpperCase() === 'GET' &&
+          options.auth === 'required';
+        if (!canRefresh) throw error;
+        let refreshed: string | null = null;
+        try {
+          refreshed = await refreshToken();
+        } catch {
+          throw error;
+        }
+        if (!refreshed) throw error;
+        response = await send(`Bearer ${refreshed}`);
+      }
       const replayed = headerOf(response, 'idempotency-replayed');
       return {
         data: response.data,

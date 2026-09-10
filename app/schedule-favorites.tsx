@@ -1,6 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
+  Alert,
   FlatList,
   Image,
   Pressable,
@@ -44,6 +45,10 @@ import {
   useScheduleStore,
   type SchedulePlace,
 } from '@/store/useScheduleStore';
+import {
+  favoriteMutationErrorMessage,
+  useFavoriteSync,
+} from '@/hooks/useFavoriteSync';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
 const TITLE = '#191919';
@@ -55,6 +60,7 @@ const placeholderPlace = require('../assets/images/placeholder-place.png');
 
 export default function ScheduleFavoritesScreen() {
   const router = useRouter();
+  useFavoriteSync();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ day?: string }>();
   const day = Number(params.day) || 1;
@@ -199,8 +205,15 @@ export default function ScheduleFavoritesScreen() {
         tabLabels={MEMO_EDIT_TAB_LABELS}
         onClose={() => setMemoTarget(null)}
         onSave={(visitType, memo) => {
-          if (memoTarget) updateFavorite(memoTarget.placeId, visitType, memo);
-          setMemoTarget(null);
+          if (!memoTarget) return;
+          void updateFavorite(memoTarget.placeId, visitType, memo)
+            .then(() => setMemoTarget(null))
+            .catch((error) =>
+              Alert.alert(
+                '찜을 수정하지 못했어요',
+                favoriteMutationErrorMessage(error),
+              ),
+            );
         }}
       />
     </SafeAreaView>

@@ -1,11 +1,11 @@
 # Spring API wrapper coverage
 
-Backend: `Timing-Jeju/jeju_BE@73cb2b9310ecb2eba5a931459a78229cd06e7028` (`develop`)
+Backend: `Timing-Jeju/jeju_BE@d1fa8184bb56b60febd483ad82d8ea16b5bb4774` (`develop`)
 
 | Operation | Wrapper | 화면 연결 | 선행 조건 |
 | --- | --- | --- | --- |
 | `DELETE /api/v1/me/push-devices/{deviceId}` | `push.ts#deletePushDevice` | deferred | Supabase session |
-| `DELETE /api/v1/me/saved-places/{placeId}` | `savedPlaces.ts#deleteSavedPlace` | deferred | Supabase session |
+| `DELETE /api/v1/me/saved-places/{placeId}` | `savedPlaces.ts#deleteSavedPlace` | connected | Supabase session; fixed backend contract has no delete If-Match |
 | `DELETE /api/v1/trips/{tripId}` | `trips.ts#deleteTrip` | deferred | Supabase session |
 | `DELETE /api/v1/trips/{tripId}/accommodations/{accommodationId}` | `accommodations.ts#deleteAccommodation` | deferred | session and latest trip ETag |
 | `DELETE /api/v1/trips/{tripId}/schedule-items/{itemId}` | `scheduleItems.ts#deleteScheduleItem` | deferred | session, ETag, schedule version, Idempotency-Key |
@@ -16,7 +16,7 @@ Backend: `Timing-Jeju/jeju_BE@73cb2b9310ecb2eba5a931459a78229cd06e7028` (`develo
 | `GET /api/v1/me` | `profile.ts#fetchProfile` | deferred | Supabase session |
 | `GET /api/v1/me/notification-preferences` | `push.ts#fetchNotificationPreference` | deferred | Supabase session |
 | `GET /api/v1/me/profile-image` | `profileImage.ts#fetchProfileImage` | deferred | Supabase session |
-| `GET /api/v1/me/saved-places` | `savedPlaces.ts#fetchSavedPlaces` | deferred | Supabase session |
+| `GET /api/v1/me/saved-places` | `savedPlaces.ts#fetchSavedPlaces` | connected | active Supabase owner generation |
 | `GET /api/v1/places` | `places.ts#fetchPlaces` | connected | existing canonical place flow preserved |
 | `GET /api/v1/places/{placeId}` | `places.ts#fetchPlace` | connected | canonical placeId |
 | `GET /api/v1/trips` | `trips.ts#fetchTrips` | deferred | Supabase session |
@@ -25,11 +25,11 @@ Backend: `Timing-Jeju/jeju_BE@73cb2b9310ecb2eba5a931459a78229cd06e7028` (`develo
 | `GET /api/v1/weather/forecast` | `weather.ts#fetchWeatherForecast` | deferred | one public selector; optional session |
 | `PATCH /api/v1/me` | `profile.ts#updateProfile` | deferred | Supabase session |
 | `PATCH /api/v1/me/notification-preferences` | `push.ts#updateNotificationPreference` | deferred | Supabase session |
-| `PATCH /api/v1/me/saved-places/{placeId}` | `savedPlaces.ts#updateSavedPlace` | deferred | session and latest ETag |
+| `PATCH /api/v1/me/saved-places/{placeId}` | `savedPlaces.ts#updateSavedPlace` | connected | session and list item strong ETag |
 | `PATCH /api/v1/trips/{tripId}` | `trips.ts#updateTrip` | deferred | session and latest trip ETag |
 | `PATCH /api/v1/trips/{tripId}/accommodations/{accommodationId}` | `accommodations.ts#updateAccommodation` | deferred | session and latest trip ETag |
 | `PATCH /api/v1/trips/{tripId}/schedule-items/{itemId}` | `scheduleItems.ts#updateScheduleItem` | deferred | session, ETag, schedule version, Idempotency-Key |
-| `POST /api/v1/me/saved-places` | `savedPlaces.ts#createSavedPlace` | deferred | session, canonical placeId, Idempotency-Key |
+| `POST /api/v1/me/saved-places` | `savedPlaces.ts#createSavedPlace` | connected | session, canonical placeId, durable Idempotency-Key |
 | `POST /api/v1/trips` | `trips.ts#createTrip` | deferred | session and Idempotency-Key |
 | `POST /api/v1/trips/{tripId}/accommodations` | `accommodations.ts#createAccommodation` | deferred | session, ETag, Idempotency-Key |
 | `POST /api/v1/trips/{tripId}/schedule-items` | `scheduleItems.ts#createScheduleItem` | deferred | session, ETag, schedule version, Idempotency-Key |

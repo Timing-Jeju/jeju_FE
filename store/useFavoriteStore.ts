@@ -1,5 +1,17 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { requireCanonicalPlaceId } from '@/services/canonicalId';
+import {
+  createSavedPlace,
+  deleteSavedPlace,
+  fetchAllSavedPlaces,
+  updateSavedPlace,
+  type SavedPlace,
+  type SavedPlaceCreateRequest,
+} from '@/services/api/savedPlaces';
+import { createIdempotencyKey } from '@/services/api/idempotency';
+import { ApiError, isApiError } from '@/services/api/problem';
+import { useUserStore } from './useUserStore';
 
 import type { Coord } from '@/services/naverApi';
 
@@ -7,6 +19,8 @@ export type VisitType = '필수방문' | '선택방문';
 
 export interface FavoritePlace {
   placeId: string;
+  /** 서버 목록/변경 응답에서 받은 strong ETag */
+  etag?: string;
   name: string;
   /** 카페 / 바다 / 산 / 식당 등 장소 분류 */
   category: string;
@@ -52,33 +66,252 @@ export const matchesFavoriteFilter = (
 
 interface FavoriteState {
   favorites: FavoritePlace[];
+  ownerId: string | null;
+  status: 'idle' | 'loading' | 'ready' | 'error';
+  notice: string | null;
+  conflictDrafts: Record<
+    string,
+    { visitType: VisitType; memo: string } | undefined
+  >;
+  hydrate: (ownerId: string) => Promise<void>;
+  reset: () => void;
+  clearNotice: () => void;
   isFavorite: (placeId: string) => boolean;
-  addFavorite: (place: FavoritePlace) => void;
-  updateFavorite: (placeId: string, visitType: VisitType, memo: string) => void;
-  removeFavorite: (placeId: string) => void;
+  addFavorite: (place: FavoritePlace) => Promise<void>;
+  updateFavorite: (
+    placeId: string,
+    visitType: VisitType,
+    memo: string,
+  ) => Promise<void>;
+  removeFavorite: (placeId: string) => Promise<void>;
 }
+
+const categoryLabel = (place: SavedPlace) => {
+  if (place.tags.includes('카페')) return '카페';
+  const labels: Record<string, string> = {
+    'content-type:12': '관광지',
+    'content-type:32': '숙소',
+    'content-type:39': '식당',
+  };
+  return labels[place.category] ?? '장소';
+};
+
+const strongEtag = (etag: string) => {
+  if (!/^"sp-[0-9a-f]{32}"$/.test(etag))
+    throw new ApiError({ status: 0, code: 'INVALID_ETAG' });
+  return etag;
+};
+
+const fromServer = (place: SavedPlace): FavoritePlace => {
+  requireCanonicalPlaceId(place.placeId);
+  return {
+    placeId: place.placeId,
+    etag: strongEtag(place.etag),
+    name: place.name,
+    category: categoryLabel(place),
+    address: place.regionLabel ?? '미제공',
+    visitType: place.priority === 5 ? '필수방문' : '선택방문',
+    memo: place.memo ?? '',
+    stayMinutes: place.recommendedStayMinutes ?? 60,
+    direction: '',
+    // 저장 장소 계약에는 좌표가 없으며 GPS/간접 위치를 Spring에 전달하지 않는다.
+    coord: null,
+  };
+};
+
+const createBody = (place: FavoritePlace): SavedPlaceCreateRequest => ({
+  placeId: place.placeId,
+  memo: place.memo,
+  priority: place.visitType === '필수방문' ? 5 : 0,
+});
+
+interface DurableCreate {
+  body: SavedPlaceCreateRequest;
+  key: string;
+}
+
+const durableKeyName = (ownerId: string, placeId: string) =>
+  `timing-jeju:saved-place-create:v1:${ownerId}:${placeId}`;
+
+const sameBody = (
+  left: SavedPlaceCreateRequest,
+  right: SavedPlaceCreateRequest,
+) => JSON.stringify(left) === JSON.stringify(right);
+
+async function durableCreate(
+  ownerId: string,
+  body: SavedPlaceCreateRequest,
+): Promise<{ storageKey: string; value: DurableCreate }> {
+  const storageKey = durableKeyName(ownerId, body.placeId);
+  let stored: DurableCreate | null = null;
+  try {
+    const raw = await AsyncStorage.getItem(storageKey);
+    if (raw) stored = JSON.parse(raw) as DurableCreate;
+  } catch {
+    stored = null;
+  }
+  const value =
+    stored && typeof stored.key === 'string' && sameBody(stored.body, body)
+      ? stored
+      : { body, key: createIdempotencyKey() };
+  await AsyncStorage.setItem(storageKey, JSON.stringify(value));
+  return { storageKey, value };
+}
+
+let generation = 0;
+let hydration: { ownerId: string; promise: Promise<void> } | null = null;
+
+const currentOwner = () => {
+  const ownerId = useUserStore.getState().userId;
+  if (!ownerId)
+    throw new ApiError({ status: 401, code: 'AUTHENTICATION_REQUIRED' });
+  return ownerId;
+};
+
+const isConflict = (error: unknown) =>
+  isApiError(error) && (error.status === 409 || error.status === 412);
+
+const conflictNotice =
+  '다른 곳에서 변경된 최신 내용을 불러왔어요. 입력한 내용을 확인한 뒤 다시 저장해 주세요.';
 
 export const useFavoriteStore = create<FavoriteState>((set, get) => ({
   favorites: [],
+  ownerId: null,
+  status: 'idle',
+  notice: null,
+  conflictDrafts: {},
+  hydrate: async (ownerId) => {
+    if (
+      hydration?.ownerId === ownerId &&
+      get().ownerId === ownerId &&
+      get().status === 'loading'
+    )
+      return hydration.promise;
+
+    const currentGeneration = ++generation;
+    set((state) => ({
+      ownerId,
+      status: 'loading',
+      ...(state.ownerId === ownerId
+        ? {}
+        : { favorites: [], conflictDrafts: {}, notice: null }),
+    }));
+    const promise = fetchAllSavedPlaces()
+      .then((places) => {
+        if (
+          currentGeneration === generation &&
+          get().ownerId === ownerId &&
+          useUserStore.getState().userId === ownerId
+        )
+          set({ favorites: places.map(fromServer), status: 'ready' });
+      })
+      .catch((error) => {
+        if (
+          currentGeneration === generation &&
+          get().ownerId === ownerId &&
+          useUserStore.getState().userId === ownerId
+        )
+          set({ status: 'error' });
+        throw error;
+      })
+      .finally(() => {
+        if (hydration?.promise === promise) hydration = null;
+      });
+    hydration = { ownerId, promise };
+    return promise;
+  },
+  reset: () => {
+    generation += 1;
+    hydration = null;
+    set({
+      favorites: [],
+      ownerId: null,
+      status: 'idle',
+      notice: null,
+      conflictDrafts: {},
+    });
+  },
+  clearNotice: () => set({ notice: null }),
   isFavorite: (placeId) =>
     get().favorites.some((place) => place.placeId === placeId),
-  addFavorite: (place) => {
+  addFavorite: async (place) => {
     requireCanonicalPlaceId(place.placeId);
-    set((state) => ({
-      favorites: [
-        ...state.favorites.filter((item) => item.placeId !== place.placeId),
-        place,
-      ],
-    }));
+    const ownerId = currentOwner();
+    const body = createBody(place);
+    const pending = await durableCreate(ownerId, body);
+    try {
+      const response = await createSavedPlace(body, pending.value.key);
+      if (response.etag && response.etag !== response.data.etag)
+        throw new ApiError({ status: 0, code: 'INVALID_ETAG' });
+      await AsyncStorage.removeItem(pending.storageKey);
+      if (useUserStore.getState().userId !== ownerId) return;
+      set((state) => ({
+        ownerId,
+        status: 'ready',
+        favorites: [
+          ...state.favorites.filter((item) => item.placeId !== place.placeId),
+          fromServer(response.data),
+        ],
+      }));
+    } catch (error) {
+      if (isApiError(error) && error.status > 0 && error.status < 500)
+        await AsyncStorage.removeItem(pending.storageKey);
+      if (isConflict(error) && useUserStore.getState().userId === ownerId) {
+        await get().hydrate(ownerId);
+        set({ notice: conflictNotice });
+      }
+      throw error;
+    }
   },
-  updateFavorite: (placeId, visitType, memo) =>
-    set((state) => ({
-      favorites: state.favorites.map((place) =>
-        place.placeId === placeId ? { ...place, visitType, memo } : place,
-      ),
-    })),
-  removeFavorite: (placeId) =>
-    set((state) => ({
-      favorites: state.favorites.filter((place) => place.placeId !== placeId),
-    })),
+  updateFavorite: async (placeId, visitType, memo) => {
+    const ownerId = currentOwner();
+    const current = get().favorites.find((place) => place.placeId === placeId);
+    if (!current?.etag) throw new ApiError({ status: 0, code: 'INVALID_ETAG' });
+    try {
+      const response = await updateSavedPlace(
+        placeId,
+        { memo, priority: visitType === '필수방문' ? 5 : 0 },
+        current.etag,
+      );
+      if (response.etag && response.etag !== response.data.etag)
+        throw new ApiError({ status: 0, code: 'INVALID_ETAG' });
+      if (useUserStore.getState().userId !== ownerId) return;
+      set((state) => ({
+        favorites: state.favorites.map((place) =>
+          place.placeId === placeId ? fromServer(response.data) : place,
+        ),
+        conflictDrafts: { ...state.conflictDrafts, [placeId]: undefined },
+      }));
+    } catch (error) {
+      if (isConflict(error) && useUserStore.getState().userId === ownerId) {
+        await get().hydrate(ownerId);
+        set((state) => ({
+          notice: conflictNotice,
+          conflictDrafts: {
+            ...state.conflictDrafts,
+            [placeId]: { visitType, memo },
+          },
+        }));
+      }
+      throw error;
+    }
+  },
+  removeFavorite: async (placeId) => {
+    const ownerId = currentOwner();
+    const current = get().favorites.find((place) => place.placeId === placeId);
+    if (!current?.etag) throw new ApiError({ status: 0, code: 'INVALID_ETAG' });
+    try {
+      await deleteSavedPlace(placeId);
+      if (useUserStore.getState().userId !== ownerId) return;
+      set((state) => ({
+        favorites: state.favorites.filter((place) => place.placeId !== placeId),
+      }));
+    } catch (error) {
+      if (isConflict(error) && useUserStore.getState().userId === ownerId) {
+        await get().hydrate(ownerId);
+        set({ notice: conflictNotice });
+      }
+      throw error;
+    }
+  },
 }));

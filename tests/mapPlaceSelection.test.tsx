@@ -48,14 +48,18 @@ test('다른 장소 선택 후 도착한 위치 응답은 좌표 없는 현재 �
 test('지도 하트는 같은 이름이 아닌 선택 ID의 찜 상태를 반영한다', async () => {
   const { result } = await renderHook(() => useMapPlaceSelection());
   await act(async () => {
-    useFavoriteStore.getState().addFavorite({
-      ...first,
-      address: '',
-      category: '장소',
-      visitType: '선택방문',
-      memo: '',
-      stayMinutes: 60,
-      direction: '',
+    useFavoriteStore.setState({
+      favorites: [
+        {
+          ...first,
+          address: '',
+          category: '장소',
+          visitType: '선택방문',
+          memo: '',
+          stayMinutes: 60,
+          direction: '',
+        },
+      ],
     });
     await result.current.selectPlace({ ...first, coord: null });
   });
