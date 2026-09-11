@@ -4,7 +4,11 @@ import { isCanonicalPlaceId } from '@/services/canonicalId';
 import type { Coord } from '@/services/naverApi';
 import type { Accommodation } from '@/services/api/accommodations';
 import type { TransportEvent } from '@/services/api/transportEvents';
-import type { Trip, TripListItem } from '@/services/api/trips';
+import type {
+  Trip,
+  TripListItem,
+  DayActivityWindowsRequest,
+} from '@/services/api/trips';
 
 export type TripTransportMode = 'bus' | 'taxi' | 'walk';
 export type ArrivalTransport = '비행기' | '선박';
@@ -12,7 +16,7 @@ export type ArrivalTransport = '비행기' | '선박';
 export type LodgingMode = 'single' | 'daily';
 
 export interface TripLodging {
-  placeId: string;
+  placeId: string | null;
   name: string;
   address: string;
   coord: Coord | null;
@@ -44,7 +48,7 @@ export interface TripConditions {
 }
 
 export interface TripState extends TripConditions {
-  /** 서버 trip root 저장 여부. BE가 제공하지 않는 하위 aggregate 조회 여부와는 별개다. */
+  /** 서버 저장/복원 상태. 저장 중 root만 성공하고 활동 시간이 실패하면 false다. */
   saved: boolean;
   draftSaved: boolean;
   tripId: string | null;
@@ -56,6 +60,13 @@ export interface TripState extends TripConditions {
   loading: boolean;
   serverError: string | null;
   pendingTripCreate: { fingerprint: string; key: string } | null;
+  pendingDayActivityWindows: {
+    tripId: string;
+    body: DayActivityWindowsRequest;
+    etag: string;
+    key: string;
+    fingerprint: string;
+  } | null;
   pendingAccommodationCreate: { fingerprint: string; key: string } | null;
   saveConditions: (conditions: TripConditions) => void;
 }
@@ -84,6 +95,7 @@ export const useTripStore = create<TripState>((set) => ({
   loading: false,
   serverError: null,
   pendingTripCreate: null,
+  pendingDayActivityWindows: null,
   pendingAccommodationCreate: null,
   saveConditions: (conditions) =>
     set({ ...conditions, draftSaved: true, saved: false, serverError: null }),

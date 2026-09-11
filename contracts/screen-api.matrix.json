@@ -52,7 +52,10 @@
     {
       "surface": "home search and place detail",
       "screenState": "connected",
-      "operations": ["GET /api/v1/places", "GET /api/v1/places/{placeId}"],
+      "operations": [
+        "GET /api/v1/places",
+        "GET /api/v1/places/{placeId}"
+      ],
       "callEvidence": "services/places.ts#fetchCanonicalPlaces",
       "operationEvidence": {
         "GET /api/v1/places": "services/places.ts#fetchCanonicalPlaces(params, signal)",
@@ -90,14 +93,16 @@
         "POST /api/v1/trips",
         "GET /api/v1/trips/{tripId}",
         "PATCH /api/v1/trips/{tripId}",
-        "DELETE /api/v1/trips/{tripId}"
+        "DELETE /api/v1/trips/{tripId}",
+        "PUT /api/v1/trips/{tripId}/day-activity-windows"
       ],
       "operationEvidence": {
         "GET /api/v1/trips": "services/tripPersistence.ts#await fetchTrips({ size: 20 })",
         "POST /api/v1/trips": "services/tripPersistence.ts#await createTrip(body, attempt.key)",
         "GET /api/v1/trips/{tripId}": "services/tripPersistence.ts#await fetchTrip(list.items[0].tripId)",
         "PATCH /api/v1/trips/{tripId}": "services/tripPersistence.ts#await updateTrip(",
-        "DELETE /api/v1/trips/{tripId}": "services/tripPersistence.ts#await deleteTripApi(tripId)"
+        "DELETE /api/v1/trips/{tripId}": "services/tripPersistence.ts#await deleteTripApi(tripId)",
+        "PUT /api/v1/trips/{tripId}/day-activity-windows": "services/tripPersistence.ts#await replaceDayActivityWindows("
       },
       "callEvidence": "app/trip-conditions.tsx#saveTrip",
       "responseEvidence": "tests/tripPersistence.test.ts#hydrateLatestTrip",
@@ -112,7 +117,7 @@
         "PUT /api/v1/trips/{tripId}/place-preferences"
       ],
       "callEvidence": "services/api/trips.ts#replaceTripPreferences",
-      "responseEvidence": "tests/backendOpenApiContract.test.js#runtime 37개 operation",
+      "responseEvidence": "tests/backendOpenApiContract.test.js#runtime 38개 operation",
       "errorEvidence": "tests/apiLayerContract.test.ts#Problem은 stable code만",
       "restartHydration": "blocked: wrappers have no screen or store invocation"
     },
@@ -158,7 +163,9 @@
     {
       "surface": "home weather",
       "screenState": "connected",
-      "operations": ["GET /api/v1/weather/forecast"],
+      "operations": [
+        "GET /api/v1/weather/forecast"
+      ],
       "callEvidence": "hooks/useWeatherForecast.ts#fetchWeatherForecast",
       "operationEvidence": {
         "GET /api/v1/weather/forecast": "hooks/useWeatherForecast.ts#fetchWeatherForecast("

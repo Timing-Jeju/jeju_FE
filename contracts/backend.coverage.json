@@ -1,5 +1,5 @@
 {
-  "sourceCommit": "f91c9c4fac1a162f1e20af096280c47ee0fe69e6",
+  "sourceCommit": "4f1578972420f52c78e17bb08010b37896a0f9bd",
   "operations": {
     "GET /api/v1/auth/social/providers": {
       "module": "authSocial.ts",
@@ -259,6 +259,13 @@
       "wrapper": "connected",
       "screen": "deferred",
       "prerequisite": "Supabase session"
+    },
+    "PUT /api/v1/trips/{tripId}/day-activity-windows": {
+      "wrapper": "connected",
+      "module": "trips.ts",
+      "export": "replaceDayActivityWindows",
+      "screen": "connected",
+      "prerequisite": "기존 활동 시간 입력 사용; 선행 BE 전체 검증·병합 후 반영"
     }
   }
 }

@@ -7,7 +7,7 @@ const root = resolve(__dirname, '..');
 const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const json = (path) => JSON.parse(read(path));
 
-test('화면 API matrix는 runtime 37개 operation을 누락·중복 없이 감사한다', () => {
+test('화면 API matrix는 runtime 38개 operation을 누락·중복 없이 감사한다', () => {
   const runtime = json('contracts/backend.runtime.json');
   const matrix = json('contracts/screen-api.matrix.json');
   const operations = matrix.domains.flatMap((domain) => domain.operations);

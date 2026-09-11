@@ -6,8 +6,20 @@ const root = {
   startDate: '2026-09-10',
   endDate: '2026-09-11',
   days: [
-    { dayId: secondId, dayNo: 2, date: '2026-09-11' },
-    { dayId: firstId, dayNo: 1, date: '2026-09-10' },
+    {
+      dayId: secondId,
+      dayNo: 2,
+      date: '2026-09-11',
+      activityStartTime: null,
+      activityEndTime: null,
+    },
+    {
+      dayId: firstId,
+      dayNo: 1,
+      date: '2026-09-10',
+      activityStartTime: null,
+      activityEndTime: null,
+    },
   ],
 };
 const conditions = {

@@ -1,9 +1,9 @@
 {
   "repository": "Timing-Jeju/jeju_BE",
   "sourceBranch": "fix/248-saved-place-delete-cas",
-  "sourceCommit": "f91c9c4fac1a162f1e20af096280c47ee0fe69e6",
-  "sourceOpenApiSha256": "6da8e56c5c85966f9542820d542fb8f9b311ffaa907473af7c5ac3498e24e3d0",
-  "runtimeManifestSha256": "688fe660f130c3804c3009198db56616f9163589408985f9424c70027ec0bba6",
+  "sourceCommit": "4f1578972420f52c78e17bb08010b37896a0f9bd",
+  "sourceOpenApiSha256": "09dd9f82f4718495fc0ffecd42d479613033c471d44674376f723c390a6e21aa",
+  "runtimeManifestSha256": "e94e230624913ac6608c446f4e548d19d73556d69d8920fbde5a5f9178fbe7ec",
   "operations": [
     "DELETE /api/v1/me/push-devices/{deviceId}",
     "DELETE /api/v1/me/saved-places/{placeId}",
@@ -38,9 +38,11 @@
     "PUT /api/v1/me/consents",
     "PUT /api/v1/me/profile-image",
     "PUT /api/v1/me/push-devices/{deviceId}",
+    "PUT /api/v1/trips/{tripId}/day-activity-windows",
     "PUT /api/v1/trips/{tripId}/place-preferences",
     "PUT /api/v1/trips/{tripId}/preferences",
     "PUT /api/v1/trips/{tripId}/schedule-order",
     "PUT /api/v1/trips/{tripId}/transport-event"
-  ]
+  ],
+  "verificationStatus": "local-commit; remote full gate and merge pending"
 }

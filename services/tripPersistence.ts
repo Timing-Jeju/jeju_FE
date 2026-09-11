@@ -7,7 +7,10 @@ import {
   type Accommodation,
 } from './api/accommodations';
 import { createIdempotencyKey } from './api/idempotency';
-import { hasCode } from './api/problem';
+import { hydrateTripConditions } from './tripHydration';
+import { hasCode, isApiError } from './api/problem';
+import type { ApiResponse } from './api/http';
+import { toDayActivityWindows } from './tripActivityWindows';
 import {
   deleteTransportEvent as deleteTransportEventApi,
   putTransportEvent as putTransportEventApi,
@@ -20,6 +23,8 @@ import {
   fetchTrip,
   fetchTrips,
   updateTrip,
+  replaceDayActivityWindows,
+  type TripCreateResponse,
   type Trip,
   type TripCreateRequest,
   type TripPatchRequest,
@@ -170,6 +175,7 @@ const setServerTrip = (
   etag: string,
   hydrate: boolean,
   scope: AuthScope,
+  saved = true,
 ) => {
   assertCurrentAuthScope(scope);
   useTripStore.setState((state) => ({
@@ -178,13 +184,17 @@ const setServerTrip = (
           startDate: trip.startDate,
           endDate: trip.endDate,
           transport: uiTransport(trip),
+          ...hydrateTripConditions(trip),
+          pendingTripCreate: null,
+          pendingAccommodationCreate: null,
+          pendingDayActivityWindows: null,
         }
       : {}),
     tripId: trip.tripId,
     etag,
     serverTrip: trip,
-    saved: true,
-    loading: false,
+    saved,
+    loading: !saved,
     serverError: null,
     trips: state.trips.some((item) => item.tripId === trip.tripId)
       ? state.trips.map((item) => (item.tripId === trip.tripId ? trip : item))
@@ -375,13 +385,96 @@ const currentAggregate = () => {
   return { tripId, etag: requireEtag(etag) };
 };
 
+const isLatestTrip = (trip: TripCreateResponse): trip is Trip =>
+  'transportEvents' in trip &&
+  'accommodations' in trip &&
+  trip.days.every(
+    (day) => 'activityStartTime' in day && 'activityEndTime' in day,
+  );
+
+const latestMutationTrip = async (
+  response: ApiResponse<TripCreateResponse>,
+  scope: AuthScope,
+): Promise<ApiResponse<Trip>> => {
+  assertCurrentAuthScope(scope);
+  if (response.idempotencyReplayed || !isLatestTrip(response.data)) {
+    const latest = await fetchTrip(response.data.tripId);
+    assertCurrentAuthScope(scope);
+    return latest;
+  }
+  return { ...response, data: response.data };
+};
+
+const currentDraftMatches = (expected: string) => {
+  try {
+    const state = useTripStore.getState();
+    return (
+      fingerprint({
+        root: toTripPatchRequest(state),
+        dayTimes: state.dayTimes,
+      }) === expected
+    );
+  } catch {
+    return false;
+  }
+};
+
+let saveInFlight: AuthScope | null = null;
+
 export function createTripPersistenceActions() {
   const saveTrip = async (conditions: TripConditions) => {
     const scope = captureAuthScope();
+    if (saveInFlight && isCurrentAuthScope(saveInFlight)) {
+      throw new TripPersistenceValidationError(
+        '저장이 진행 중이에요. 잠시 기다려 주세요.',
+      );
+    }
+    saveInFlight = scope;
     useTripStore.getState().saveConditions(conditions);
     useTripStore.setState({ loading: true });
-    const state = useTripStore.getState();
     try {
+      const inputFingerprint = fingerprint({
+        root: toTripPatchRequest(conditions),
+        dayTimes: conditions.dayTimes,
+      });
+      const finishPending = async (saved = true) => {
+        const attempt = useTripStore.getState().pendingDayActivityWindows;
+        if (!attempt || attempt.tripId !== useTripStore.getState().tripId) {
+          throw new TripPersistenceValidationError(
+            '저장할 여행을 다시 확인해 주세요.',
+          );
+        }
+        const response = await replaceDayActivityWindows(
+          attempt.tripId,
+          attempt.body,
+          attempt.etag,
+          attempt.key,
+        );
+        assertCurrentAuthScope(scope);
+        const latest = await latestMutationTrip(response, scope);
+        setServerTrip(
+          latest.data,
+          requireEtag(latest.etag),
+          false,
+          scope,
+          saved && currentDraftMatches(inputFingerprint),
+        );
+        useTripStore.setState({
+          pendingDayActivityWindows: null,
+          loading: false,
+        });
+        return latest.data;
+      };
+      const pending = useTripStore.getState().pendingDayActivityWindows;
+      if (pending && pending.tripId === useTripStore.getState().tripId) {
+        const saved = await finishPending(
+          pending.fingerprint === inputFingerprint,
+        );
+        if (pending.fingerprint === inputFingerprint) return saved;
+        useTripStore.setState({ saved: false, loading: true });
+      }
+      const state = useTripStore.getState();
+      let response: ApiResponse<TripCreateResponse>;
       if (!state.tripId) {
         const body = toTripCreateRequest(conditions);
         const bodyFingerprint = fingerprint(body);
@@ -390,25 +483,52 @@ export function createTripPersistenceActions() {
             ? state.pendingTripCreate
             : { fingerprint: bodyFingerprint, key: createIdempotencyKey() };
         useTripStore.setState({ pendingTripCreate: attempt });
-        const response = await createTrip(body, attempt.key);
+        response = await createTrip(body, attempt.key);
         assertCurrentAuthScope(scope);
-        setServerTrip(response.data, requireEtag(response.etag), false, scope);
-        useTripStore.setState({ pendingTripCreate: null });
-        return response.data;
+      } else {
+        response = await updateTrip(
+          state.tripId,
+          toTripPatchRequest(conditions),
+          requireEtag(state.etag),
+        );
+        assertCurrentAuthScope(scope);
       }
-      const response = await updateTrip(
-        state.tripId,
-        toTripPatchRequest(conditions),
-        requireEtag(state.etag),
-      );
-      assertCurrentAuthScope(scope);
-      setServerTrip(response.data, requireEtag(response.etag), false, scope);
-      return response.data;
+      const latest = await latestMutationTrip(response, scope);
+      setServerTrip(latest.data, requireEtag(latest.etag), false, scope, false);
+      useTripStore.setState({
+        saved: false,
+        loading: true,
+        pendingTripCreate: null,
+      });
+      const body = toDayActivityWindows(conditions, latest.data);
+      useTripStore.setState({
+        pendingDayActivityWindows: {
+          tripId: latest.data.tripId,
+          body,
+          etag: requireEtag(latest.etag),
+          key: createIdempotencyKey(),
+          fingerprint: inputFingerprint,
+        },
+      });
+      return await finishPending();
     } catch (error) {
       assertCurrentAuthScope(scope);
-      if (state.tripId) await refreshOnConflict(error, state.tripId, scope);
+      if (
+        isApiError(error) &&
+        error.status >= 400 &&
+        error.status < 500 &&
+        error.status !== 429
+      ) {
+        useTripStore.setState({ pendingDayActivityWindows: null });
+      }
+      const tripId = useTripStore.getState().tripId;
+      if (tripId) await refreshOnConflict(error, tripId, scope);
+      assertCurrentAuthScope(scope);
+      useTripStore.setState({ saved: false });
       setFailure(error, scope);
       throw error;
+    } finally {
+      if (saveInFlight === scope) saveInFlight = null;
     }
   };
 
@@ -420,7 +540,7 @@ export function createTripPersistenceActions() {
       assertCurrentAuthScope(scope);
       useTripStore.setState({ trips: list.items });
       if (!list.items.length) {
-        useTripStore.setState({ loading: false });
+        useTripStore.setState(useTripStore.getInitialState(), true);
         return null;
       }
       const response = await fetchTrip(list.items[0].tripId);
