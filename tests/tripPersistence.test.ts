@@ -500,3 +500,32 @@ test('여행 삭제는 서버 성공 뒤에만 세션 상태를 비운다', asyn
     draftSaved: false,
   });
 });
+
+test.each([false, true])(
+  '같은 사용자의 여행 전환 뒤 늦은 수정 응답을 폐기한다 (원래 여행 재선택=%s)',
+  async (returnToOriginal) => {
+    useTripStore.setState({ tripId, etag: etag1, serverTrip: trip });
+    const pending = deferred<Awaited<ReturnType<typeof trips.updateTrip>>>();
+    jest.mocked(trips.updateTrip).mockReturnValue(pending.promise);
+    const saving = createTripPersistenceActions().saveTrip(conditions);
+    const otherId = '44000000-0000-4000-8000-000000000045';
+    useTripStore.setState({
+      tripId: otherId,
+      etag: `"trip-${otherId}-r1"`,
+      serverTrip: { ...trip, tripId: otherId },
+      loading: false,
+      serverError: null,
+    });
+    if (returnToOriginal) {
+      useTripStore.setState({ tripId, etag: etag3, serverTrip: trip });
+    }
+    const selected = useTripStore.getState();
+    pending.resolve(response(etag2));
+    await expect(saving).rejects.toHaveProperty(
+      'name',
+      'TripSessionChangedError',
+    );
+    expect(useTripStore.getState()).toBe(selected);
+    expect(trips.fetchTrip).not.toHaveBeenCalled();
+  },
+);

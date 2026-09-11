@@ -40,7 +40,9 @@ export class TripPersistenceValidationError extends Error {
 
 export class TripSessionChangedError extends Error {
   constructor() {
-    super('로그인 사용자가 변경되어 이전 요청 결과를 적용하지 않았어요.');
+    super(
+      '로그인 사용자나 선택한 여행이 변경되어 이전 요청 결과를 적용하지 않았어요.',
+    );
     this.name = 'TripSessionChangedError';
   }
 }
@@ -54,18 +56,30 @@ useUserStore.subscribe((state) => {
   }
 });
 
+let tripSelectionGeneration = 0;
+let selectedTripId = useTripStore.getState().tripId;
+useTripStore.subscribe((state) => {
+  if (state.tripId !== selectedTripId) {
+    selectedTripId = state.tripId;
+    tripSelectionGeneration += 1;
+  }
+});
+
 interface AuthScope {
+  tripGeneration: number;
   generation: number;
   userId: string | null;
 }
 
 const captureAuthScope = (): AuthScope => ({
   generation: authGeneration,
+  tripGeneration: tripSelectionGeneration,
   userId: useUserStore.getState().userId,
 });
 
 const isCurrentAuthScope = (scope: AuthScope) =>
   scope.generation === authGeneration &&
+  scope.tripGeneration === tripSelectionGeneration &&
   scope.userId === useUserStore.getState().userId;
 
 const assertCurrentAuthScope = (scope: AuthScope) => {
@@ -176,6 +190,8 @@ const setServerTrip = (
       ? state.trips.map((item) => (item.tripId === trip.tripId ? trip : item))
       : [trip, ...state.trips],
   }));
+  // 이 요청이 성공해서 선택한 여행은 같은 저장 흐름의 후속 요청에 이어 쓴다.
+  scope.tripGeneration = tripSelectionGeneration;
 };
 
 const setFailure = (error: unknown, scope: AuthScope) => {
