@@ -34,3 +34,11 @@
 
 ## 찜 opaque ETag 연동 보완
 기존 store가 sp-hex 접두사만 허용하던 것을 canonical의 opaque strong 형식으로 검증한다. 서버 값을 해석·생성하지 않고 그대로 DELETE에 전달한다. weak/wildcard/다중/공백 포함 값은 계속 거부한다. 집중 RED1→GREEN26: /tmp/jeju-fe13-opaque-etag-red.log, /tmp/jeju-fe13-opaque-etag-green.log. 변경 후 Jest42 suites/296 tests 및 전체 lint·타입 PASS: /tmp/jeju-fe13-296-tests.log, /tmp/jeju-fe13-296-lint.log, /tmp/jeju-fe13-opaque-etag-typecheck.log.
+
+
+## 독립 리뷰 후 경계 사례 보완
+- 과거 찜 POST receipt에 body ETag가 없거나 replay인 경우 최신 목록 GET의 ETag를 사용한다. 이미 삭제된 항목은 재생성하지 않고 404로 반환한다. 후속 GET의 401/429 실패는 POST 멱등 키를 보존하여 같은 요청으로 다시 확인한다. RED 2→GREEN을 포함한 집중 검사 61개 PASS.
+- 같은 여행의 이전 GET이 새 입력 또는 완료된 저장을 덮어쓰지 않도록 입력 세대와 조회 순서를 검사한다. 저장 중 새 상세 조회도 막는다. 지연 GET과 입력/저장 경합 RED→GREEN을 확인했다.
+- 독립 Reviewer의 MAJOR 2건 및 MINOR 1건 수정 후 재검토 결과 미해결 finding 0건. FE 검토이며 BE 공식 승인 기록과는 별개다.
+- 최종 Jest 42 suites / 302 tests PASS, typecheck/lint/api:check 및 58개 StyleSheet 비교 PASS. iOS/Android bundle export PASS. 테스트 추가 직후 lint의 포맷 오류 8건은 정규 eslint --fix 후 전체 lint 재검사로 해결했다.
+- 증거: /tmp/jeju-fe13-review-boundaries-red.log, /tmp/jeju-fe13-replay-read-key-red.log, /tmp/jeju-fe13-final-review-green.log, /tmp/jeju-fe13-final-review-typecheck.log, /tmp/jeju-fe13-302-tests.log, /tmp/jeju-fe13-302-lint.log, /tmp/jeju-fe13-302-api-check.log, /tmp/jeju-fe13-302-ui-check.log, /tmp/jeju-fe13-302-expo-export.log.

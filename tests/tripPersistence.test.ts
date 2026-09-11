@@ -892,3 +892,73 @@ test('불확실한 저장 후 입력을 바꾸면 이전 요청을 먼저 확정
     etag2,
   );
 });
+
+test('같은 여행을 조회하는 동안 바뀐 입력은 늦은 GET으로 덮지 않는다', async () => {
+  useTripStore.setState({
+    ...conditions,
+    tripId,
+    etag: etag1,
+    serverTrip: trip,
+  });
+  jest.mocked(trips.fetchTrips).mockResolvedValueOnce({
+    items: [trip],
+    page: { size: 20, hasNext: false, nextCursor: null },
+  });
+  const pending = deferred<Awaited<ReturnType<typeof trips.fetchTrip>>>();
+  jest.mocked(trips.fetchTrip).mockReturnValueOnce(pending.promise);
+  const read = createTripPersistenceActions().hydrateLatestTrip();
+  for (
+    let i = 0;
+    i < 10 && !jest.mocked(trips.fetchTrip).mock.calls.length;
+    i++
+  )
+    await Promise.resolve();
+  const edited = {
+    ...conditions,
+    dayTimes: {
+      ...conditions.dayTimes,
+      '2026-09-10': { start: '12:00', end: '19:00' },
+    },
+  };
+  useTripStore.getState().saveConditions(edited);
+  pending.resolve(response(etag1));
+  await expect(read).rejects.toHaveProperty('name', 'TripReadChangedError');
+  expect(useTripStore.getState()).toMatchObject({
+    dayTimes: edited.dayTimes,
+    etag: etag1,
+    saved: false,
+    loading: false,
+  });
+});
+
+test('같은 여행의 저장 완료 뒤 늦은 GET은 새 ETag를 되돌리지 않는다', async () => {
+  useTripStore.setState({
+    ...conditions,
+    tripId,
+    etag: etag1,
+    serverTrip: trip,
+  });
+  jest.mocked(trips.fetchTrips).mockResolvedValueOnce({
+    items: [trip],
+    page: { size: 20, hasNext: false, nextCursor: null },
+  });
+  const pending = deferred<Awaited<ReturnType<typeof trips.fetchTrip>>>();
+  jest.mocked(trips.fetchTrip).mockReturnValueOnce(pending.promise);
+  const read = createTripPersistenceActions().hydrateLatestTrip();
+  for (
+    let i = 0;
+    i < 10 && !jest.mocked(trips.fetchTrip).mock.calls.length;
+    i++
+  )
+    await Promise.resolve();
+  jest.mocked(trips.updateTrip).mockResolvedValueOnce(response(etag2));
+  await createTripPersistenceActions().saveTrip(conditions);
+  pending.resolve(response(etag1));
+  await expect(read).rejects.toHaveProperty('name', 'TripReadChangedError');
+  expect(useTripStore.getState()).toMatchObject({
+    dayTimes: conditions.dayTimes,
+    etag: etag3,
+    saved: true,
+    loading: false,
+  });
+});

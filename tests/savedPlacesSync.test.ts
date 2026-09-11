@@ -810,3 +810,69 @@ test.each(['W/"row-1"', '*', '"a", "b"', '"space token"'])(
     expect(deleteSavedPlace).not.toHaveBeenCalled();
   },
 );
+
+test('과거 찜 생성 replay는 최신 목록에서 현재 ETag를 복원한다', async () => {
+  const { etag: ignored, ...legacy } = serverPlace();
+  void ignored;
+  jest.mocked(createSavedPlace).mockResolvedValueOnce({
+    data: legacy,
+    status: 201,
+    etag: etag1,
+    location: null,
+    idempotencyReplayed: true,
+    traceId: null,
+  });
+  jest
+    .mocked(fetchAllSavedPlaces)
+    .mockResolvedValueOnce([serverPlace({ etag: etag2, memo: '최신 메모' })]);
+  await useFavoriteStore.getState().addFavorite(favoriteInput);
+  expect(useFavoriteStore.getState().favorites).toEqual([
+    expect.objectContaining({ placeId, etag: etag2, memo: '최신 메모' }),
+  ]);
+  expect(AsyncStorage.removeItem).toHaveBeenCalled();
+});
+
+test('재생된 찜이 이미 삭제됐다면 원본 응답으로 되살리지 않고 새 시도를 허용한다', async () => {
+  const { etag: ignored, ...legacy } = serverPlace();
+  void ignored;
+  jest.mocked(createSavedPlace).mockResolvedValueOnce({
+    data: legacy,
+    status: 201,
+    etag: etag1,
+    location: null,
+    idempotencyReplayed: true,
+    traceId: null,
+  });
+  jest.mocked(fetchAllSavedPlaces).mockResolvedValueOnce([]);
+  await expect(
+    useFavoriteStore.getState().addFavorite(favoriteInput),
+  ).rejects.toHaveProperty('code', 'SAVED_PLACE_NOT_FOUND');
+  expect(useFavoriteStore.getState().favorites).toEqual([]);
+  expect(AsyncStorage.removeItem).toHaveBeenCalled();
+});
+
+test.each([401, 429])(
+  '찜 replay 후 최신 조회가 %i로 실패해도 POST 멱등 키를 보존한다',
+  async (status) => {
+    const { etag: ignored, ...legacy } = serverPlace();
+    void ignored;
+    jest.mocked(createSavedPlace).mockResolvedValueOnce({
+      data: legacy,
+      status: 201,
+      etag: etag1,
+      location: null,
+      idempotencyReplayed: true,
+      traceId: null,
+    });
+    jest.mocked(fetchAllSavedPlaces).mockRejectedValueOnce(
+      new ApiError({
+        status,
+        code: status === 401 ? 'AUTHENTICATION_REQUIRED' : 'RATE_LIMITED',
+      }),
+    );
+    await expect(
+      useFavoriteStore.getState().addFavorite(favoriteInput),
+    ).rejects.toHaveProperty('status', status);
+    expect(AsyncStorage.removeItem).not.toHaveBeenCalled();
+  },
+);

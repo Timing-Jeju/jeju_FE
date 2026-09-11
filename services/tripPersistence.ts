@@ -30,7 +30,11 @@ import {
   type TripPatchRequest,
   type TripTransportMode as ApiTransportMode,
 } from './api/trips';
-import { useTripStore, type TripConditions } from '@/store/useTripStore';
+import {
+  useTripStore,
+  type TripConditions,
+  type TripState,
+} from '@/store/useTripStore';
 import { useUserStore } from '@/store/useUserStore';
 
 const DEFAULT_TITLE = '제주 여행';
@@ -51,6 +55,39 @@ export class TripSessionChangedError extends Error {
     this.name = 'TripSessionChangedError';
   }
 }
+
+export class TripReadChangedError extends Error {
+  constructor() {
+    super('입력이나 저장 상태가 변경되어 이전 조회 결과를 적용하지 않았어요.');
+    this.name = 'TripReadChangedError';
+  }
+}
+
+let tripContentGeneration = 0;
+let tripReadSequence = 0;
+const tripReadFields: (keyof TripState)[] = [
+  'startDate',
+  'endDate',
+  'dayTimes',
+  'arrivalTime',
+  'arrivalTransport',
+  'departureTime',
+  'departureTransport',
+  'lodging',
+  'lodgingMode',
+  'dailyLodgings',
+  'styles',
+  'transport',
+  'serverTrip',
+  'etag',
+  'pendingTripCreate',
+  'pendingDayActivityWindows',
+  'pendingAccommodationCreate',
+];
+useTripStore.subscribe((state, previous) => {
+  if (tripReadFields.some((key) => state[key] !== previous[key]))
+    tripContentGeneration += 1;
+});
 
 let authGeneration = 0;
 let authUserId = useUserStore.getState().userId;
@@ -430,6 +467,7 @@ export function createTripPersistenceActions() {
       );
     }
     saveInFlight = scope;
+    tripContentGeneration += 1;
     useTripStore.getState().saveConditions(conditions);
     useTripStore.setState({ loading: true });
     try {
@@ -534,21 +572,44 @@ export function createTripPersistenceActions() {
 
   const hydrateLatestTrip = async () => {
     const scope = captureAuthScope();
+    if (saveInFlight && isCurrentAuthScope(saveInFlight)) {
+      throw new TripPersistenceValidationError(
+        '저장이 끝난 뒤 여행을 다시 조회해 주세요.',
+      );
+    }
+    const readSequence = ++tripReadSequence;
+    const readGeneration = tripContentGeneration;
+    const isCurrentRead = () =>
+      readSequence === tripReadSequence &&
+      readGeneration === tripContentGeneration;
+    const assertCurrentRead = () => {
+      assertCurrentAuthScope(scope);
+      if (!isCurrentRead()) throw new TripReadChangedError();
+    };
     useTripStore.setState({ loading: true, serverError: null });
     try {
       const list = await fetchTrips({ size: 20 });
-      assertCurrentAuthScope(scope);
+      assertCurrentRead();
       useTripStore.setState({ trips: list.items });
       if (!list.items.length) {
         useTripStore.setState(useTripStore.getInitialState(), true);
         return null;
       }
       const response = await fetchTrip(list.items[0].tripId);
-      assertCurrentAuthScope(scope);
+      assertCurrentRead();
       setServerTrip(response.data, requireEtag(response.etag), true, scope);
       return response.data;
     } catch (error) {
       assertCurrentAuthScope(scope);
+      if (!isCurrentRead()) {
+        if (
+          readSequence === tripReadSequence &&
+          !(saveInFlight && isCurrentAuthScope(saveInFlight))
+        ) {
+          useTripStore.setState({ loading: false });
+        }
+        throw new TripReadChangedError();
+      }
       setFailure(error, scope);
       throw error;
     }
