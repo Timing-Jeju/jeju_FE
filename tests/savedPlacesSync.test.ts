@@ -782,3 +782,31 @@ test('DELETE 충돌 복구 중 authGeneration이 바뀌면 이전 owner 결과�
     notice: null,
   });
 });
+
+test('찜 ETag는 서버의 opaque strong 값 그대로 보존해 삭제에 전달한다', async () => {
+  const etag = '"row-version:7_A.z"';
+  jest
+    .mocked(fetchAllSavedPlaces)
+    .mockResolvedValueOnce([serverPlace({ etag })]);
+  jest.mocked(deleteSavedPlace).mockResolvedValueOnce();
+  await useFavoriteStore.getState().hydrate(ownerA);
+  await useFavoriteStore.getState().removeFavorite(placeId);
+  expect(deleteSavedPlace).toHaveBeenCalledWith(
+    placeId,
+    etag,
+    expect.any(Function),
+  );
+});
+
+test.each(['W/"row-1"', '*', '"a", "b"', '"space token"'])(
+  'opaque ETag라도 weak·다중·잘못된 형식은 거부한다: %s',
+  async (etag) => {
+    jest
+      .mocked(fetchAllSavedPlaces)
+      .mockResolvedValueOnce([serverPlace({ etag })]);
+    await expect(
+      useFavoriteStore.getState().hydrate(ownerA),
+    ).rejects.toHaveProperty('code', 'INVALID_ETAG');
+    expect(deleteSavedPlace).not.toHaveBeenCalled();
+  },
+);

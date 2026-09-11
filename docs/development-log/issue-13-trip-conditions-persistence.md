@@ -30,3 +30,7 @@
 - iOS/Android Hermes bundle export PASS: /tmp/jeju-fe13-internal-expo-export.log. 실제 기기 실행이나 staging API 성공을 의미하지 않는다.
 - 복원 시 이전 pending create/day/accommodation 정보 제거도 RED 후 전체 검사에 포함해 PASS했다.
 - 화면 파일을 변경하지 않았으므로 기존 화면의 기본정보 저장 안내 문구도 이 변경에는 포함하지 않는다. 원격 반영 전 BE source pin 및 검증 증거를 최종 갱신한다.
+
+
+## 찜 opaque ETag 연동 보완
+기존 store가 sp-hex 접두사만 허용하던 것을 canonical의 opaque strong 형식으로 검증한다. 서버 값을 해석·생성하지 않고 그대로 DELETE에 전달한다. weak/wildcard/다중/공백 포함 값은 계속 거부한다. 집중 RED1→GREEN26: /tmp/jeju-fe13-opaque-etag-red.log, /tmp/jeju-fe13-opaque-etag-green.log. 변경 후 Jest42 suites/296 tests 및 전체 lint·타입 PASS: /tmp/jeju-fe13-296-tests.log, /tmp/jeju-fe13-296-lint.log, /tmp/jeju-fe13-opaque-etag-typecheck.log.

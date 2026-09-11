@@ -96,7 +96,7 @@ const categoryLabel = (place: SavedPlace) => {
   return labels[place.category] ?? '장소';
 };
 
-const strongSavedPlaceEtag = /^"sp-[0-9a-f]{32}"$/;
+const strongSavedPlaceEtag = /^"[A-Za-z0-9._:-]{1,128}"$/;
 
 const strongEtag = (etag: string) => {
   if (!strongSavedPlaceEtag.test(etag))
