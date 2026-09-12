@@ -4,6 +4,7 @@ import {
   fetchTrip,
   fetchTrips,
   updateTrip,
+  replaceDayActivityWindows,
   type ScoreProvenance,
   type Trip,
   type TripListItem,
@@ -49,8 +50,12 @@ const trip: Trip = {
       dayId: '45000000-0000-4000-8000-000000000001',
       dayNo: 1,
       date: '2026-09-10',
+      activityStartTime: null,
+      activityEndTime: null,
     },
   ],
+  accommodations: [],
+  transportEvents: { arrival: null, departure: null },
   scheduleEffect: 'maintained',
   regenerationRequired: false,
 };
@@ -118,4 +123,31 @@ test('목록과 상세의 non-null scoreProvenance 객체 계약을 보존한다
 
   expect(list.items[0].scoreProvenance).toEqual(provenance);
   expect(detail.data.scoreProvenance).toEqual(provenance);
+});
+
+test('활동 시간 저장은 서버 Day ID와 원본 ETag 및 멱등 키를 그대로 전달한다', async () => {
+  const body = {
+    days: [
+      {
+        dayId: '45000000-0000-4000-8000-000000000001',
+        startTime: '09:00',
+        endTime: '18:00',
+      },
+    ],
+  };
+  jest.mocked(request).mockResolvedValueOnce(response(etag2));
+  const result = await replaceDayActivityWindows(
+    tripId,
+    body,
+    etag1,
+    'day-attempt-1',
+  );
+  expect(request).toHaveBeenCalledWith({
+    method: 'PUT',
+    path: `/trips/${tripId}/day-activity-windows`,
+    auth: 'required',
+    body,
+    headers: { 'If-Match': etag1, 'Idempotency-Key': 'day-attempt-1' },
+  });
+  expect(result.etag).toBe(etag2);
 });

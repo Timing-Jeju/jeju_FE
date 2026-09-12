@@ -7,7 +7,10 @@ import {
   type Accommodation,
 } from './api/accommodations';
 import { createIdempotencyKey } from './api/idempotency';
-import { hasCode } from './api/problem';
+import { hydrateTripConditions } from './tripHydration';
+import { hasCode, isApiError } from './api/problem';
+import type { ApiResponse } from './api/http';
+import { toDayActivityWindows } from './tripActivityWindows';
 import {
   deleteTransportEvent as deleteTransportEventApi,
   putTransportEvent as putTransportEventApi,
@@ -20,12 +23,18 @@ import {
   fetchTrip,
   fetchTrips,
   updateTrip,
+  replaceDayActivityWindows,
+  type TripCreateResponse,
   type Trip,
   type TripCreateRequest,
   type TripPatchRequest,
   type TripTransportMode as ApiTransportMode,
 } from './api/trips';
-import { useTripStore, type TripConditions } from '@/store/useTripStore';
+import {
+  useTripStore,
+  type TripConditions,
+  type TripState,
+} from '@/store/useTripStore';
 import { useUserStore } from '@/store/useUserStore';
 
 const DEFAULT_TITLE = '제주 여행';
@@ -40,10 +49,45 @@ export class TripPersistenceValidationError extends Error {
 
 export class TripSessionChangedError extends Error {
   constructor() {
-    super('로그인 사용자가 변경되어 이전 요청 결과를 적용하지 않았어요.');
+    super(
+      '로그인 사용자나 선택한 여행이 변경되어 이전 요청 결과를 적용하지 않았어요.',
+    );
     this.name = 'TripSessionChangedError';
   }
 }
+
+export class TripReadChangedError extends Error {
+  constructor() {
+    super('입력이나 저장 상태가 변경되어 이전 조회 결과를 적용하지 않았어요.');
+    this.name = 'TripReadChangedError';
+  }
+}
+
+let tripContentGeneration = 0;
+let tripReadSequence = 0;
+const tripReadFields: (keyof TripState)[] = [
+  'startDate',
+  'endDate',
+  'dayTimes',
+  'arrivalTime',
+  'arrivalTransport',
+  'departureTime',
+  'departureTransport',
+  'lodging',
+  'lodgingMode',
+  'dailyLodgings',
+  'styles',
+  'transport',
+  'serverTrip',
+  'etag',
+  'pendingTripCreate',
+  'pendingDayActivityWindows',
+  'pendingAccommodationCreate',
+];
+useTripStore.subscribe((state, previous) => {
+  if (tripReadFields.some((key) => state[key] !== previous[key]))
+    tripContentGeneration += 1;
+});
 
 let authGeneration = 0;
 let authUserId = useUserStore.getState().userId;
@@ -54,18 +98,30 @@ useUserStore.subscribe((state) => {
   }
 });
 
+let tripSelectionGeneration = 0;
+let selectedTripId = useTripStore.getState().tripId;
+useTripStore.subscribe((state) => {
+  if (state.tripId !== selectedTripId) {
+    selectedTripId = state.tripId;
+    tripSelectionGeneration += 1;
+  }
+});
+
 interface AuthScope {
+  tripGeneration: number;
   generation: number;
   userId: string | null;
 }
 
 const captureAuthScope = (): AuthScope => ({
   generation: authGeneration,
+  tripGeneration: tripSelectionGeneration,
   userId: useUserStore.getState().userId,
 });
 
 const isCurrentAuthScope = (scope: AuthScope) =>
   scope.generation === authGeneration &&
+  scope.tripGeneration === tripSelectionGeneration &&
   scope.userId === useUserStore.getState().userId;
 
 const assertCurrentAuthScope = (scope: AuthScope) => {
@@ -156,6 +212,7 @@ const setServerTrip = (
   etag: string,
   hydrate: boolean,
   scope: AuthScope,
+  saved = true,
 ) => {
   assertCurrentAuthScope(scope);
   useTripStore.setState((state) => ({
@@ -164,18 +221,24 @@ const setServerTrip = (
           startDate: trip.startDate,
           endDate: trip.endDate,
           transport: uiTransport(trip),
+          ...hydrateTripConditions(trip),
+          pendingTripCreate: null,
+          pendingAccommodationCreate: null,
+          pendingDayActivityWindows: null,
         }
       : {}),
     tripId: trip.tripId,
     etag,
     serverTrip: trip,
-    saved: true,
-    loading: false,
+    saved,
+    loading: !saved,
     serverError: null,
     trips: state.trips.some((item) => item.tripId === trip.tripId)
       ? state.trips.map((item) => (item.tripId === trip.tripId ? trip : item))
       : [trip, ...state.trips],
   }));
+  // 이 요청이 성공해서 선택한 여행은 같은 저장 흐름의 후속 요청에 이어 쓴다.
+  scope.tripGeneration = tripSelectionGeneration;
 };
 
 const setFailure = (error: unknown, scope: AuthScope) => {
@@ -359,13 +422,97 @@ const currentAggregate = () => {
   return { tripId, etag: requireEtag(etag) };
 };
 
+const isLatestTrip = (trip: TripCreateResponse): trip is Trip =>
+  'transportEvents' in trip &&
+  'accommodations' in trip &&
+  trip.days.every(
+    (day) => 'activityStartTime' in day && 'activityEndTime' in day,
+  );
+
+const latestMutationTrip = async (
+  response: ApiResponse<TripCreateResponse>,
+  scope: AuthScope,
+): Promise<ApiResponse<Trip>> => {
+  assertCurrentAuthScope(scope);
+  if (response.idempotencyReplayed || !isLatestTrip(response.data)) {
+    const latest = await fetchTrip(response.data.tripId);
+    assertCurrentAuthScope(scope);
+    return latest;
+  }
+  return { ...response, data: response.data };
+};
+
+const currentDraftMatches = (expected: string) => {
+  try {
+    const state = useTripStore.getState();
+    return (
+      fingerprint({
+        root: toTripPatchRequest(state),
+        dayTimes: state.dayTimes,
+      }) === expected
+    );
+  } catch {
+    return false;
+  }
+};
+
+let saveInFlight: AuthScope | null = null;
+
 export function createTripPersistenceActions() {
   const saveTrip = async (conditions: TripConditions) => {
     const scope = captureAuthScope();
+    if (saveInFlight && isCurrentAuthScope(saveInFlight)) {
+      throw new TripPersistenceValidationError(
+        '저장이 진행 중이에요. 잠시 기다려 주세요.',
+      );
+    }
+    saveInFlight = scope;
+    tripContentGeneration += 1;
     useTripStore.getState().saveConditions(conditions);
     useTripStore.setState({ loading: true });
-    const state = useTripStore.getState();
     try {
+      const inputFingerprint = fingerprint({
+        root: toTripPatchRequest(conditions),
+        dayTimes: conditions.dayTimes,
+      });
+      const finishPending = async (saved = true) => {
+        const attempt = useTripStore.getState().pendingDayActivityWindows;
+        if (!attempt || attempt.tripId !== useTripStore.getState().tripId) {
+          throw new TripPersistenceValidationError(
+            '저장할 여행을 다시 확인해 주세요.',
+          );
+        }
+        const response = await replaceDayActivityWindows(
+          attempt.tripId,
+          attempt.body,
+          attempt.etag,
+          attempt.key,
+        );
+        assertCurrentAuthScope(scope);
+        const latest = await latestMutationTrip(response, scope);
+        setServerTrip(
+          latest.data,
+          requireEtag(latest.etag),
+          false,
+          scope,
+          saved && currentDraftMatches(inputFingerprint),
+        );
+        useTripStore.setState({
+          pendingDayActivityWindows: null,
+          loading: false,
+        });
+        return latest.data;
+      };
+      const pending = useTripStore.getState().pendingDayActivityWindows;
+      if (pending && pending.tripId === useTripStore.getState().tripId) {
+        const saved = await finishPending(
+          pending.fingerprint === inputFingerprint,
+        );
+        if (pending.fingerprint === inputFingerprint) return saved;
+        useTripStore.setState({ saved: false, loading: true });
+      }
+      const state = useTripStore.getState();
+      let response: ApiResponse<TripCreateResponse>;
       if (!state.tripId) {
         const body = toTripCreateRequest(conditions);
         const bodyFingerprint = fingerprint(body);
@@ -374,45 +521,95 @@ export function createTripPersistenceActions() {
             ? state.pendingTripCreate
             : { fingerprint: bodyFingerprint, key: createIdempotencyKey() };
         useTripStore.setState({ pendingTripCreate: attempt });
-        const response = await createTrip(body, attempt.key);
+        response = await createTrip(body, attempt.key);
         assertCurrentAuthScope(scope);
-        setServerTrip(response.data, requireEtag(response.etag), false, scope);
-        useTripStore.setState({ pendingTripCreate: null });
-        return response.data;
+      } else {
+        response = await updateTrip(
+          state.tripId,
+          toTripPatchRequest(conditions),
+          requireEtag(state.etag),
+        );
+        assertCurrentAuthScope(scope);
       }
-      const response = await updateTrip(
-        state.tripId,
-        toTripPatchRequest(conditions),
-        requireEtag(state.etag),
-      );
-      assertCurrentAuthScope(scope);
-      setServerTrip(response.data, requireEtag(response.etag), false, scope);
-      return response.data;
+      const latest = await latestMutationTrip(response, scope);
+      setServerTrip(latest.data, requireEtag(latest.etag), false, scope, false);
+      useTripStore.setState({
+        saved: false,
+        loading: true,
+        pendingTripCreate: null,
+      });
+      const body = toDayActivityWindows(conditions, latest.data);
+      useTripStore.setState({
+        pendingDayActivityWindows: {
+          tripId: latest.data.tripId,
+          body,
+          etag: requireEtag(latest.etag),
+          key: createIdempotencyKey(),
+          fingerprint: inputFingerprint,
+        },
+      });
+      return await finishPending();
     } catch (error) {
       assertCurrentAuthScope(scope);
-      if (state.tripId) await refreshOnConflict(error, state.tripId, scope);
+      if (
+        isApiError(error) &&
+        error.status >= 400 &&
+        error.status < 500 &&
+        error.status !== 429
+      ) {
+        useTripStore.setState({ pendingDayActivityWindows: null });
+      }
+      const tripId = useTripStore.getState().tripId;
+      if (tripId) await refreshOnConflict(error, tripId, scope);
+      assertCurrentAuthScope(scope);
+      useTripStore.setState({ saved: false });
       setFailure(error, scope);
       throw error;
+    } finally {
+      if (saveInFlight === scope) saveInFlight = null;
     }
   };
 
   const hydrateLatestTrip = async () => {
     const scope = captureAuthScope();
+    if (saveInFlight && isCurrentAuthScope(saveInFlight)) {
+      throw new TripPersistenceValidationError(
+        '저장이 끝난 뒤 여행을 다시 조회해 주세요.',
+      );
+    }
+    const readSequence = ++tripReadSequence;
+    const readGeneration = tripContentGeneration;
+    const isCurrentRead = () =>
+      readSequence === tripReadSequence &&
+      readGeneration === tripContentGeneration;
+    const assertCurrentRead = () => {
+      assertCurrentAuthScope(scope);
+      if (!isCurrentRead()) throw new TripReadChangedError();
+    };
     useTripStore.setState({ loading: true, serverError: null });
     try {
       const list = await fetchTrips({ size: 20 });
-      assertCurrentAuthScope(scope);
+      assertCurrentRead();
       useTripStore.setState({ trips: list.items });
       if (!list.items.length) {
-        useTripStore.setState({ loading: false });
+        useTripStore.setState(useTripStore.getInitialState(), true);
         return null;
       }
       const response = await fetchTrip(list.items[0].tripId);
-      assertCurrentAuthScope(scope);
+      assertCurrentRead();
       setServerTrip(response.data, requireEtag(response.etag), true, scope);
       return response.data;
     } catch (error) {
       assertCurrentAuthScope(scope);
+      if (!isCurrentRead()) {
+        if (
+          readSequence === tripReadSequence &&
+          !(saveInFlight && isCurrentAuthScope(saveInFlight))
+        ) {
+          useTripStore.setState({ loading: false });
+        }
+        throw new TripReadChangedError();
+      }
       setFailure(error, scope);
       throw error;
     }

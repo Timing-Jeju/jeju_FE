@@ -96,7 +96,7 @@ const categoryLabel = (place: SavedPlace) => {
   return labels[place.category] ?? '장소';
 };
 
-const strongSavedPlaceEtag = /^"sp-[0-9a-f]{32}"$/;
+const strongSavedPlaceEtag = /^"[A-Za-z0-9._:-]{1,128}"$/;
 
 const strongEtag = (etag: string) => {
   if (!strongSavedPlaceEtag.test(etag))
@@ -298,14 +298,33 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
 
       const operation = (async () => {
         const pending = await durableCreate(ownerId, body);
+        let postCompleted = false;
         try {
           const response = await createSavedPlace(
             body,
             pending.value.key,
             authContextIsCurrent,
           );
+          postCompleted = true;
+          if (response.idempotencyReplayed || !('etag' in response.data)) {
+            if (!authContextIsCurrent()) return;
+            await get().hydrate(ownerId);
+            if (!authContextIsCurrent()) return;
+            await AsyncStorage.removeItem(pending.storageKey);
+            if (!authContextIsCurrent()) return;
+            if (
+              !get().favorites.some((item) => item.placeId === place.placeId)
+            ) {
+              throw new ApiError({
+                status: 404,
+                code: 'SAVED_PLACE_NOT_FOUND',
+              });
+            }
+            return;
+          }
           if (response.etag && response.etag !== response.data.etag)
             throw new ApiError({ status: 0, code: 'INVALID_ETAG' });
+          const favorite = fromServer(response.data);
           await AsyncStorage.removeItem(pending.storageKey);
           if (!authContextIsCurrent()) return;
           dataEpoch += 1;
@@ -316,11 +335,16 @@ export const useFavoriteStore = create<FavoriteState>((set, get) => ({
               ...state.favorites.filter(
                 (item) => item.placeId !== place.placeId,
               ),
-              fromServer(response.data),
+              favorite,
             ],
           }));
         } catch (error) {
-          if (isApiError(error) && error.status > 0 && error.status < 500) {
+          if (
+            !postCompleted &&
+            isApiError(error) &&
+            error.status > 0 &&
+            error.status < 500
+          ) {
             try {
               await AsyncStorage.removeItem(pending.storageKey);
             } catch {

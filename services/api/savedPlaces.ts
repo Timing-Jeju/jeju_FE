@@ -1,3 +1,4 @@
+import type { components } from '../generated/backend';
 import { request, requestData, type ApiResponse } from './http';
 import { createIdempotencyKey } from './idempotency';
 import { collectPages } from './pagination';
@@ -100,8 +101,8 @@ export const createSavedPlace = (
   body: SavedPlaceCreateRequest,
   idempotencyKey: string = createIdempotencyKey(),
   authContextIsCurrent?: () => boolean,
-): Promise<ApiResponse<SavedPlace>> =>
-  request<SavedPlace>({
+): Promise<ApiResponse<components['schemas']['SavedPlaceCreateResponse']>> =>
+  request<components['schemas']['SavedPlaceCreateResponse']>({
     method: 'POST',
     path: '/me/saved-places',
     auth: 'required',

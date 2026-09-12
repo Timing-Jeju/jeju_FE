@@ -40,38 +40,12 @@ export interface TripTransportMode {
 export type ScoreProvenance = components['schemas']['ScoreProvenance'];
 
 /** 여행 목록의 한 줄 */
-export interface TripListItem {
-  tripId: string;
-  title: string;
-  status: TripStatus;
-  /** YYYY-MM-DD */
-  startDate: string;
-  endDate: string;
-  /** 현재 Asia/Seoul만 쓴다 */
-  timezone: string;
-  /** key는 항상 있고 값은 null일 수 있다 */
-  activeScheduleVersionId: string | null;
-  totalScore: number | null;
-  scoreProvenance: ScoreProvenance | null;
-  createdAt: string;
-  updatedAt: string;
-}
+export type TripListItem = components['schemas']['TripSummary'];
 
-export interface TripDay {
-  dayId: string;
-  dayNo: number;
-  /** YYYY-MM-DD */
-  date: string;
-}
-
-/** 생성 응답과 상세 응답이 같은 모양이다 */
-export interface Trip extends TripListItem {
-  userPace: UserPace;
-  transportModes: TripTransportMode[];
-  days: TripDay[];
-  scheduleEffect: string;
-  regenerationRequired: boolean;
-}
+export type TripDay = components['schemas']['TripDay'];
+/** 최신 GET/PATCH 응답. 과거 생성 receipt는 TripCreateResponse로 구분한다. */
+export type Trip = components['schemas']['TripDetail'];
+export type TripCreateResponse = components['schemas']['TripCreateResponse'];
 
 export type TripsListResponse = CursorPageResponse<TripListItem>;
 
@@ -130,8 +104,8 @@ export interface TripCreateRequest {
 export const createTrip = (
   body: TripCreateRequest,
   idempotencyKey: string = createIdempotencyKey(),
-): Promise<ApiResponse<Trip>> =>
-  request<Trip>({
+): Promise<ApiResponse<TripCreateResponse>> =>
+  request<TripCreateResponse>({
     method: 'POST',
     path: '/trips',
     auth: 'required',
@@ -318,4 +292,24 @@ export const replaceTripPlacePreferences = (
     auth: 'required',
     body: { items },
     headers: { 'If-Match': etag },
+  });
+
+export type DayActivityWindowsRequest =
+  components['schemas']['ReplaceTripDayActivityWindowsRequest'];
+export type DayActivityWindowsResponse =
+  components['schemas']['TripDayActivityWindowsResponse'];
+
+/** 전체 Day 시간을 교체한다. 불확실한 응답 재시도는 원본 body·ETag·키를 유지한다. */
+export const replaceDayActivityWindows = (
+  tripId: string,
+  body: DayActivityWindowsRequest,
+  etag: string,
+  idempotencyKey: string,
+): Promise<ApiResponse<DayActivityWindowsResponse>> =>
+  request<DayActivityWindowsResponse>({
+    method: 'PUT',
+    path: `/trips/${encodeURIComponent(tripId)}/day-activity-windows`,
+    auth: 'required',
+    body,
+    headers: { 'If-Match': etag, 'Idempotency-Key': idempotencyKey },
   });

@@ -1,6 +1,6 @@
 # Spring API wrapper coverage
 
-Backend: `Timing-Jeju/jeju_BE@f91c9c4fac1a162f1e20af096280c47ee0fe69e6` (`fix/248-saved-place-delete-cas`)
+Backend: `Timing-Jeju/jeju_BE@fc72bb4cb631f407c8bc16620b096fa1691d1a6a` (`fix/248-saved-place-delete-cas`)
 
 | Operation | Wrapper | 화면 연결 | 선행 조건 |
 | --- | --- | --- | --- |
@@ -37,6 +37,7 @@ Backend: `Timing-Jeju/jeju_BE@f91c9c4fac1a162f1e20af096280c47ee0fe69e6` (`fix/24
 | `PUT /api/v1/me/consents` | `legal.ts#updateLegalConsents` | deferred | Supabase session |
 | `PUT /api/v1/me/profile-image` | `profileImage.ts#putProfileImage` | deferred | session, storage object, latest ETag, Idempotency-Key |
 | `PUT /api/v1/me/push-devices/{deviceId}` | `push.ts#registerPushDevice` | deferred | session and platform registration token |
+| `PUT /api/v1/trips/{tripId}/day-activity-windows` | `trips.ts#replaceDayActivityWindows` | connected | 기존 활동 시간 입력 사용; 선행 BE 전체 검증·병합 후 반영 |
 | `PUT /api/v1/trips/{tripId}/place-preferences` | `trips.ts#replaceTripPlacePreferences` | deferred | session, saved placeIds, latest trip ETag |
 | `PUT /api/v1/trips/{tripId}/preferences` | `trips.ts#replaceTripPreferences` | deferred | session and latest trip ETag |
 | `PUT /api/v1/trips/{tripId}/schedule-order` | `scheduleItems.ts#reorderSchedule` | deferred | session, ETag, schedule version, Idempotency-Key |

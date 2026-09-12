@@ -13,7 +13,7 @@ const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 
 test('OpenAPI와 runtime manifest는 검증한 backend SHA/checksum에 고정된다', () => {
   const source = json('contracts/backend.source.json');
-  expect(source.sourceCommit).toBe('f91c9c4fac1a162f1e20af096280c47ee0fe69e6');
+  expect(source.sourceCommit).toBe('fc72bb4cb631f407c8bc16620b096fa1691d1a6a');
   expect(source.sourceBranch).toBe('fix/248-saved-place-delete-cas');
   expect(sha256(read('contracts/backend.openapi.json'))).toBe(
     source.sourceOpenApiSha256,
@@ -23,13 +23,13 @@ test('OpenAPI와 runtime manifest는 검증한 backend SHA/checksum에 고정된
   );
 });
 
-test('runtime 37개 operation마다 실제 wrapper와 화면 선행 상태가 명시된다', () => {
+test('runtime 38개 operation마다 실제 wrapper와 화면 선행 상태가 명시된다', () => {
   const source = json('contracts/backend.source.json');
   const runtime = json('contracts/backend.runtime.json');
   const coverage = json('contracts/backend.coverage.json');
   const operations = Object.keys(runtime.operations).sort();
 
-  expect(operations).toHaveLength(37);
+  expect(operations).toHaveLength(38);
   expect(source.operations).toEqual(operations);
   expect(Object.keys(coverage.operations).sort()).toEqual(operations);
   expect(coverage.sourceCommit).toBe(source.sourceCommit);
@@ -58,7 +58,7 @@ test('저장 장소 목록 item ETag와 수정/삭제 concurrency 계약을 고�
   const runtime = json('contracts/backend.runtime.json');
   const savedPlace = openapi.components.schemas.SavedPlaceResponse;
   expect(savedPlace.required).toContain('etag');
-  expect(savedPlace.properties.etag.pattern).toBe('^"sp-[0-9a-f]{32}"$');
+  expect(savedPlace.properties.etag.pattern).toBe('^"[A-Za-z0-9._:-]{1,128}"$');
 
   const itemPath = openapi.paths['/api/v1/me/saved-places/{placeId}'];
   expect(itemPath.patch.parameters.map((value) => value.name)).toContain(

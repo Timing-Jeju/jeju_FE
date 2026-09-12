@@ -83,6 +83,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/trips/{tripId}/day-activity-windows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 날짜별 활동 시간 전체 교체
+         * @description 현재 여행의 모든 Day를 한 번씩 포함합니다. Asia/Seoul HH:mm, 시작 < 종료. 기존 1~30일 여행을 지원합니다.
+         */
+        put: operations["tripDayActivityWindowsUpdate"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me/push-devices/{deviceId}": {
         parameters: {
             query?: never;
@@ -166,7 +186,7 @@ export interface paths {
         put?: never;
         /**
          * 여행 생성
-         * @description 여행과 날짜별 Day를 하나의 트랜잭션으로 생성합니다.
+         * @description 여행과 날짜별 Day를 하나의 트랜잭션으로 생성합니다. 새 응답은 최신 TripDetail이며, 배포 전 완료 receipt의 24시간 TTL 내 재시도는 과거 body를 그대로 반환합니다. 최신 상세는 Location의 GET으로 조회합니다.
          */
         post: operations["tripsCreate"];
         delete?: never;
@@ -371,7 +391,7 @@ export interface paths {
         post?: never;
         /**
          * 관심 장소 삭제
-         * @description 직전 관심 장소 strong ETag가 일치할 때만 삭제합니다. request body와 성공 response content는 없습니다.
+         * @description 관심 장소를 삭제합니다. request body와 성공 response content는 없습니다.
          */
         delete: operations["savedPlacesDelete"];
         options?: never;
@@ -568,15 +588,17 @@ export interface components {
             note: string | null;
         };
         TransportEvent: {
-            eventType?: string;
-            transportType?: string;
+            /** @enum {string} */
+            eventType: "arrival" | "departure";
+            /** @enum {string} */
+            transportType: "flight" | "ferry";
             /** Format: uuid */
-            terminalPlaceId?: string | null;
-            customTerminalName?: string | null;
+            terminalPlaceId: string | null;
+            customTerminalName: string | null;
             /** Format: date-time */
-            scheduledAt?: string;
-            transportNumber?: string | null;
-            note?: string | null;
+            scheduledAt: string;
+            transportNumber: string | null;
+            note: string | null;
         };
         TransportEventMutationResponse: {
             /** Format: uuid */
@@ -590,7 +612,7 @@ export interface components {
             updatedAt?: string;
             eventType?: string;
             deleted?: boolean;
-            event?: components["schemas"]["TransportEvent"];
+            event?: components["schemas"]["TransportEvent"] | null;
         };
         /** @description Timing Jeju 공개 API 공통 오류 응답 */
         ApiProblemDetails: {
@@ -716,6 +738,122 @@ export interface components {
             updatedAt: string;
             items: components["schemas"]["PlacePreferenceItem"][];
         };
+        ReplaceTripDayActivityWindowsRequest: {
+            days: components["schemas"]["TripDayActivityWindowInput"][];
+        };
+        TripDayActivityWindowInput: {
+            /** Format: uuid */
+            dayId: string;
+            startTime: string;
+            endTime: string;
+        };
+        TripDay: {
+            /** Format: uuid */
+            dayId: string;
+            /** Format: int32 */
+            dayNo: number;
+            /** Format: date */
+            date: string;
+            activityStartTime: string | null;
+            activityEndTime: string | null;
+        };
+        AccommodationPayload: {
+            /** Format: uuid */
+            accommodationId: string;
+            /** Format: uuid */
+            placeId: string | null;
+            customName: string | null;
+            name: string;
+            /** Format: date */
+            checkInDate: string;
+            /** Format: date */
+            checkOutDate: string;
+            checkInTime: string;
+            checkOutTime: string;
+            /** Format: int32 */
+            sequenceNo: number;
+        };
+        ScoreProvenance: {
+            /** @enum {string} */
+            source: "feasibility_run";
+            /** Format: uuid */
+            runId: string;
+            /** Format: uuid */
+            scheduleVersionId: string;
+            /** Format: date-time */
+            calculatedAt: string;
+            /** Format: date-time */
+            observedAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            stale: boolean;
+        };
+        /** @description 새 저장은 TripDetail, 배포 전 완료 receipt의 24시간 TTL내 replay만 TripDetailLegacyV11이다. 최신 값은 여행 GET으로 조회한다. */
+        TripDayActivityWindowsResponse: components["schemas"]["TripDetail"] | components["schemas"]["TripDetailLegacyV11"];
+        TripDetail: {
+            /** Format: uuid */
+            tripId: string;
+            title: string;
+            /** @enum {string} */
+            status: "draft" | "generating" | "planned" | "live" | "completed" | "cancelled" | "failed";
+            /** Format: date */
+            startDate: string;
+            /** Format: date */
+            endDate: string;
+            /** @enum {string} */
+            timezone: "Asia/Seoul";
+            /** @enum {string} */
+            userPace: "slow" | "normal" | "fast";
+            transportModes: components["schemas"]["TransportMode"][];
+            days: components["schemas"]["TripDay"][];
+            transportEvents: components["schemas"]["TripTransportEvents"];
+            accommodations: components["schemas"]["AccommodationPayload"][];
+            /** Format: uuid */
+            activeScheduleVersionId: string | null;
+            /** Format: int32 */
+            totalScore: number | null;
+            scoreProvenance: components["schemas"]["ScoreProvenance"] | null;
+            /** @enum {string} */
+            scheduleEffect: "none" | "maintained" | "invalidated";
+            regenerationRequired: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        TripDetailLegacyV11: {
+            /** Format: uuid */
+            tripId: string;
+            title: string;
+            /** @enum {string} */
+            status: "draft" | "generating" | "planned" | "live" | "completed" | "cancelled" | "failed";
+            /** Format: date */
+            startDate: string;
+            /** Format: date */
+            endDate: string;
+            /** @enum {string} */
+            timezone: "Asia/Seoul";
+            /** @enum {string} */
+            userPace: "slow" | "normal" | "fast";
+            transportModes: components["schemas"]["TransportMode"][];
+            days: components["schemas"]["TripDay"][];
+            /** Format: uuid */
+            activeScheduleVersionId: string | null;
+            /** Format: int32 */
+            totalScore: number | null;
+            scoreProvenance: components["schemas"]["ScoreProvenance"] | null;
+            /** @enum {string} */
+            scheduleEffect: "none" | "maintained" | "invalidated";
+            regenerationRequired: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        TripTransportEvents: {
+            arrival: components["schemas"]["TransportEvent"] | null;
+            departure: components["schemas"]["TransportEvent"] | null;
+        };
         PushDeviceRegistrationRequest: {
             /** @enum {string} */
             platform: "IOS" | "ANDROID";
@@ -799,7 +937,7 @@ export interface components {
              */
             transportModes: components["schemas"]["TransportMode"][];
         };
-        TripDay: {
+        TripDayLegacyV1: {
             /** Format: uuid */
             dayId: string;
             /** Format: int32 */
@@ -807,22 +945,9 @@ export interface components {
             /** Format: date */
             date: string;
         };
-        ScoreProvenance: {
-            /** @enum {string} */
-            source: "feasibility_run";
-            /** Format: uuid */
-            runId: string;
-            /** Format: uuid */
-            scheduleVersionId: string;
-            /** Format: date-time */
-            calculatedAt: string;
-            /** Format: date-time */
-            observedAt: string;
-            /** Format: date-time */
-            expiresAt: string;
-            stale: boolean;
-        };
-        TripDetail: {
+        /** @description 새 생성은 TripDetail, 배포 전 완료 receipt의 24시간 TTL 내 replay만 TripDetailLegacyV1 또는 TripDetailLegacyV11이다. 최신 값은 Location의 GET으로 조회한다. */
+        TripCreateResponse: components["schemas"]["TripDetail"] | components["schemas"]["TripDetailLegacyV11"] | components["schemas"]["TripDetailLegacyV1"];
+        TripDetailLegacyV1: {
             /** Format: uuid */
             tripId: string;
             title: string;
@@ -837,12 +962,12 @@ export interface components {
             /** @enum {string} */
             userPace: "slow" | "normal" | "fast";
             transportModes: components["schemas"]["TransportMode"][];
-            days: components["schemas"]["TripDay"][];
+            days: components["schemas"]["TripDayLegacyV1"][];
             /** Format: uuid */
             activeScheduleVersionId: string | null;
             /** Format: int32 */
             totalScore: number | null;
-            scoreProvenance: components["schemas"]["ScoreProvenance"];
+            scoreProvenance: components["schemas"]["ScoreProvenance"] | null;
             /** @enum {string} */
             scheduleEffect: "none" | "maintained" | "invalidated";
             regenerationRequired: boolean;
@@ -921,22 +1046,6 @@ export interface components {
             /** Format: date-time */
             updatedAt?: string;
         };
-        AccommodationPayload: {
-            /** Format: uuid */
-            accommodationId?: string;
-            /** Format: uuid */
-            placeId?: string | null;
-            customName?: string | null;
-            name?: string;
-            /** Format: date */
-            checkInDate?: string;
-            /** Format: date */
-            checkOutDate?: string;
-            checkInTime?: string;
-            checkOutTime?: string;
-            /** Format: int32 */
-            sequenceNo?: number;
-        };
         CreateSavedPlaceRequest: {
             /** Format: uuid */
             placeId: string;
@@ -947,30 +1056,51 @@ export interface components {
             /** Format: int32 */
             targetDay?: number;
         };
-        SavedPlaceResponse: {
+        /** @description 새 응답은 etag를 포함한다. 배포 전 24시간 TTL내 완료 receipt replay만 etag 없는 원본을 그대로 반환한다. 최신 버전은 목록 GET으로 조회한다. */
+        SavedPlaceCreateResponse: components["schemas"]["SavedPlaceResponse"] | components["schemas"]["SavedPlaceLegacyV1"];
+        SavedPlaceLegacyV1: {
             /** Format: uuid */
-            placeId?: string;
-            /**
-             * @description PATCH If-Match에 그대로 사용하는 현재 owner row의 strong ETag
-             * @example "sp-0123456789abcdef0123456789abcdef"
-             */
+            placeId: string;
+            name: string;
+            category: string;
+            regionLabel: string | null;
+            /** Format: uri */
+            thumbnailUrl: string | null;
+            /** Format: int32 */
+            recommendedStayMinutes: number | null;
+            memo: string | null;
+            tags: string[];
+            /** Format: int32 */
+            priority: number;
+            /** Format: int32 */
+            targetDay: number | null;
+            /** Format: date-time */
+            savedAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        SavedPlaceResponse: {
+            /** @description 항목의 opaque strong ETag. If-Match에 그대로 사용한다. */
             etag: string;
-            name?: string;
-            category?: string;
-            regionLabel?: string;
-            thumbnailUrl?: string;
+            /** Format: uuid */
+            placeId: string;
+            name: string;
+            category: string;
+            regionLabel: string | null;
+            /** Format: uri */
+            thumbnailUrl: string | null;
             /** Format: int32 */
-            recommendedStayMinutes?: number;
-            memo?: string;
-            tags?: string[];
+            recommendedStayMinutes: number | null;
+            memo: string | null;
+            tags: string[];
             /** Format: int32 */
-            priority?: number;
+            priority: number;
             /** Format: int32 */
-            targetDay?: number;
+            targetDay: number | null;
             /** Format: date-time */
-            savedAt?: string;
+            savedAt: string;
             /** Format: date-time */
-            updatedAt?: string;
+            updatedAt: string;
         };
         PatchTripRequest: {
             title?: unknown;
@@ -1116,7 +1246,7 @@ export interface components {
             activeScheduleVersionId: string | null;
             /** Format: int32 */
             totalScore: number | null;
-            scoreProvenance: components["schemas"]["ScoreProvenance"];
+            scoreProvenance: components["schemas"]["ScoreProvenance"] | null;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -1126,7 +1256,7 @@ export interface components {
             /** Format: int32 */
             size?: number;
             hasNext?: boolean;
-            nextCursor?: null | string;
+            nextCursor?: string | null;
         };
         TripsListResponse: {
             items: components["schemas"]["TripSummary"][];
@@ -1235,7 +1365,7 @@ export interface components {
             /** Format: int32 */
             size?: number;
             hasNext?: boolean;
-            nextCursor?: null | string;
+            nextCursor?: string | null;
         };
         PlaceDataFreshness: {
             provider?: string;
@@ -2459,6 +2589,270 @@ export interface operations {
             };
         };
     };
+    tripDayActivityWindowsUpdate: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description 직전 여행 aggregate의 strong ETag
+                 * @example "trip-44000000-0000-4000-8000-000000000044-r1"
+                 */
+                "If-Match": string;
+                /**
+                 * @description 24시간 재시도 키; printable ASCII 1~128자
+                 * @example day-window-save-239
+                 */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /**
+                 * @description tripId 요청 조건
+                 * @example 44000000-0000-4000-8000-000000000044
+                 */
+                tripId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "days": [
+                 *         {
+                 *           "dayId": "44000000-0000-4000-8001-000000000044",
+                 *           "startTime": "09:00",
+                 *           "endTime": "18:00"
+                 *         },
+                 *         {
+                 *           "dayId": "44000000-0000-4000-8002-000000000044",
+                 *           "startTime": "09:00",
+                 *           "endTime": "18:00"
+                 *         },
+                 *         {
+                 *           "dayId": "44000000-0000-4000-8003-000000000044",
+                 *           "startTime": "09:00",
+                 *           "endTime": "18:00"
+                 *         },
+                 *         {
+                 *           "dayId": "44000000-0000-4000-8004-000000000044",
+                 *           "startTime": "09:00",
+                 *           "endTime": "18:00"
+                 *         }
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["ReplaceTripDayActivityWindowsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    ETag: components["headers"]["ETag"];
+                    "Idempotency-Replayed": components["headers"]["Idempotency-Replayed"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "tripId": "44000000-0000-4000-8000-000000000044",
+                     *       "title": "제주 3박 4일",
+                     *       "status": "draft",
+                     *       "startDate": "2026-09-10",
+                     *       "endDate": "2026-09-13",
+                     *       "timezone": "Asia/Seoul",
+                     *       "userPace": "normal",
+                     *       "transportEvents": {
+                     *         "arrival": null,
+                     *         "departure": null
+                     *       },
+                     *       "accommodations": [],
+                     *       "transportModes": [
+                     *         {
+                     *           "mode": "public_transit",
+                     *           "priority": 1,
+                     *           "primary": true
+                     *         }
+                     *       ],
+                     *       "days": [
+                     *         {
+                     *           "dayId": "44000000-0000-4000-8001-000000000044",
+                     *           "dayNo": 1,
+                     *           "date": "2026-09-10",
+                     *           "activityStartTime": "09:00",
+                     *           "activityEndTime": "18:00"
+                     *         },
+                     *         {
+                     *           "dayId": "44000000-0000-4000-8002-000000000044",
+                     *           "dayNo": 2,
+                     *           "date": "2026-09-11",
+                     *           "activityStartTime": "09:00",
+                     *           "activityEndTime": "18:00"
+                     *         },
+                     *         {
+                     *           "dayId": "44000000-0000-4000-8003-000000000044",
+                     *           "dayNo": 3,
+                     *           "date": "2026-09-12",
+                     *           "activityStartTime": "09:00",
+                     *           "activityEndTime": "18:00"
+                     *         },
+                     *         {
+                     *           "dayId": "44000000-0000-4000-8004-000000000044",
+                     *           "dayNo": 4,
+                     *           "date": "2026-09-13",
+                     *           "activityStartTime": "09:00",
+                     *           "activityEndTime": "18:00"
+                     *         }
+                     *       ],
+                     *       "activeScheduleVersionId": null,
+                     *       "totalScore": null,
+                     *       "scoreProvenance": null,
+                     *       "scheduleEffect": "none",
+                     *       "regenerationRequired": false,
+                     *       "createdAt": "2026-08-25T00:00:00Z",
+                     *       "updatedAt": "2026-08-25T00:00:00Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["TripDayActivityWindowsResponse"];
+                };
+            };
+            /** @description 형식 또는 필수 헤더 오류 */
+            400: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/invalid-request",
+                     *       "title": "요청 값이 올바르지 않습니다",
+                     *       "status": 400,
+                     *       "detail": "여행 제목, 날짜, timezone과 교통 우선순위를 확인해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "INVALID_REQUEST",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            /** @description 인증 필요 */
+            401: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/authentication-required",
+                     *       "title": "인증이 필요합니다",
+                     *       "status": 401,
+                     *       "detail": "로그인 후 다시 요청해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "AUTHENTICATION_REQUIRED",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            403: components["responses"]["AccessDeniedProblem"];
+            /** @description 소유한 여행 없음 */
+            404: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/trip-not-found",
+                     *       "title": "여행을 찾을 수 없습니다",
+                     *       "status": 404,
+                     *       "detail": "요청한 여행이 없거나 접근할 수 없습니다.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "TRIP_NOT_FOUND",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            /** @description revision 또는 멱등성 충돌 */
+            409: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/trip-version-conflict",
+                     *       "title": "여행이 이미 변경되었습니다",
+                     *       "status": 409,
+                     *       "detail": "최신 여행과 ETag를 조회한 뒤 다시 수정해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "TRIP_VERSION_CONFLICT",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            /** @description 시간 또는 Day 집합 제약 위반 */
+            422: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/trip-constraint-violation",
+                     *       "title": "여행 조건을 처리할 수 없습니다",
+                     *       "status": 422,
+                     *       "detail": "여행은 1일부터 30일까지이며 날짜와 교통 우선순위가 일관되어야 합니다.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "TRIP_CONSTRAINT_VIOLATION",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            500: components["responses"]["InternalServerProblem"];
+            /** @description 데이터 사용 불가 */
+            503: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/trip-data-unavailable",
+                     *       "title": "여행 데이터를 사용할 수 없습니다",
+                     *       "status": 503,
+                     *       "detail": "잠시 후 다시 시도해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "TRIP_DATA_UNAVAILABLE",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+        };
+    };
     pushDevicesUpdate: {
         parameters: {
             query?: never;
@@ -3284,6 +3678,11 @@ export interface operations {
                      *       "endDate": "2026-09-13",
                      *       "timezone": "Asia/Seoul",
                      *       "userPace": "normal",
+                     *       "transportEvents": {
+                     *         "arrival": null,
+                     *         "departure": null
+                     *       },
+                     *       "accommodations": [],
                      *       "transportModes": [
                      *         {
                      *           "mode": "public_transit",
@@ -3295,22 +3694,30 @@ export interface operations {
                      *         {
                      *           "dayId": "44000000-0000-4000-8001-000000000044",
                      *           "dayNo": 1,
-                     *           "date": "2026-09-10"
+                     *           "date": "2026-09-10",
+                     *           "activityStartTime": null,
+                     *           "activityEndTime": null
                      *         },
                      *         {
                      *           "dayId": "44000000-0000-4000-8002-000000000044",
                      *           "dayNo": 2,
-                     *           "date": "2026-09-11"
+                     *           "date": "2026-09-11",
+                     *           "activityStartTime": null,
+                     *           "activityEndTime": null
                      *         },
                      *         {
                      *           "dayId": "44000000-0000-4000-8003-000000000044",
                      *           "dayNo": 3,
-                     *           "date": "2026-09-12"
+                     *           "date": "2026-09-12",
+                     *           "activityStartTime": null,
+                     *           "activityEndTime": null
                      *         },
                      *         {
                      *           "dayId": "44000000-0000-4000-8004-000000000044",
                      *           "dayNo": 4,
-                     *           "date": "2026-09-13"
+                     *           "date": "2026-09-13",
+                     *           "activityStartTime": null,
+                     *           "activityEndTime": null
                      *         }
                      *       ],
                      *       "activeScheduleVersionId": null,
@@ -3322,7 +3729,7 @@ export interface operations {
                      *       "updatedAt": "2026-08-25T00:00:00Z"
                      *     }
                      */
-                    "application/json": components["schemas"]["TripDetail"];
+                    "application/json": components["schemas"]["TripCreateResponse"];
                 };
             };
             /** @description Bad Request */
@@ -4022,7 +4429,6 @@ export interface operations {
                      *       "items": [
                      *         {
                      *           "placeId": "34000000-0000-4000-8000-000000000034",
-                     *           "etag": "\"sp-0123456789abcdef0123456789abcdef\"",
                      *           "name": "새별오름",
                      *           "category": "content-type:12",
                      *           "regionLabel": "제주시",
@@ -4036,7 +4442,8 @@ export interface operations {
                      *           "priority": 5,
                      *           "targetDay": 2,
                      *           "savedAt": "2026-08-25T00:00:00Z",
-                     *           "updatedAt": "2026-08-25T00:00:00Z"
+                     *           "updatedAt": "2026-08-25T00:00:00Z",
+                     *           "etag": "\"sp-5a6b5687c6f0fa18088464770cf9aead\""
                      *         }
                      *       ],
                      *       "page": {
@@ -4120,7 +4527,6 @@ export interface operations {
                     /**
                      * @example {
                      *       "placeId": "34000000-0000-4000-8000-000000000034",
-                     *       "etag": "\"sp-0123456789abcdef0123456789abcdef\"",
                      *       "name": "새별오름",
                      *       "category": "content-type:12",
                      *       "regionLabel": "제주시",
@@ -4134,10 +4540,11 @@ export interface operations {
                      *       "priority": 5,
                      *       "targetDay": 2,
                      *       "savedAt": "2026-08-25T00:00:00Z",
-                     *       "updatedAt": "2026-08-25T00:00:00Z"
+                     *       "updatedAt": "2026-08-25T00:00:00Z",
+                     *       "etag": "\"sp-5a6b5687c6f0fa18088464770cf9aead\""
                      *     }
                      */
-                    "application/json": components["schemas"]["SavedPlaceResponse"];
+                    "application/json": components["schemas"]["SavedPlaceCreateResponse"];
                 };
             };
             /** @description Created */
@@ -4153,7 +4560,6 @@ export interface operations {
                     /**
                      * @example {
                      *       "placeId": "34000000-0000-4000-8000-000000000034",
-                     *       "etag": "\"sp-0123456789abcdef0123456789abcdef\"",
                      *       "name": "새별오름",
                      *       "category": "content-type:12",
                      *       "regionLabel": "제주시",
@@ -4167,10 +4573,11 @@ export interface operations {
                      *       "priority": 5,
                      *       "targetDay": 2,
                      *       "savedAt": "2026-08-25T00:00:00Z",
-                     *       "updatedAt": "2026-08-25T00:00:00Z"
+                     *       "updatedAt": "2026-08-25T00:00:00Z",
+                     *       "etag": "\"sp-5a6b5687c6f0fa18088464770cf9aead\""
                      *     }
                      */
-                    "application/json": components["schemas"]["SavedPlaceResponse"];
+                    "application/json": components["schemas"]["SavedPlaceCreateResponse"];
                 };
             };
             /** @description Bad Request */
@@ -4298,6 +4705,11 @@ export interface operations {
                      *       "endDate": "2026-09-13",
                      *       "timezone": "Asia/Seoul",
                      *       "userPace": "normal",
+                     *       "transportEvents": {
+                     *         "arrival": null,
+                     *         "departure": null
+                     *       },
+                     *       "accommodations": [],
                      *       "transportModes": [
                      *         {
                      *           "mode": "public_transit",
@@ -4309,22 +4721,30 @@ export interface operations {
                      *         {
                      *           "dayId": "44000000-0000-4000-8001-000000000044",
                      *           "dayNo": 1,
-                     *           "date": "2026-09-10"
+                     *           "date": "2026-09-10",
+                     *           "activityStartTime": null,
+                     *           "activityEndTime": null
                      *         },
                      *         {
                      *           "dayId": "44000000-0000-4000-8002-000000000044",
                      *           "dayNo": 2,
-                     *           "date": "2026-09-11"
+                     *           "date": "2026-09-11",
+                     *           "activityStartTime": null,
+                     *           "activityEndTime": null
                      *         },
                      *         {
                      *           "dayId": "44000000-0000-4000-8003-000000000044",
                      *           "dayNo": 3,
-                     *           "date": "2026-09-12"
+                     *           "date": "2026-09-12",
+                     *           "activityStartTime": null,
+                     *           "activityEndTime": null
                      *         },
                      *         {
                      *           "dayId": "44000000-0000-4000-8004-000000000044",
                      *           "dayNo": 4,
-                     *           "date": "2026-09-13"
+                     *           "date": "2026-09-13",
+                     *           "activityStartTime": null,
+                     *           "activityEndTime": null
                      *         }
                      *       ],
                      *       "activeScheduleVersionId": null,
@@ -4626,6 +5046,11 @@ export interface operations {
                      *       "endDate": "2026-09-13",
                      *       "timezone": "Asia/Seoul",
                      *       "userPace": "normal",
+                     *       "transportEvents": {
+                     *         "arrival": null,
+                     *         "departure": null
+                     *       },
+                     *       "accommodations": [],
                      *       "transportModes": [
                      *         {
                      *           "mode": "public_transit",
@@ -4637,22 +5062,30 @@ export interface operations {
                      *         {
                      *           "dayId": "44000000-0000-4000-8001-000000000044",
                      *           "dayNo": 1,
-                     *           "date": "2026-09-10"
+                     *           "date": "2026-09-10",
+                     *           "activityStartTime": null,
+                     *           "activityEndTime": null
                      *         },
                      *         {
                      *           "dayId": "44000000-0000-4000-8002-000000000044",
                      *           "dayNo": 2,
-                     *           "date": "2026-09-11"
+                     *           "date": "2026-09-11",
+                     *           "activityStartTime": null,
+                     *           "activityEndTime": null
                      *         },
                      *         {
                      *           "dayId": "44000000-0000-4000-8003-000000000044",
                      *           "dayNo": 3,
-                     *           "date": "2026-09-12"
+                     *           "date": "2026-09-12",
+                     *           "activityStartTime": null,
+                     *           "activityEndTime": null
                      *         },
                      *         {
                      *           "dayId": "44000000-0000-4000-8004-000000000044",
                      *           "dayNo": 4,
-                     *           "date": "2026-09-13"
+                     *           "date": "2026-09-13",
+                     *           "activityStartTime": null,
+                     *           "activityEndTime": null
                      *         }
                      *       ],
                      *       "activeScheduleVersionId": null,
@@ -5693,8 +6126,8 @@ export interface operations {
             query?: never;
             header: {
                 /**
-                 * @description 목록 또는 직전 관심 장소 mutation 응답의 strong ETag를 큰따옴표까지 그대로 전달합니다.
-                 * @example "sp-0123456789abcdef0123456789abcdef"
+                 * @description 직전 관심 장소 응답 ETag를 큰따옴표까지 그대로 전달
+                 * @example "saved-place.34.v1"
                  */
                 "If-Match": string;
             };
@@ -5775,7 +6208,7 @@ export interface operations {
                      *       "type": "https://api.timing-jeju.com/problems/saved-place-version-conflict",
                      *       "title": "관심 장소가 이미 변경되었습니다",
                      *       "status": 409,
-                     *       "detail": "최신 관심 장소를 조회한 뒤 다시 요청해 주세요.",
+                     *       "detail": "최신 관심 장소를 조회한 뒤 다시 수정해 주세요.",
                      *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
                      *       "code": "SAVED_PLACE_VERSION_CONFLICT",
                      *       "traceId": "0123456789abcdef0123456789abcdef",
@@ -5793,8 +6226,8 @@ export interface operations {
             query?: never;
             header: {
                 /**
-                 * @description 목록 또는 직전 관심 장소 mutation 응답의 strong ETag를 큰따옴표까지 그대로 전달합니다.
-                 * @example "sp-0123456789abcdef0123456789abcdef"
+                 * @description 직전 관심 장소 응답 ETag를 큰따옴표까지 그대로 전달
+                 * @example "saved-place.34.v1"
                  */
                 "If-Match": string;
             };
@@ -5834,7 +6267,6 @@ export interface operations {
                     /**
                      * @example {
                      *       "placeId": "34000000-0000-4000-8000-000000000034",
-                     *       "etag": "\"sp-fedcba9876543210fedcba9876543210\"",
                      *       "name": "새별오름",
                      *       "category": "content-type:12",
                      *       "regionLabel": "제주시",
@@ -5847,7 +6279,8 @@ export interface operations {
                      *       "priority": 3,
                      *       "targetDay": 2,
                      *       "savedAt": "2026-08-25T00:00:00Z",
-                     *       "updatedAt": "2026-08-25T00:05:00Z"
+                     *       "updatedAt": "2026-08-25T00:05:00Z",
+                     *       "etag": "\"sp-9123311fc43731365bcf3dc3e9569c22\""
                      *     }
                      */
                     "application/json": components["schemas"]["SavedPlaceResponse"];
@@ -5911,7 +6344,7 @@ export interface operations {
                      *       "type": "https://api.timing-jeju.com/problems/saved-place-version-conflict",
                      *       "title": "관심 장소가 이미 변경되었습니다",
                      *       "status": 409,
-                     *       "detail": "최신 관심 장소를 조회한 뒤 다시 요청해 주세요.",
+                     *       "detail": "최신 관심 장소를 조회한 뒤 다시 수정해 주세요.",
                      *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
                      *       "code": "SAVED_PLACE_VERSION_CONFLICT",
                      *       "traceId": "0123456789abcdef0123456789abcdef",
