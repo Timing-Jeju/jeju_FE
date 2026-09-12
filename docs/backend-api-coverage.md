@@ -1,6 +1,6 @@
 # Spring API wrapper coverage
 
-Backend: `Timing-Jeju/jeju_BE@4f1578972420f52c78e17bb08010b37896a0f9bd` (`fix/248-saved-place-delete-cas`)
+Backend: `Timing-Jeju/jeju_BE@fc72bb4cb631f407c8bc16620b096fa1691d1a6a` (`fix/248-saved-place-delete-cas`)
 
 | Operation | Wrapper | 화면 연결 | 선행 조건 |
 | --- | --- | --- | --- |

@@ -1,7 +1,7 @@
 {
   "repository": "Timing-Jeju/jeju_BE",
   "sourceBranch": "fix/248-saved-place-delete-cas",
-  "sourceCommit": "4f1578972420f52c78e17bb08010b37896a0f9bd",
+  "sourceCommit": "fc72bb4cb631f407c8bc16620b096fa1691d1a6a",
   "sourceOpenApiSha256": "09dd9f82f4718495fc0ffecd42d479613033c471d44674376f723c390a6e21aa",
   "runtimeManifestSha256": "e94e230624913ac6608c446f4e548d19d73556d69d8920fbde5a5f9178fbe7ec",
   "operations": [
@@ -44,5 +44,5 @@
     "PUT /api/v1/trips/{tripId}/schedule-order",
     "PUT /api/v1/trips/{tripId}/transport-event"
   ],
-  "verificationStatus": "local-commit; remote full gate and merge pending"
+  "verificationStatus": "merged; local full quality gate and GitHub CI passed"
 }

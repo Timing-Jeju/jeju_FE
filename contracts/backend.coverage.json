@@ -1,5 +1,5 @@
 {
-  "sourceCommit": "4f1578972420f52c78e17bb08010b37896a0f9bd",
+  "sourceCommit": "fc72bb4cb631f407c8bc16620b096fa1691d1a6a",
   "operations": {
     "GET /api/v1/auth/social/providers": {
       "module": "authSocial.ts",

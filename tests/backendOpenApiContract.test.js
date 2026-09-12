@@ -13,7 +13,7 @@ const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 
 test('OpenAPI와 runtime manifest는 검증한 backend SHA/checksum에 고정된다', () => {
   const source = json('contracts/backend.source.json');
-  expect(source.sourceCommit).toBe('4f1578972420f52c78e17bb08010b37896a0f9bd');
+  expect(source.sourceCommit).toBe('fc72bb4cb631f407c8bc16620b096fa1691d1a6a');
   expect(source.sourceBranch).toBe('fix/248-saved-place-delete-cas');
   expect(sha256(read('contracts/backend.openapi.json'))).toBe(
     source.sourceOpenApiSha256,

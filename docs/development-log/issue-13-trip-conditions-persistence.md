@@ -42,3 +42,11 @@
 - 독립 Reviewer의 MAJOR 2건 및 MINOR 1건 수정 후 재검토 결과 미해결 finding 0건. FE 검토이며 BE 공식 승인 기록과는 별개다.
 - 최종 Jest 42 suites / 302 tests PASS, typecheck/lint/api:check 및 58개 StyleSheet 비교 PASS. iOS/Android bundle export PASS. 테스트 추가 직후 lint의 포맷 오류 8건은 정규 eslint --fix 후 전체 lint 재검사로 해결했다.
 - 증거: /tmp/jeju-fe13-review-boundaries-red.log, /tmp/jeju-fe13-replay-read-key-red.log, /tmp/jeju-fe13-final-review-green.log, /tmp/jeju-fe13-final-review-typecheck.log, /tmp/jeju-fe13-302-tests.log, /tmp/jeju-fe13-302-lint.log, /tmp/jeju-fe13-302-api-check.log, /tmp/jeju-fe13-302-ui-check.log, /tmp/jeju-fe13-302-expo-export.log.
+
+## 2026-09-12 최종 backend 계약 고정과 병합 준비
+
+BE #239(PR252), #246(PR253), #238(PR255), #248(PR256)이 develop에 순서대로 병합됐다. 계약 sourceCommit은 실제 전체 게이트와 원격 CI34658765197을 통과한 #248 HEAD fc72bb4cb631f407c8bc16620b096fa1691d1a6a에 고정한다. 해당 PR의 merge commit은 ef8aee5964ecb0b2cbb265783f14537e5ad85e2b이며 2026-09-12T00:03:20Z 병합을 확인했다. HEAD의 최종 gate OpenAPI와 runtime manifest를 바이트 단위로 가져와 체크섬을 확인했고 공식 생성기를 실행했다. 기존 API 산출물과 의미·바이트가 동일하며 최종 변경은 출처 SHA와 검증 상태다.
+
+최종 산출물 기준 Jest 42 suites / 302 tests, typecheck, lint, api:check, ui:check(기존 58개 StyleSheet) 모두 통과했다. /tmp/jeju-fe13-final-artifact-*.log. iOS·Android Hermes bundle export도 통과했다(/tmp/jeju-fe13-final-pin-export.log). 원격 main 대비 app/ 및 components/ 파일 변경은 없다. 실제 기기·staging QA를 수행한 결과와 구분한다.
+
+이번 범위는 기존 활동 시간 입력의 서버 저장, 저장 정보 재조회 복원, 여행 전환과 실패·충돌·재시도 처리 및 최신 계약 연결이다. 숙소·입출도 신규 저장 화면 연결과 기존 화면 문구 변경은 제외한다. 원래 이슈의 넓은 범위를 모두 닫지 않으므로 PR은 Refs #13으로 연결한다.
