@@ -42,6 +42,7 @@ export interface ApiResponse<T> {
   location: string | null;
   idempotencyReplayed: boolean | null;
   traceId: string | null;
+  retryAfterSeconds?: number;
 }
 
 type AccessTokenProvider = (forceRefresh?: boolean) => Promise<string | null>;
@@ -50,6 +51,7 @@ const fallbackCode = (status: number) => {
   if (status === 401) return 'AUTHENTICATION_REQUIRED';
   if (status === 403) return 'AUTH_ACCESS_DENIED';
   if (status === 409) return 'CONFLICT';
+  if (status === 410) return 'RESULT_EXPIRED';
   if (status === 412) return 'PRECONDITION_FAILED';
   if (status === 429) return 'RATE_LIMITED';
   if (status >= 500) return 'SERVICE_UNAVAILABLE';
@@ -78,6 +80,14 @@ const compactParams = (params: Record<string, unknown> | undefined) => {
     ([, value]) => value !== undefined && value !== null,
   );
   return entries.length ? Object.fromEntries(entries) : undefined;
+};
+
+export const retryAfterSeconds = (value: string | null, now = Date.now()) => {
+  if (value === null) return undefined;
+  const seconds = /^\d+$/.test(value)
+    ? Number(value)
+    : Math.ceil((Date.parse(value) - now) / 1000);
+  return Number.isFinite(seconds) ? Math.max(1, seconds) : undefined;
 };
 
 const assertPath = (origin: string, path: string) => {
@@ -319,6 +329,7 @@ export function createApiTransport(
         idempotencyReplayed:
           replayed === 'true' ? true : replayed === 'false' ? false : null,
         traceId: safeTraceId(headerOf(response, 'x-trace-id')),
+        retryAfterSeconds: retryAfterSeconds(headerOf(response, 'retry-after')),
       };
     } catch (error) {
       throw toApiError(error);

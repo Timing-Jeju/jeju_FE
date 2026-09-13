@@ -34,6 +34,8 @@ const messages: Record<string, string> = {
   SERVICE_UNAVAILABLE:
     '요청을 완료하지 못했습니다. 잠시 뒤 다시 시도해 주세요.',
   REQUEST_FAILED: '요청을 완료하지 못했습니다. 다시 시도해 주세요.',
+  RESULT_EXPIRED:
+    '생성 결과가 만료됐거나 사용할 수 없어요. 다시 생성해 주세요.',
   INVALID_PROFILE_LEGAL_REQUEST: '입력값을 확인해 주세요.',
   PROFILE_CONFLICT: '최신 정보를 다시 불러온 뒤 시도해 주세요.',
   LEGAL_CONSENT_REQUIRED: '필수 약관에 모두 동의해 주세요.',
