@@ -1,5 +1,14 @@
 # #10 기존 화면의 AI 생성·검토·적용 연결
 
+## 2026-09-14 수동 일정과 AI 생성 이력 구분
+
+- 최종 후속 검증: reviewer가 적용 후 서로 다른 버전/이력 누락 재조회에서도 journal을 삭제하는 문제를 지적했다. 두 RED를 확인하고 Trip/일정 여행 ID, 예상 적용 버전, active 상태, 날짜별 boolean을 store 갱신·journal 삭제 전에 검사하도록 수정했다. 오류 시 같은 키의 복구 기록을 유지한다. reviewer 재검토에서 기존 finding 해소 및 신규 차단0 확인(부분 검토, 정식 승인 아님).
+- 최신 전체45 suites/375 tests PASS(3.293초), typecheck/lint/api:check/ui:check PASS. StyleSheet58 일치는 실제 기기 시각 검증을 대신하지 않는다.
+- BE `36b507735e437cf0a2ff5b3965d0917f8108f011`의 실제 OpenAPI를 인계하고 checksum/coverage/generated type을 동기화했다. sourceBranch는 실제 `feat/53-generation-run-intake`이며 develop 병합 상태로 표시하지 않는다.
+- 수동 일정에 항목이 있으면 Day1 접수가 차단되는 RED를 재현했다. 생성 접수는 `hasGenerationResult`로 첫 미완료 Day를 판정하고 필드 누락은 추측하지 않고 차단한다. 적용 후 다음 Day도 항목 수 대신 AI 이력을 사용하도록 수정했으며 Day2 대신 Day1을 반환하던 RED→GREEN을 확인했다.
+- 전체45 suites/373 tests PASS(3.57초). 화면 파일·스타일은 변경하지 않았다. 최신 정적 검사는 재실행 중이며 실제 기기 E2E 검증을 대신하지 않는다.
+- 기존 수동 편집 뒤 이력 보존, 버스 초 단위 projection, 전체 실제 생성 흐름 및 BE 최종 품질 게이트/Docker/정식 승인/PR은 여전히 검증·작업이 남아 있다.
+
 기준: FE main `0f69b73`. 공개 여행/일정 조회 모델은 기존 generated/backend.d.ts를 유지한다.
 생성 adapter는 BE #89 로컬 계약 수정본 `9c8a730`의 schedule-generations 요청, nullable 기준 버전,
 Trip If-Match, 정확히 세 전략, 후보 URL을 따른다. 이 BE 계약과 런타임은 아직 배포 완료 상태가 아니다.

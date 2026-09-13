@@ -1,6 +1,6 @@
 # Spring API wrapper coverage
 
-Backend: `Timing-Jeju/jeju_BE@9d8d3281bd36358d49988d7f64f6eab598994cd6` (`feat/53-generation-run-intake`)
+Backend: `Timing-Jeju/jeju_BE@36b507735e437cf0a2ff5b3965d0917f8108f011` (`feat/53-generation-run-intake`)
 
 | Operation | Wrapper | 화면 연결 | 선행 조건 |
 | --- | --- | --- | --- |

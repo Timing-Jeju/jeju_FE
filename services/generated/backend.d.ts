@@ -1451,7 +1451,7 @@ export interface components {
             /** Format: int32 */
             size?: number;
             hasNext?: boolean;
-            nextCursor?: string | null;
+            nextCursor?: null | string;
         };
         TripsListResponse: {
             items: components["schemas"]["TripSummary"][];
@@ -1548,6 +1548,8 @@ export interface components {
             date: string;
             items: components["schemas"]["ScheduleItem"][];
             legs: components["schemas"]["ScheduleLeg"][];
+            /** @description 이 일정 버전의 해당 날짜에 검증된 AI 생성 결과 이력이 존재하는지 여부. 후보 적용 여부와는 별개입니다. */
+            hasGenerationResult: boolean;
         };
         ScheduleResponse: {
             /** Format: uuid */
@@ -1627,7 +1629,7 @@ export interface components {
             /** Format: int32 */
             size?: number;
             hasNext?: boolean;
-            nextCursor?: string | null;
+            nextCursor?: null | string;
         };
         PlaceDataFreshness: {
             provider?: string;
@@ -7807,7 +7809,8 @@ export interface operations {
                      *               "boundaryRole": null
                      *             }
                      *           ],
-                     *           "legs": []
+                     *           "legs": [],
+                     *           "hasGenerationResult": false
                      *         }
                      *       ]
                      *     }
@@ -7968,7 +7971,8 @@ export interface operations {
                      *               "boundaryRole": null
                      *             }
                      *           ],
-                     *           "legs": []
+                     *           "legs": [],
+                     *           "hasGenerationResult": false
                      *         }
                      *       ]
                      *     }
