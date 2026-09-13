@@ -74,7 +74,7 @@ export function validateRun(
           !isCanonicalUuid(c.candidateId) ||
           !isCanonicalUuid(c.scheduleVersionId) ||
           !Number.isFinite(Date.parse(c.expiresAt)) ||
-          Date.parse(c.expiresAt) > Date.now() + 85_800_000 ||
+          // 24시간 만료는 서버가 판정한다. 단말 시계로 유효기간을 축소하지 않는다.
           typeof c.explanation !== 'string' ||
           c.applyUrl !==
             `/api/v1${base}/${value.runId}/candidates/${c.candidateId}/apply` ||

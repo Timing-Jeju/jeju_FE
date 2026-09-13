@@ -8,6 +8,7 @@ import type {
   Trip,
   TripListItem,
   DayActivityWindowsRequest,
+  PlannerConditions,
 } from '@/services/api/trips';
 
 export type TripTransportMode = 'bus' | 'taxi' | 'walk';
@@ -47,6 +48,11 @@ export interface TripConditions {
   transport: TripTransportMode[];
 }
 
+export type TripTransportDrafts = Record<
+  'arrival' | 'departure',
+  TransportEvent | null
+>;
+
 export interface TripState extends TripConditions {
   /** 서버 저장/복원 상태. 저장 중 root만 성공하고 활동 시간이 실패하면 false다. */
   saved: boolean;
@@ -66,6 +72,26 @@ export interface TripState extends TripConditions {
     etag: string;
     key: string;
     fingerprint: string;
+    plannerConditions: PlannerConditions;
+    transportDrafts: TripTransportDrafts;
+  } | null;
+  pendingPlannerConditions: {
+    tripId: string;
+    body: PlannerConditions;
+    etag: string;
+    key: string;
+    fingerprint: string;
+    transportDrafts: TripTransportDrafts;
+  } | null;
+  pendingTransportEvents: {
+    tripId: string;
+    etag: string;
+    fingerprint: string;
+    remaining: {
+      eventType: 'arrival' | 'departure';
+      body: TransportEvent | null;
+      key: string;
+    }[];
   } | null;
   pendingAccommodationCreate: { fingerprint: string; key: string } | null;
   saveConditions: (conditions: TripConditions) => void;
@@ -96,6 +122,8 @@ export const useTripStore = create<TripState>((set) => ({
   serverError: null,
   pendingTripCreate: null,
   pendingDayActivityWindows: null,
+  pendingPlannerConditions: null,
+  pendingTransportEvents: null,
   pendingAccommodationCreate: null,
   saveConditions: (conditions) =>
     set({ ...conditions, draftSaved: true, saved: false, serverError: null }),

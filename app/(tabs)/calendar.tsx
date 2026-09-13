@@ -76,6 +76,8 @@ export default function CalendarScreen() {
     hydrateSchedule,
     updateItem,
     deleteItem,
+    deleteDraftPlace,
+    updateDraftPlace,
     moveItem,
     reorderDay,
     discardPendingMutation,
@@ -87,11 +89,7 @@ export default function CalendarScreen() {
   const startDate = useTripStore((state) => state.startDate);
   const endDate = useTripStore((state) => state.endDate);
 
-  const removePlace = useScheduleStore((state) => state.removePlace);
   const movePlace = useScheduleStore((state) => state.movePlace);
-  const updateStayMinutes = useScheduleStore(
-    (state) => state.updateStayMinutes,
-  );
   const versionNo = useScheduleStore((state) => state.versionNo);
   const pendingMutationRecovery = useScheduleStore(
     (state) => state.pendingMutationRecovery,
@@ -252,7 +250,9 @@ export default function CalendarScreen() {
       if (target.itemId) {
         void deleteItem(target.itemId).catch(showMutationError);
       } else if (target.placeId) {
-        removePlace(selectedDay, target.placeId);
+        void deleteDraftPlace(selectedDay, target.placeId).catch(
+          showMutationError,
+        );
       }
     }
   };
@@ -435,7 +435,12 @@ export default function CalendarScreen() {
               return;
             }
             if (stayTarget.placeId) {
-              updateStayMinutes(selectedDay, stayTarget.placeId, Number(key));
+              void updateDraftPlace(selectedDay, stayTarget.placeId, {
+                stayMinutes: Number(key),
+              })
+                .then(() => setStayTarget(null))
+                .catch(showMutationError);
+              return;
             }
           }
           setStayTarget(null);
@@ -450,7 +455,16 @@ export default function CalendarScreen() {
           .map((day) => ({ key: String(day), label: `${day}일차` }))}
         onSelect={(key) => {
           const targetDay = Number(key);
-          if (!moveTarget?.itemId) return;
+          if (!moveTarget?.itemId) {
+            if (moveTarget?.placeId) {
+              void updateDraftPlace(selectedDay, moveTarget.placeId, {
+                targetDayNo: targetDay,
+              })
+                .then(() => setMoveTarget(null))
+                .catch(showMutationError);
+            }
+            return;
+          }
           const targetSequence =
             (useScheduleStore.getState().places[targetDay]?.length ?? 0) + 1;
           void moveItem(moveTarget.itemId, targetDay, targetSequence)

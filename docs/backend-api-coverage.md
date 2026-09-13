@@ -1,6 +1,6 @@
 # Spring API wrapper coverage
 
-Backend: `Timing-Jeju/jeju_BE@fc72bb4cb631f407c8bc16620b096fa1691d1a6a` (`fix/248-saved-place-delete-cas`)
+Backend: `Timing-Jeju/jeju_BE@9d8d3281bd36358d49988d7f64f6eab598994cd6` (`feat/53-generation-run-intake`)
 
 | Operation | Wrapper | 화면 연결 | 선행 조건 |
 | --- | --- | --- | --- |
@@ -22,6 +22,8 @@ Backend: `Timing-Jeju/jeju_BE@fc72bb4cb631f407c8bc16620b096fa1691d1a6a` (`fix/24
 | `GET /api/v1/trips` | `trips.ts#fetchTrips` | deferred | Supabase session |
 | `GET /api/v1/trips/{tripId}` | `trips.ts#fetchTrip` | deferred | Supabase session |
 | `GET /api/v1/trips/{tripId}/schedule` | `schedule.ts#fetchSchedule` | deferred | existing Spring schedule only; no AI generation |
+| `GET /api/v1/trips/{tripId}/schedule-generations/{runId}` | `generations.ts#getGeneration` | deferred | feature flag OFF until BE/AI staging generation and apply verification |
+| `GET /api/v1/trips/{tripId}/schedule-versions/{versionId}` | `generations.ts#getCandidateSchedule` | deferred | feature flag OFF until BE/AI staging generation and apply verification |
 | `GET /api/v1/weather/forecast` | `weather.ts#fetchWeatherForecast` | deferred | one public selector; optional session |
 | `PATCH /api/v1/me` | `profile.ts#updateProfile` | deferred | Supabase session |
 | `PATCH /api/v1/me/notification-preferences` | `push.ts#updateNotificationPreference` | deferred | Supabase session |
@@ -32,6 +34,8 @@ Backend: `Timing-Jeju/jeju_BE@fc72bb4cb631f407c8bc16620b096fa1691d1a6a` (`fix/24
 | `POST /api/v1/me/saved-places` | `savedPlaces.ts#createSavedPlace` | connected | session, canonical placeId, durable Idempotency-Key |
 | `POST /api/v1/trips` | `trips.ts#createTrip` | deferred | session and Idempotency-Key |
 | `POST /api/v1/trips/{tripId}/accommodations` | `accommodations.ts#createAccommodation` | deferred | session, ETag, Idempotency-Key |
+| `POST /api/v1/trips/{tripId}/schedule-generations` | `generations.ts#startGeneration` | deferred | feature flag OFF until BE/AI staging generation and apply verification |
+| `POST /api/v1/trips/{tripId}/schedule-generations/{runId}/candidates/{candidateId}/apply` | `generations.ts#applyCandidate` | deferred | feature flag OFF until BE/AI staging generation and apply verification |
 | `POST /api/v1/trips/{tripId}/schedule-items` | `scheduleItems.ts#createScheduleItem` | deferred | session, ETag, schedule version, Idempotency-Key |
 | `POST /api/v1/trips/{tripId}/schedule-items/{itemId}/move` | `scheduleItems.ts#moveScheduleItem` | deferred | session, ETag, schedule version, Idempotency-Key |
 | `PUT /api/v1/me/consents` | `legal.ts#updateLegalConsents` | deferred | Supabase session |
@@ -39,6 +43,7 @@ Backend: `Timing-Jeju/jeju_BE@fc72bb4cb631f407c8bc16620b096fa1691d1a6a` (`fix/24
 | `PUT /api/v1/me/push-devices/{deviceId}` | `push.ts#registerPushDevice` | deferred | session and platform registration token |
 | `PUT /api/v1/trips/{tripId}/day-activity-windows` | `trips.ts#replaceDayActivityWindows` | connected | 기존 활동 시간 입력 사용; 선행 BE 전체 검증·병합 후 반영 |
 | `PUT /api/v1/trips/{tripId}/place-preferences` | `trips.ts#replaceTripPlacePreferences` | deferred | session, saved placeIds, latest trip ETag |
+| `PUT /api/v1/trips/{tripId}/planner-conditions` | `trips.ts#replacePlannerConditions` | deferred | saved-input orchestration and staging verification |
 | `PUT /api/v1/trips/{tripId}/preferences` | `trips.ts#replaceTripPreferences` | deferred | session and latest trip ETag |
 | `PUT /api/v1/trips/{tripId}/schedule-order` | `scheduleItems.ts#reorderSchedule` | deferred | session, ETag, schedule version, Idempotency-Key |
 | `PUT /api/v1/trips/{tripId}/transport-event` | `transportEvents.ts#putTransportEvent` | deferred | session and latest trip ETag |

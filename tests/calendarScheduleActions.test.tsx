@@ -6,6 +6,8 @@ import { useTripStore } from '@/store/useTripStore';
 
 const mockMoveItem = jest.fn();
 const mockHydrateSchedule = jest.fn();
+const mockDeleteDraftPlace = jest.fn();
+const mockUpdateDraftPlace = jest.fn();
 
 jest.mock('expo-router', () => {
   const React = jest.requireActual('react');
@@ -28,6 +30,8 @@ jest.mock('@/hooks/useSchedulePersistence', () => ({
     hydrateSchedule: mockHydrateSchedule,
     updateItem: jest.fn(),
     deleteItem: jest.fn(),
+    deleteDraftPlace: mockDeleteDraftPlace,
+    updateDraftPlace: mockUpdateDraftPlace,
     moveItem: mockMoveItem,
     reorderDay: jest.fn(),
   }),
@@ -85,6 +89,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockHydrateSchedule.mockResolvedValue(null);
   mockMoveItem.mockResolvedValue(null);
+  mockDeleteDraftPlace.mockResolvedValue(null);
+  mockUpdateDraftPlace.mockResolvedValue(null);
   useTripStore.setState({
     draftSaved: true,
     saved: true,
@@ -136,6 +142,54 @@ test('일정 화면은 versionNo를 표시하고 메뉴에서 다른 날짜 move
       2,
       1,
     ),
+  );
+});
+
+test('초안 삭제 메뉴는 로컬만 지우지 않고 날짜와 canonical ID로 서버 저장을 요청한다', async () => {
+  useScheduleStore.setState((state) => ({
+    activeVersionId: null,
+    places: {
+      1: state.places[1].map((place) => ({ ...place, itemId: undefined })),
+    },
+  }));
+  const screen = await render(<Calendar />);
+  await act(async () => {
+    screen
+      .getByLabelText('일정 항목 더보기')
+      .props.onPress({ nativeEvent: { pageY: 100 } });
+  });
+  await act(async () => {
+    screen.getByText('일정 삭제하기').props.onPress();
+  });
+  expect(mockDeleteDraftPlace).toHaveBeenCalledWith(
+    1,
+    '34000000-0000-4000-8000-000000000001',
+  );
+});
+
+test('초안 날짜 이동 메뉴는 기존 선택 시트에서 서버 입력 변경을 요청한다', async () => {
+  useScheduleStore.setState((state) => ({
+    activeVersionId: null,
+    places: {
+      1: state.places[1].map((place) => ({ ...place, itemId: undefined })),
+    },
+  }));
+  const screen = await render(<Calendar />);
+  await act(async () => {
+    screen
+      .getByLabelText('일정 항목 더보기')
+      .props.onPress({ nativeEvent: { pageY: 100 } });
+  });
+  await act(async () => {
+    screen.getByText('다른 날짜로 이동하기').props.onPress();
+  });
+  await act(async () => {
+    screen.getByText('2일차').props.onPress();
+  });
+  expect(mockUpdateDraftPlace).toHaveBeenCalledWith(
+    1,
+    '34000000-0000-4000-8000-000000000001',
+    { targetDayNo: 2 },
   );
 });
 

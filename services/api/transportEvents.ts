@@ -40,7 +40,8 @@ export interface TransportEventMutation extends TripMutationEffect {
  * 교통편 등록 요청.
  *
  * 일곱 필드를 **전부** 보내야 한다. nullable한 값도 필드를 빼면 400이고 null을 명시해야 한다.
- * `terminalPlaceId`와 `customTerminalName` 중 하나는 값이 있어야 한다.
+ * 항공은 두 터미널 필드를 null로 보내면 서버가 승인된 제주공항 ID를 확정한다.
+ * 선박은 두 터미널 필드를 null로 보내 항구 미확정 상태를 저장할 수 있다(AI 생성 미지원).
  */
 export type TransportEventRequest = TransportEvent;
 
@@ -56,13 +57,17 @@ export const putTransportEvent = (
   tripId: string,
   body: TransportEventRequest,
   etag: string,
+  idempotencyKey?: string,
 ): Promise<ApiResponse<TransportEventMutation>> =>
   request<TransportEventMutation>({
     method: 'PUT',
     path: `/trips/${encodeURIComponent(tripId)}/transport-event`,
     auth: 'required',
     body,
-    headers: { 'If-Match': etag },
+    headers: {
+      'If-Match': etag,
+      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+    },
   });
 
 /**
@@ -77,11 +82,15 @@ export const deleteTransportEvent = (
   tripId: string,
   eventType: TransportEventType,
   etag: string,
+  idempotencyKey?: string,
 ): Promise<ApiResponse<TransportEventMutation>> =>
   request<TransportEventMutation>({
     method: 'DELETE',
     path: `/trips/${encodeURIComponent(tripId)}/transport-event`,
     auth: 'required',
     params: { eventType },
-    headers: { 'If-Match': etag },
+    headers: {
+      'If-Match': etag,
+      ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}),
+    },
   });

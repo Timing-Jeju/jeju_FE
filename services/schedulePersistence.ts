@@ -14,8 +14,14 @@ import {
   type AuthScope,
 } from '@/services/authScope';
 import { createIdempotencyKey } from '@/services/api/idempotency';
-import { hasCode, isApiError } from '@/services/api/problem';
-import { fetchTrip } from '@/services/api/trips';
+import { ApiError, hasCode, isApiError } from '@/services/api/problem';
+import {
+  fetchTrip,
+  replaceTripPlacePreferences,
+  type TripPlacePreference,
+} from '@/services/api/trips';
+import { requireCanonicalPlaceId } from '@/services/canonicalId';
+import { getPlace } from '@/services/places';
 import {
   clearScheduleMutationJournal,
   loadScheduleMutationJournal,
@@ -134,15 +140,26 @@ export const scheduleToReviews = (
             to: to?.name ?? '도착지 정보 없음',
             fromCoord: from?.coord ?? null,
             toCoord: to?.coord ?? null,
-            status: 'cautionary',
+            status:
+              leg.riskLevel === 'low'
+                ? 'positive'
+                : leg.riskLevel === 'high' || leg.riskLevel === 'critical'
+                  ? 'warning'
+                  : 'cautionary',
             startTime: timePart(leg.plannedDepartureAt),
             endTime: timePart(leg.plannedArrivalAt),
             cost: leg.estimatedFareKrw,
             distanceText: formatDistance(leg.distanceMeters),
             reason:
-              leg.riskScore === null
-                ? '위험도 정보 미제공'
-                : `서버 위험도 점수 ${leg.riskScore}`,
+              leg.riskReasonCodes.length > 0
+                ? leg.riskReasonCodes.join(' · ')
+                : leg.riskLevel === 'low'
+                  ? null
+                  : leg.riskLevel === 'medium'
+                    ? '서버 위험 등급: 주의'
+                    : leg.riskLevel === 'high' || leg.riskLevel === 'critical'
+                      ? '서버 위험 등급: 위험'
+                      : '위험도 정보 미제공',
             steps: [
               {
                 kind: 'place',
@@ -236,6 +253,297 @@ const assertEditable = (itemId: string) => {
 
 let requestRevision = 0;
 let mutationInFlight = false;
+let tripSelectionRevision = 0;
+let tripServerRevision = 0;
+let pendingDraftMutation: {
+  scope: AuthScope;
+  selection: number;
+  tripId: string;
+  operation: string;
+  items: TripPlacePreference[];
+  etag: string;
+  key: string;
+} | null = null;
+useTripStore.subscribe((state, previous) => {
+  if (state.tripId !== previous.tripId) {
+    tripSelectionRevision += 1;
+    pendingDraftMutation = null;
+  }
+  if (state.etag !== previous.etag || state.serverTrip !== previous.serverTrip)
+    tripServerRevision += 1;
+});
+
+type DraftPlacePatch = { stayMinutes?: number; targetDayNo?: number };
+
+/** 최초 생성 전에는 일정 시각/항목을 합성하지 않고 저장된 여행 입력만 변경한다. */
+const mutateDraftPlace = async (
+  dayNo: number,
+  placeId: string | null,
+  place: SchedulePlace | null,
+  patch?: DraftPlacePatch,
+) => {
+  requireCanonicalPlaceId(placeId);
+  if (
+    patch &&
+    ((patch.stayMinutes !== undefined &&
+      (!Number.isInteger(patch.stayMinutes) ||
+        patch.stayMinutes < 1 ||
+        patch.stayMinutes > 1440)) ||
+      (patch.targetDayNo !== undefined &&
+        (!Number.isInteger(patch.targetDayNo) || patch.targetDayNo < 1)))
+  ) {
+    throw new SchedulePersistenceValidationError(
+      '장소의 체류 시간과 날짜를 확인해 주세요.',
+    );
+  }
+  if (
+    place &&
+    (!Number.isInteger(place.stayMinutes) ||
+      place.stayMinutes <= 0 ||
+      place.stayMinutes > 1440)
+  ) {
+    throw new SchedulePersistenceValidationError(
+      '장소의 체류 시간을 확인해 주세요.',
+    );
+  }
+  if (mutationInFlight)
+    throw new SchedulePersistenceValidationError(
+      '장소를 저장 중이에요. 잠시 후 다시 시도해 주세요.',
+    );
+  const scope = captureAuthScope();
+  const tripId = useTripStore.getState().tripId;
+  const selection = tripSelectionRevision;
+  const serverRevision = tripServerRevision;
+  const assertCurrent = () => {
+    assertScope(scope);
+    if (
+      selection !== tripSelectionRevision ||
+      useTripStore.getState().tripId !== tripId
+    ) {
+      throw new ScheduleSessionChangedError();
+    }
+    if (serverRevision !== tripServerRevision) {
+      throw new SchedulePersistenceValidationError(
+        '여행 정보가 변경됐어요. 최신 저장 결과를 확인한 뒤 다시 시도해 주세요.',
+      );
+    }
+  };
+  if (!tripId)
+    throw new SchedulePersistenceValidationError(
+      '저장된 여행을 먼저 선택해 주세요.',
+    );
+  if (pendingDraftMutation && !isCurrentAuthScope(pendingDraftMutation.scope))
+    pendingDraftMutation = null;
+  const operation = JSON.stringify({
+    dayNo,
+    placeId,
+    patch,
+    place: place
+      ? { stayMinutes: place.stayMinutes, visitType: place.visitType }
+      : null,
+  });
+  if (pendingDraftMutation && pendingDraftMutation.operation !== operation)
+    throw new SchedulePendingMutationError();
+  mutationInFlight = true;
+  useScheduleStore.setState({ mutating: true, error: null });
+  try {
+    let replayEtag: string | null = null;
+    if (pendingDraftMutation) {
+      const attempt = pendingDraftMutation;
+      const replay = await replaceTripPlacePreferences(
+        attempt.tripId,
+        attempt.items,
+        attempt.etag,
+        attempt.key,
+      );
+      assertCurrent();
+      if (
+        replay.data.tripId !== tripId ||
+        !replay.etag ||
+        !STRONG_TRIP_ETAG.test(replay.etag)
+      )
+        throw new SchedulePersistenceValidationError(
+          '장소 저장 결과를 다시 확인해 주세요.',
+        );
+      replayEtag = replay.etag;
+    }
+    const latest = await fetchTrip(tripId);
+    assertCurrent();
+    if (
+      latest.data.tripId !== tripId ||
+      !latest.etag ||
+      !STRONG_TRIP_ETAG.test(latest.etag)
+    ) {
+      throw new SchedulePersistenceValidationError(
+        '최신 여행 정보를 다시 불러와 주세요.',
+      );
+    }
+    if (replayEtag && replayEtag !== latest.etag)
+      throw new ApiError({ status: 409, code: 'TRIP_VERSION_CONFLICT' });
+    if (latest.data.activeScheduleVersionId) {
+      const active = await fetchSchedule(tripId);
+      assertCurrent();
+      if (
+        active.tripId !== tripId ||
+        active.scheduleVersion.scheduleVersionId !==
+          latest.data.activeScheduleVersionId ||
+        active.days.some(
+          (day) =>
+            (day.dayNo === dayNo || day.dayNo === patch?.targetDayNo) &&
+            day.items.length > 0,
+        )
+      ) {
+        throw new SchedulePersistenceValidationError(
+          '해당 날짜에 적용된 일정이 있어요. 최신 일정을 다시 불러와 주세요.',
+        );
+      }
+    }
+    if (!latest.data.days.some((day) => day.dayNo === dayNo)) {
+      throw new SchedulePersistenceValidationError(
+        '장소를 추가할 여행 날짜를 확인해 주세요.',
+      );
+    }
+    const existing = latest.data.placePreferences;
+    const previous = existing.find((item) => item.placeId === placeId);
+    const targetDayNo = patch?.targetDayNo ?? dayNo;
+    if (!latest.data.days.some((day) => day.dayNo === targetDayNo)) {
+      throw new SchedulePersistenceValidationError(
+        '이동할 여행 날짜를 확인해 주세요.',
+      );
+    }
+    if (
+      patch &&
+      (!previous ||
+        previous.type === 'avoid' ||
+        (previous.targetDayNo !== dayNo &&
+          previous.targetDayNo !== targetDayNo))
+    ) {
+      throw new SchedulePersistenceValidationError(
+        '장소의 날짜 또는 선호가 변경됐어요. 다시 불러와 주세요.',
+      );
+    }
+    if (
+      !place &&
+      previous &&
+      (previous.targetDayNo !== dayNo || previous.type === 'avoid')
+    ) {
+      throw new SchedulePersistenceValidationError(
+        '장소의 날짜 또는 선호가 변경됐어요. 다시 불러와 주세요.',
+      );
+    }
+    const preference: TripPlacePreference | null =
+      patch && previous
+        ? {
+            ...previous,
+            targetDayNo,
+            requestedStayMinutes:
+              patch.stayMinutes ?? previous.requestedStayMinutes,
+          }
+        : place
+          ? {
+              placeId,
+              type: place.visitType === '필수방문' ? 'must_visit' : 'preferred',
+              targetDayNo: dayNo,
+              priority: previous?.priority ?? 0,
+              requestedStayMinutes: place.stayMinutes,
+            }
+          : null;
+    const same = preference
+      ? existing.some(
+          (item) =>
+            item.placeId === preference.placeId &&
+            item.type === preference.type &&
+            item.targetDayNo === preference.targetDayNo &&
+            item.requestedStayMinutes === preference.requestedStayMinutes,
+        )
+      : !previous;
+    let data = latest.data;
+    let etag = latest.etag;
+    if (!same) {
+      const items = [
+        ...existing.filter((item) => item.placeId !== placeId),
+        ...(preference ? [preference] : []),
+      ];
+      pendingDraftMutation = {
+        scope,
+        selection,
+        tripId,
+        operation,
+        items: items.map((item) => ({ ...item })),
+        etag,
+        key: createIdempotencyKey(),
+      };
+      const attempt = pendingDraftMutation;
+      const response = await replaceTripPlacePreferences(
+        tripId,
+        attempt.items,
+        attempt.etag,
+        attempt.key,
+      );
+      assertCurrent();
+      if (
+        response.data.tripId !== tripId ||
+        !response.etag ||
+        !STRONG_TRIP_ETAG.test(response.etag)
+      ) {
+        throw new SchedulePersistenceValidationError(
+          '장소 저장 결과를 다시 확인해 주세요.',
+        );
+      }
+      etag = response.etag;
+      data = {
+        ...data,
+        placePreferences: response.data.items,
+        status: response.data.tripStatus,
+        activeScheduleVersionId: response.data.activeScheduleVersionId,
+        scheduleEffect: response.data.scheduleEffect,
+        regenerationRequired: response.data.regenerationRequired,
+        updatedAt: response.data.updatedAt,
+      };
+    }
+    pendingDraftMutation = null;
+    useTripStore.setState({ serverTrip: data, etag });
+    useScheduleStore.setState((state) => {
+      const previousIndex = (state.places[targetDayNo] ?? []).findIndex(
+        (row) => row.placeId === placeId,
+      );
+      const places = Object.fromEntries(
+        Object.entries(state.places).map(([day, rows]) => [
+          day,
+          rows.filter((row) => Boolean(row.itemId) || row.placeId !== placeId),
+        ]),
+      );
+      const target = [...(places[targetDayNo] ?? [])];
+      if (place)
+        target.splice(previousIndex < 0 ? target.length : previousIndex, 0, {
+          ...place,
+          itemId: undefined,
+          stayMinutes: preference?.requestedStayMinutes ?? place.stayMinutes,
+          visitType:
+            preference?.type === 'must_visit' ? '필수방문' : '선택방문',
+        });
+      return { places: { ...places, [targetDayNo]: target } };
+    });
+    return { saved: true as const, refreshed: true as const };
+  } catch (error) {
+    if (
+      isApiError(error) &&
+      error.status >= 400 &&
+      error.status < 500 &&
+      error.status !== 429 &&
+      !hasCode(error, 'IDEMPOTENCY_KEY_REUSED')
+    )
+      pendingDraftMutation = null;
+    assertCurrent();
+    useScheduleStore.setState({ error: messageOf(error) });
+    throw error;
+  } finally {
+    mutationInFlight = false;
+    if (selection === tripSelectionRevision && isCurrentAuthScope(scope)) {
+      useScheduleStore.setState({ mutating: false });
+    }
+  }
+};
 
 const setSchedule = (
   value: TripSchedule,
@@ -417,10 +725,121 @@ export function createSchedulePersistenceActions() {
         '저장된 여행을 먼저 선택해 주세요.',
       );
     const revision = ++requestRevision;
+    const selection = tripSelectionRevision;
+    const serverRevision = tripServerRevision;
+    const assertCurrentRead = () => {
+      assertScope(scope);
+      if (
+        selection !== tripSelectionRevision ||
+        revision !== requestRevision ||
+        serverRevision !== tripServerRevision
+      ) {
+        throw new SchedulePersistenceValidationError(
+          '여행 정보가 변경됐어요. 최신 내용을 다시 불러와 주세요.',
+        );
+      }
+    };
     useScheduleStore.setState({ loading: true, error: null });
     try {
       const journal = await loadScheduleMutationJournal();
       assertScope(scope);
+      if (
+        (useTripStore.getState().serverTrip?.activeScheduleVersionId === null ||
+          (useTripStore.getState().serverTrip?.placePreferences.length ?? 0) >
+            0) &&
+        !journal
+      ) {
+        assertCurrentRead();
+        const latest = await fetchTrip(tripId);
+        assertCurrentRead();
+        if (
+          latest.data.tripId !== tripId ||
+          !latest.etag ||
+          !STRONG_TRIP_ETAG.test(latest.etag)
+        ) {
+          throw new SchedulePersistenceValidationError(
+            '최신 여행 정보를 다시 불러와 주세요.',
+          );
+        }
+        {
+          const active = latest.data.activeScheduleVersionId
+            ? await fetchSchedule(tripId)
+            : null;
+          assertCurrentRead();
+          if (
+            active &&
+            (active.tripId !== tripId ||
+              active.scheduleVersion.scheduleVersionId !==
+                latest.data.activeScheduleVersionId)
+          ) {
+            throw new SchedulePersistenceValidationError(
+              '활성 일정이 변경됐어요. 다시 불러와 주세요.',
+            );
+          }
+          const completedDays = new Set(
+            active?.days
+              .filter((day) => day.items.length > 0)
+              .map((day) => day.dayNo) ?? [],
+          );
+          const days = new Set(latest.data.days.map((day) => day.dayNo));
+          const preferences = latest.data.placePreferences.filter(
+            (item) =>
+              item.type !== 'avoid' &&
+              item.targetDayNo !== null &&
+              !completedDays.has(item.targetDayNo),
+          );
+          const rows = await Promise.all(
+            preferences.map(async (item) => {
+              if (!days.has(item.targetDayNo!))
+                throw new SchedulePersistenceValidationError(
+                  '저장된 장소의 여행 날짜를 확인해 주세요.',
+                );
+              const detail = await getPlace(item.placeId);
+              const minutes =
+                item.requestedStayMinutes ?? detail.recommendedStayMinutes;
+              if (
+                minutes === null ||
+                !Number.isInteger(minutes) ||
+                minutes < 1 ||
+                minutes > 1440
+              ) {
+                throw new SchedulePersistenceValidationError(
+                  '저장된 장소의 체류 시간을 지정해 주세요.',
+                );
+              }
+              return {
+                dayNo: item.targetDayNo!,
+                place: {
+                  placeId: item.placeId,
+                  name: detail.name,
+                  category: detail.categoryLabel,
+                  address: detail.roadAddress,
+                  coord: detail.coord,
+                  stayMinutes: minutes,
+                  visitType:
+                    item.type === 'must_visit' ? '필수방문' : '선택방문',
+                } satisfies SchedulePlace,
+              };
+            }),
+          );
+          assertCurrentRead();
+          const places: Record<number, SchedulePlace[]> = active
+            ? scheduleToPlaces(active, useScheduleStore.getState().places)
+            : {};
+          for (const row of rows) (places[row.dayNo] ??= []).push(row.place);
+          useTripStore.setState({ serverTrip: latest.data, etag: latest.etag });
+          useScheduleStore.setState({
+            places,
+            reviews: active ? scheduleToReviews(active, places) : {},
+            activeVersionId: active?.scheduleVersion.scheduleVersionId ?? null,
+            versionNo: active?.scheduleVersion.versionNo ?? null,
+            loading: false,
+            error: null,
+            pendingMutationRecovery: false,
+          });
+          return active;
+        }
+      }
       const completedHere =
         journal?.userId === scope.userId &&
         journal.tripId === tripId &&
@@ -468,7 +887,7 @@ export function createSchedulePersistenceActions() {
         useScheduleStore.setState({ loading: false });
         throw new ScheduleSessionChangedError();
       }
-      if (revision === requestRevision) {
+      if (revision === requestRevision && selection === tripSelectionRevision) {
         useScheduleStore.setState({ loading: false, error: messageOf(error) });
       }
       throw error;
@@ -599,6 +1018,12 @@ export function createSchedulePersistenceActions() {
   };
 
   const createPlace = async (dayNo: number, place: SchedulePlace) => {
+    const current = useScheduleStore.getState();
+    if (
+      !current.activeVersionId ||
+      (dayNo > 1 && !(current.places[dayNo] ?? []).some((row) => row.itemId))
+    )
+      return mutateDraftPlace(dayNo, place.placeId, place);
     if (!place.placeId)
       throw new SchedulePersistenceValidationError(
         '추가할 장소를 다시 선택해 주세요.',
@@ -747,6 +1172,25 @@ export function createSchedulePersistenceActions() {
   return {
     hydrateSchedule,
     createPlace,
+    deleteDraftPlace: (dayNo: number, placeId: string) =>
+      mutateDraftPlace(dayNo, placeId, null),
+    updateDraftPlace: async (
+      dayNo: number,
+      placeId: string,
+      patch: DraftPlacePatch,
+    ) => {
+      const place = useScheduleStore
+        .getState()
+        .places[dayNo]?.find((row) => row.placeId === placeId && !row.itemId);
+      if (!place)
+        throw new SchedulePersistenceValidationError(
+          '수정할 장소 초안을 다시 불러와 주세요.',
+        );
+      return mutateDraftPlace(dayNo, placeId, place, {
+        stayMinutes: patch.stayMinutes,
+        targetDayNo: patch.targetDayNo,
+      });
+    },
     updateItem,
     deleteItem,
     moveItem,

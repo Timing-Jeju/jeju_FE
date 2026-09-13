@@ -1,5 +1,5 @@
 {
-  "sourceCommit": "fc72bb4cb631f407c8bc16620b096fa1691d1a6a",
+  "sourceCommit": "9d8d3281bd36358d49988d7f64f6eab598994cd6",
   "operations": {
     "GET /api/v1/auth/social/providers": {
       "module": "authSocial.ts",
@@ -266,6 +266,41 @@
       "export": "replaceDayActivityWindows",
       "screen": "connected",
       "prerequisite": "기존 활동 시간 입력 사용; 선행 BE 전체 검증·병합 후 반영"
+    },
+    "PUT /api/v1/trips/{tripId}/planner-conditions": {
+      "module": "trips.ts",
+      "export": "replacePlannerConditions",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "saved-input orchestration and staging verification"
+    },
+    "POST /api/v1/trips/{tripId}/schedule-generations": {
+      "module": "generations.ts",
+      "export": "startGeneration",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "feature flag OFF until BE/AI staging generation and apply verification"
+    },
+    "GET /api/v1/trips/{tripId}/schedule-generations/{runId}": {
+      "module": "generations.ts",
+      "export": "getGeneration",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "feature flag OFF until BE/AI staging generation and apply verification"
+    },
+    "GET /api/v1/trips/{tripId}/schedule-versions/{versionId}": {
+      "module": "generations.ts",
+      "export": "getCandidateSchedule",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "feature flag OFF until BE/AI staging generation and apply verification"
+    },
+    "POST /api/v1/trips/{tripId}/schedule-generations/{runId}/candidates/{candidateId}/apply": {
+      "module": "generations.ts",
+      "export": "applyCandidate",
+      "wrapper": "connected",
+      "screen": "deferred",
+      "prerequisite": "feature flag OFF until BE/AI staging generation and apply verification"
     }
   }
 }

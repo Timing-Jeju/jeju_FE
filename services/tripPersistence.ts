@@ -8,13 +8,15 @@ import {
 } from './api/accommodations';
 import { createIdempotencyKey } from './api/idempotency';
 import { hydrateTripConditions } from './tripHydration';
-import { hasCode, isApiError } from './api/problem';
+import { ApiError, hasCode, isApiError } from './api/problem';
 import type { ApiResponse } from './api/http';
 import { toDayActivityWindows } from './tripActivityWindows';
+import { toPlannerConditions } from './tripPlannerConditions';
 import {
   deleteTransportEvent as deleteTransportEventApi,
   putTransportEvent as putTransportEventApi,
   type TransportEventRequest,
+  type TransportEventMutation,
   type TransportEventType,
 } from './api/transportEvents';
 import {
@@ -24,6 +26,7 @@ import {
   fetchTrips,
   updateTrip,
   replaceDayActivityWindows,
+  replacePlannerConditions,
   type TripCreateResponse,
   type Trip,
   type TripCreateRequest,
@@ -34,6 +37,7 @@ import {
   useTripStore,
   type TripConditions,
   type TripState,
+  type TripTransportDrafts,
 } from '@/store/useTripStore';
 import { useUserStore } from '@/store/useUserStore';
 
@@ -82,6 +86,8 @@ const tripReadFields: (keyof TripState)[] = [
   'etag',
   'pendingTripCreate',
   'pendingDayActivityWindows',
+  'pendingPlannerConditions',
+  'pendingTransportEvents',
   'pendingAccommodationCreate',
 ];
 useTripStore.subscribe((state, previous) => {
@@ -152,13 +158,8 @@ const requireDates = (conditions: TripConditions) => {
 };
 
 const toTransportModes = (conditions: TripConditions): ApiTransportMode[] => {
-  if (conditions.transport.includes('walk')) {
-    throw new TripPersistenceValidationError(
-      '도보 이동 수단은 아직 서버에 저장할 수 없어요.',
-    );
-  }
   const modes = conditions.transport.map((mode) =>
-    mode === 'bus' ? ('public_transit' as const) : ('taxi' as const),
+    mode === 'bus' ? ('public_transit' as const) : mode,
   );
   if (!modes.length) {
     throw new TripPersistenceValidationError('주요 이동 수단을 선택해 주세요.');
@@ -204,6 +205,7 @@ const uiTransport = (trip: Trip): TripConditions['transport'] =>
   trip.transportModes.flatMap(({ mode }) => {
     if (mode === 'public_transit') return ['bus' as const];
     if (mode === 'taxi') return ['taxi' as const];
+    if (mode === 'walk') return ['walk' as const];
     return [];
   });
 
@@ -225,6 +227,8 @@ const setServerTrip = (
           pendingTripCreate: null,
           pendingAccommodationCreate: null,
           pendingDayActivityWindows: null,
+          pendingPlannerConditions: null,
+          pendingTransportEvents: null,
         }
       : {}),
     tripId: trip.tripId,
@@ -374,7 +378,12 @@ const exactTransportEvent = (
 });
 
 const validateTransportEvent = (body: TransportEventRequest) => {
-  if (!!body.terminalPlaceId === !!body.customTerminalName?.trim()) {
+  const unresolved =
+    body.terminalPlaceId === null && body.customTerminalName === null;
+  if (
+    !unresolved &&
+    !!body.terminalPlaceId === !!body.customTerminalName?.trim()
+  ) {
     throw new TripPersistenceValidationError(
       '터미널은 검색 장소와 직접 입력 이름 중 하나만 필요해요.',
     );
@@ -442,21 +451,96 @@ const latestMutationTrip = async (
   return { ...response, data: response.data };
 };
 
+const draftFingerprint = (state: TripConditions) =>
+  fingerprint({
+    root: toTripPatchRequest(state),
+    dayTimes: state.dayTimes,
+    lodgingMode: state.lodgingMode,
+    lodgingPlaceId: state.lodging?.placeId ?? null,
+    dailyLodgings: Object.entries(state.dailyLodgings)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, lodging]) => [date, lodging.placeId]),
+    styles: state.styles,
+    arrivalTransport: state.arrivalTransport,
+    arrivalTime: state.arrivalTime,
+    departureTransport: state.departureTransport,
+    departureTime: state.departureTime,
+  });
+
 const currentDraftMatches = (expected: string) => {
   try {
     const state = useTripStore.getState();
-    return (
-      fingerprint({
-        root: toTripPatchRequest(state),
-        dayTimes: state.dayTimes,
-      }) === expected
-    );
+    return draftFingerprint(state) === expected;
   } catch {
     return false;
   }
 };
 
 let saveInFlight: AuthScope | null = null;
+
+const toTransportDrafts = (conditions: TripConditions): TripTransportDrafts => {
+  const event = (
+    eventType: TransportEventType,
+  ): TransportEventRequest | null => {
+    const kind =
+      eventType === 'arrival'
+        ? conditions.arrivalTransport
+        : conditions.departureTransport;
+    const time =
+      eventType === 'arrival'
+        ? conditions.arrivalTime
+        : conditions.departureTime;
+    if (kind === null && time === null) return null;
+    if (
+      !kind ||
+      !time ||
+      !['비행기', '선박'].includes(kind) ||
+      !/^(?:[0-9]|[01][0-9]|2[0-3]):[0-5][0-9]$/.test(time)
+    ) {
+      throw new TripPersistenceValidationError(
+        '입도·출도 이동수단과 시간을 함께 확인해 주세요.',
+      );
+    }
+    const date =
+      eventType === 'arrival' ? conditions.startDate : conditions.endDate;
+    return {
+      eventType,
+      transportType: kind === '비행기' ? 'flight' : 'ferry',
+      terminalPlaceId: null,
+      customTerminalName: null,
+      scheduledAt: `${date}T${time.padStart(5, '0')}:00+09:00`,
+      transportNumber: null,
+      note: null,
+    };
+  };
+  const drafts = { arrival: event('arrival'), departure: event('departure') };
+  if (
+    drafts.arrival &&
+    drafts.departure &&
+    drafts.arrival.scheduledAt >= drafts.departure.scheduledAt
+  ) {
+    throw new TripPersistenceValidationError(
+      '도착 시간은 출발 시간보다 빨라야 해요.',
+    );
+  }
+  return drafts;
+};
+
+/** 조건 화면이 편집하지 않는 기존 필드는 유지한다. 수단 변경 때만 터미널·편명을 비운다. */
+const preserveTransportDetails = (
+  desired: TransportEventRequest | null,
+  previous: TransportEventRequest | null,
+): TransportEventRequest | null => {
+  if (!desired) return null;
+  const sameKind = previous?.transportType === desired.transportType;
+  return {
+    ...desired,
+    terminalPlaceId: sameKind ? previous.terminalPlaceId : null,
+    customTerminalName: sameKind ? previous.customTerminalName : null,
+    transportNumber: sameKind ? previous.transportNumber : null,
+    note: previous?.note ?? null,
+  };
+};
 
 export function createTripPersistenceActions() {
   const saveTrip = async (conditions: TripConditions) => {
@@ -471,10 +555,130 @@ export function createTripPersistenceActions() {
     useTripStore.getState().saveConditions(conditions);
     useTripStore.setState({ loading: true });
     try {
-      const inputFingerprint = fingerprint({
-        root: toTripPatchRequest(conditions),
-        dayTimes: conditions.dayTimes,
-      });
+      const inputFingerprint = draftFingerprint(conditions);
+      const transportDrafts = toTransportDrafts(conditions);
+      const finishTransport = async (saved = true) => {
+        let attempt = useTripStore.getState().pendingTransportEvents;
+        if (!attempt || attempt.tripId !== useTripStore.getState().tripId) {
+          throw new TripPersistenceValidationError(
+            '저장할 교통편을 다시 확인해 주세요.',
+          );
+        }
+        while (attempt.remaining.length) {
+          assertCurrentAuthScope(scope);
+          const step: NonNullable<
+            TripState['pendingTransportEvents']
+          >['remaining'][number] = attempt.remaining[0];
+          const response: ApiResponse<TransportEventMutation> = step.body
+            ? await putTransportEventApi(
+                attempt.tripId,
+                step.body,
+                attempt.etag,
+                step.key,
+              )
+            : await deleteTransportEventApi(
+                attempt.tripId,
+                step.eventType,
+                attempt.etag,
+                step.key,
+              );
+          assertCurrentAuthScope(scope);
+          if (
+            response.data.tripId !== attempt.tripId ||
+            response.data.eventType !== step.eventType ||
+            response.data.deleted !== (step.body === null)
+          ) {
+            throw new TripPersistenceValidationError(
+              '교통편 저장 응답을 다시 확인해 주세요.',
+            );
+          }
+          attempt = {
+            ...attempt,
+            etag: requireEtag(response.etag),
+            remaining: attempt.remaining.slice(1),
+          };
+          useTripStore.setState({
+            pendingTransportEvents: attempt,
+            etag: attempt.etag,
+          });
+        }
+        // 모든 변경이 확인돼도 최종 조회 전에는 저장 완료로 알리지 않는다.
+        const latest = await fetchTrip(attempt.tripId);
+        assertCurrentAuthScope(scope);
+        setServerTrip(
+          latest.data,
+          requireEtag(latest.etag),
+          false,
+          scope,
+          saved &&
+            latest.etag === attempt.etag &&
+            currentDraftMatches(attempt.fingerprint),
+        );
+        useTripStore.setState({
+          pendingTransportEvents: null,
+          loading: false,
+          transportEvents: {
+            ...(latest.data.transportEvents.arrival
+              ? { arrival: latest.data.transportEvents.arrival }
+              : {}),
+            ...(latest.data.transportEvents.departure
+              ? { departure: latest.data.transportEvents.departure }
+              : {}),
+          },
+        });
+        return latest.data;
+      };
+      const finishPlanner = async (saved = true) => {
+        const attempt = useTripStore.getState().pendingPlannerConditions;
+        if (!attempt || attempt.tripId !== useTripStore.getState().tripId) {
+          throw new TripPersistenceValidationError(
+            '저장할 여행을 다시 확인해 주세요.',
+          );
+        }
+        const response = await replacePlannerConditions(
+          attempt.tripId,
+          attempt.body,
+          attempt.etag,
+          attempt.key,
+        );
+        assertCurrentAuthScope(scope);
+        // 재조회가 실패해도 같은 PUT receipt를 확인할 수 있게 journal은 유지한다.
+        const latest = await fetchTrip(attempt.tripId);
+        assertCurrentAuthScope(scope);
+        if (requireEtag(response.etag) !== requireEtag(latest.etag)) {
+          throw new ApiError({ status: 409, code: 'TRIP_VERSION_CONFLICT' });
+        }
+        setServerTrip(
+          latest.data,
+          requireEtag(latest.etag),
+          false,
+          scope,
+          false,
+        );
+        useTripStore.setState({
+          pendingPlannerConditions: null,
+          pendingTransportEvents: {
+            tripId: attempt.tripId,
+            etag: requireEtag(latest.etag),
+            fingerprint: attempt.fingerprint,
+            remaining: (['arrival', 'departure'] as const)
+              .filter(
+                (eventType) =>
+                  attempt.transportDrafts[eventType] !== null ||
+                  latest.data.transportEvents[eventType] !== null,
+              )
+              .map((eventType) => ({
+                eventType,
+                body: preserveTransportDetails(
+                  attempt.transportDrafts[eventType],
+                  latest.data.transportEvents[eventType],
+                ),
+                key: createIdempotencyKey(),
+              })),
+          },
+        });
+        return finishTransport(saved);
+      };
       const finishPending = async (saved = true) => {
         const attempt = useTripStore.getState().pendingDayActivityWindows;
         if (!attempt || attempt.tripId !== useTripStore.getState().tripId) {
@@ -495,14 +699,43 @@ export function createTripPersistenceActions() {
           requireEtag(latest.etag),
           false,
           scope,
-          saved && currentDraftMatches(inputFingerprint),
+          false,
         );
         useTripStore.setState({
           pendingDayActivityWindows: null,
-          loading: false,
+          pendingPlannerConditions: {
+            tripId: attempt.tripId,
+            body: attempt.plannerConditions,
+            etag: requireEtag(latest.etag),
+            key: createIdempotencyKey(),
+            fingerprint: attempt.fingerprint,
+            transportDrafts: attempt.transportDrafts,
+          },
         });
-        return latest.data;
+        return finishPlanner(saved);
       };
+      const pendingTransport = useTripStore.getState().pendingTransportEvents;
+      if (
+        pendingTransport &&
+        pendingTransport.tripId === useTripStore.getState().tripId
+      ) {
+        const saved = await finishTransport(
+          pendingTransport.fingerprint === inputFingerprint,
+        );
+        if (pendingTransport.fingerprint === inputFingerprint) return saved;
+        useTripStore.setState({ saved: false, loading: true });
+      }
+      const pendingPlanner = useTripStore.getState().pendingPlannerConditions;
+      if (
+        pendingPlanner &&
+        pendingPlanner.tripId === useTripStore.getState().tripId
+      ) {
+        const saved = await finishPlanner(
+          pendingPlanner.fingerprint === inputFingerprint,
+        );
+        if (pendingPlanner.fingerprint === inputFingerprint) return saved;
+        useTripStore.setState({ saved: false, loading: true });
+      }
       const pending = useTripStore.getState().pendingDayActivityWindows;
       if (pending && pending.tripId === useTripStore.getState().tripId) {
         const saved = await finishPending(
@@ -546,6 +779,8 @@ export function createTripPersistenceActions() {
           etag: requireEtag(latest.etag),
           key: createIdempotencyKey(),
           fingerprint: inputFingerprint,
+          plannerConditions: toPlannerConditions(conditions, latest.data),
+          transportDrafts,
         },
       });
       return await finishPending();
@@ -555,9 +790,14 @@ export function createTripPersistenceActions() {
         isApiError(error) &&
         error.status >= 400 &&
         error.status < 500 &&
-        error.status !== 429
+        error.status !== 429 &&
+        !hasCode(error, 'IDEMPOTENCY_KEY_REUSED')
       ) {
-        useTripStore.setState({ pendingDayActivityWindows: null });
+        useTripStore.setState({
+          pendingDayActivityWindows: null,
+          pendingPlannerConditions: null,
+          pendingTransportEvents: null,
+        });
       }
       const tripId = useTripStore.getState().tripId;
       if (tripId) await refreshOnConflict(error, tripId, scope);

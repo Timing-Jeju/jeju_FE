@@ -207,6 +207,29 @@ test('후보가 2개이거나 외부 URL이면 미리보기 조회 전에 거부
   ).toThrow();
 });
 
+test('서버의 24시간 후보를 허용하며 단말 시계로 보존 기한을 축소하지 않는다', () => {
+  const result = {
+    ...success,
+    result: {
+      ...success.result!,
+      candidates: candidates.map((candidate) => ({
+        ...candidate,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      })),
+    },
+  };
+  expect(api.validateRun(result, tripId)).toBe(result);
+  // 단말 시계가 서버보다 느려도 유효 후보 자체를 잘못된 계약으로 거부하지 않는다.
+  const now = jest
+    .spyOn(Date, 'now')
+    .mockReturnValue(Date.now() - 60 * 60 * 1000);
+  try {
+    expect(api.validateRun(result, tripId)).toBe(result);
+  } finally {
+    now.mockRestore();
+  }
+});
+
 test('정확히 세 후보 중 균형형만 미리보기하고 자동 적용하지 않는다', async () => {
   await beginGeneration(1);
   const result = await pollGeneration(new AbortController().signal);

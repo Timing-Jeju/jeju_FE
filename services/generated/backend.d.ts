@@ -9,7 +9,7 @@ export interface paths {
         get?: never;
         /**
          * 여행 항공·선박 이벤트 저장
-         * @description 도착 또는 출발 이벤트 한 건을 완전 교체하고 일정 stale 정책을 원자 적용합니다.
+         * @description 도착 또는 출발 이벤트 한 건을 완전 교체하고 일정 stale 정책을 원자 적용합니다. 항공의 두 터미널 필드가 null이면 서버가 승인된 제주공항 ID를 확정하며, 불가하면 PLACE_NOT_FOUND를 반환합니다. 선박의 두 터미널 필드가 null이면 항구 미확정으로 저장하며 AI 생성은 지원하지 않습니다.
          */
         put: operations["tripTransportEventsUpdate"];
         post?: never;
@@ -63,6 +63,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/trips/{tripId}/planner-conditions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 날짜별 숙소와 여행 스타일 저장
+         * @description If-Match와 Idempotency-Key가 필수이며 canonical 장소 ID와 승인된 스타일 코드만 전체 교체합니다.
+         */
+        put: operations["tripPlannerConditionsUpdate"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/trips/{tripId}/place-preferences": {
         parameters: {
             query?: never;
@@ -73,7 +93,7 @@ export interface paths {
         get?: never;
         /**
          * 여행 희망·회피 장소 전체 교체
-         * @description 현재 사용자가 저장한 유효 장소만 사용해 희망·회피 목록을 원자적으로 전체 교체합니다.
+         * @description 찜 여부와 무관한 유효 canonical 장소로 필수·선택·회피 목록과 날짜별 체류시간을 원자적으로 전체 교체합니다.
          */
         put: operations["tripPlacePreferencesUpdate"];
         post?: never;
@@ -229,6 +249,46 @@ export interface paths {
          * @description 활성 일정을 불변 복제하고 검증된 새 user_edit 버전을 원자적으로 활성화합니다.
          */
         post: operations["tripScheduleItemMoveUpdate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trips/{tripId}/schedule-generations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Day 일정 생성 접수
+         * @description 저장된 여행 조건을 불변 복사하고 queued 작업만 저장합니다. 후보는 자동 적용하지 않습니다.
+         */
+        post: operations["createScheduleGeneration"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trips/{tripId}/schedule-generations/{runId}/candidates/{candidateId}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Day 생성 후보 적용
+         * @description 저장 후보를 원자 적용하며 같은 멱등성 키의 재시도는 기존 응답을 반환합니다.
+         */
+        post: operations["applyScheduleGenerationCandidate"];
         delete?: never;
         options?: never;
         head?: never;
@@ -467,6 +527,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/trips/{tripId}/schedule-versions/{versionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 불변 일정 버전 조회
+         * @description 후보 scheduleUrl과 적용 Location의 소유자 범위 일정 버전을 조회합니다. query와 body는 허용하지 않습니다.
+         */
+        get: operations["tripScheduleVersionRead"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/trips/{tripId}/schedule-generations/{runId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Day 일정 생성 결과 조회
+         * @description 소유한 작업의 저장 상태만 조회합니다. query와 본문은 허용하지 않습니다. 종료 작업은 7일간 조회됩니다.
+         */
+        get: operations["getScheduleGeneration"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/places": {
         parameters: {
             query?: never;
@@ -664,7 +764,7 @@ export interface components {
         };
         PreferenceTransportMode: {
             /** @enum {string} */
-            mode: "public_transit" | "rental_car" | "taxi";
+            mode: "public_transit" | "rental_car" | "taxi" | "walk";
             /** Format: int32 */
             priority: number;
             primary: boolean;
@@ -682,7 +782,7 @@ export interface components {
         };
         TransportMode: {
             /** @enum {string} */
-            mode: "public_transit" | "rental_car" | "taxi";
+            mode: "public_transit" | "rental_car" | "taxi" | "walk";
             /** Format: int32 */
             priority: number;
             primary: boolean;
@@ -711,15 +811,37 @@ export interface components {
             endPlaceId: string | null;
             transportModes: components["schemas"]["TransportMode"][];
         };
+        PlannerDayAnchor: {
+            /** Format: uuid */
+            dayId: string;
+            /** Format: uuid */
+            lodgingPlaceId: string;
+        };
+        PlannerConditions: {
+            dayAnchors: components["schemas"]["PlannerDayAnchor"][];
+            styleCodes: ("restaurant" | "cafe" | "leisure" | "cultural_facility" | "relaxed" | "trendy" | "local")[];
+        };
+        PlannerConditionsMutationResponse: {
+            /** Format: uuid */
+            tripId: string;
+            plannerConditions: components["schemas"]["PlannerConditions"];
+            /** @enum {string} */
+            scheduleEffect: "none" | "maintained" | "invalidated";
+            regenerationRequired: boolean;
+            /** Format: uuid */
+            activeScheduleVersionId: string | null;
+        };
         PlacePreferenceItem: {
             /** Format: uuid */
             placeId: string;
             /** @enum {string} */
-            type: "must_visit" | "avoid";
+            type: "must_visit" | "preferred" | "avoid";
             /** Format: int32 */
             targetDayNo: number | null;
             /** Format: int32 */
             priority: number;
+            /** Format: int32 */
+            requestedStayMinutes?: number | null;
         };
         PlacePreferencesRequest: {
             items: components["schemas"]["PlacePreferenceItem"][];
@@ -788,8 +910,8 @@ export interface components {
             expiresAt: string;
             stale: boolean;
         };
-        /** @description 새 저장은 TripDetail, 배포 전 완료 receipt의 24시간 TTL내 replay만 TripDetailLegacyV11이다. 최신 값은 여행 GET으로 조회한다. */
-        TripDayActivityWindowsResponse: components["schemas"]["TripDetail"] | components["schemas"]["TripDetailLegacyV11"];
+        /** @description 새 저장은 TripDetail, 배포 전 완료 receipt의 24시간 TTL내 replay만 TripDetailLegacyV11/V12이다. 최신 값은 여행 GET으로 조회한다. */
+        TripDayActivityWindowsResponse: components["schemas"]["TripDetail"] | components["schemas"]["TripDetailLegacyV12"] | components["schemas"]["TripDetailLegacyV11"];
         TripDetail: {
             /** Format: uuid */
             tripId: string;
@@ -808,6 +930,8 @@ export interface components {
             days: components["schemas"]["TripDay"][];
             transportEvents: components["schemas"]["TripTransportEvents"];
             accommodations: components["schemas"]["AccommodationPayload"][];
+            placePreferences: components["schemas"]["PlacePreferenceItem"][];
+            plannerConditions: components["schemas"]["PlannerConditions"];
             /** Format: uuid */
             activeScheduleVersionId: string | null;
             /** Format: int32 */
@@ -837,6 +961,37 @@ export interface components {
             userPace: "slow" | "normal" | "fast";
             transportModes: components["schemas"]["TransportMode"][];
             days: components["schemas"]["TripDay"][];
+            /** Format: uuid */
+            activeScheduleVersionId: string | null;
+            /** Format: int32 */
+            totalScore: number | null;
+            scoreProvenance: components["schemas"]["ScoreProvenance"] | null;
+            /** @enum {string} */
+            scheduleEffect: "none" | "maintained" | "invalidated";
+            regenerationRequired: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        TripDetailLegacyV12: {
+            /** Format: uuid */
+            tripId: string;
+            title: string;
+            /** @enum {string} */
+            status: "draft" | "generating" | "planned" | "live" | "completed" | "cancelled" | "failed";
+            /** Format: date */
+            startDate: string;
+            /** Format: date */
+            endDate: string;
+            /** @enum {string} */
+            timezone: "Asia/Seoul";
+            /** @enum {string} */
+            userPace: "slow" | "normal" | "fast";
+            transportModes: components["schemas"]["TransportMode"][];
+            days: components["schemas"]["TripDay"][];
+            transportEvents: components["schemas"]["TripTransportEvents"];
+            accommodations: components["schemas"]["AccommodationPayload"][];
             /** Format: uuid */
             activeScheduleVersionId: string | null;
             /** Format: int32 */
@@ -945,8 +1100,8 @@ export interface components {
             /** Format: date */
             date: string;
         };
-        /** @description 새 생성은 TripDetail, 배포 전 완료 receipt의 24시간 TTL 내 replay만 TripDetailLegacyV1 또는 TripDetailLegacyV11이다. 최신 값은 Location의 GET으로 조회한다. */
-        TripCreateResponse: components["schemas"]["TripDetail"] | components["schemas"]["TripDetailLegacyV11"] | components["schemas"]["TripDetailLegacyV1"];
+        /** @description 새 생성은 TripDetail, 배포 전 완료 receipt의 24시간 TTL 내 replay만 TripDetailLegacyV1/V11/V12이다. 최신 값은 Location의 GET으로 조회한다. */
+        TripCreateResponse: components["schemas"]["TripDetail"] | components["schemas"]["TripDetailLegacyV12"] | components["schemas"]["TripDetailLegacyV11"] | components["schemas"]["TripDetailLegacyV1"];
         TripDetailLegacyV1: {
             /** Format: uuid */
             tripId: string;
@@ -1009,6 +1164,46 @@ export interface components {
             /** Format: int32 */
             targetSequenceNo?: number;
             plannedStartAt?: string;
+        };
+        GenerationCreateRequest: {
+            /** Format: uuid */
+            targetDayId: string;
+            /** Format: uuid */
+            expectedActiveScheduleVersionId: string | null;
+            /** Format: int32 */
+            candidateCount: number;
+        };
+        GenerationAcceptedResponse: {
+            /** @enum {string} */
+            contractVersion: "1.0.0";
+            /** Format: uuid */
+            runId: string;
+            /** @enum {string} */
+            status: "queued";
+            pollUrl: string;
+            commandInputHash: string;
+            /** Format: date-time */
+            acceptedAt: string;
+        };
+        ApplyCandidateRequest: {
+            /** Format: uuid */
+            expectedActiveScheduleVersionId: string | null;
+        };
+        ApplyCandidateResponse: {
+            /** @enum {string} */
+            contractVersion: "1.0.0";
+            /** Format: uuid */
+            tripId: string;
+            /** Format: uuid */
+            runId: string;
+            /** Format: uuid */
+            candidateId: string;
+            /** Format: uuid */
+            previousScheduleVersionId: string | null;
+            /** Format: uuid */
+            activeScheduleVersionId: string;
+            /** Format: date-time */
+            appliedAt: string;
         };
         CreateAccommodationRequest: {
             /** Format: uuid */
@@ -1288,13 +1483,21 @@ export interface components {
             plannedStartAt: string;
             /** Format: date-time */
             plannedEndAt: string;
-            /** Format: int32 */
+            /**
+             * Format: int32
+             * @description 일반 방문은 1분 이상이며 day_start/day_end 기준점만 0분입니다.
+             */
             stayMinutes: number;
             /** Format: int32 */
             bufferAfterMinutes: number;
             required: boolean;
             memo: string | null;
             progress: components["schemas"]["ItemProgress"];
+            /**
+             * @description 일반 항목은 null입니다. 기준점은 위치와 시간을 보존하며 직접 편집하지 않습니다.
+             * @enum {string|null}
+             */
+            boundaryRole: "day_start" | "day_end" | null;
         };
         ScheduleLeg: {
             /** Format: uuid */
@@ -1319,7 +1522,10 @@ export interface components {
             rideMinutes: number;
             /** Format: int32 */
             transferMinutes: number;
-            /** Format: int32 */
+            /**
+             * Format: int32
+             * @description 0분은 동일 canonical 장소의 위치 연속성에만 허용합니다.
+             */
             durationMinutes: number;
             /** Format: int32 */
             bufferMinutes: number;
@@ -1329,6 +1535,9 @@ export interface components {
             estimatedFareKrw: number | null;
             /** Format: int32 */
             riskScore: number | null;
+            /** @enum {string|null} */
+            riskLevel: "low" | "medium" | "high" | "critical" | "unknown" | null;
+            riskReasonCodes: string[];
         };
         ScheduleDay: {
             /** Format: uuid */
@@ -1360,6 +1569,59 @@ export interface components {
             /** Format: int32 */
             score: number | null;
             feasibilityStale: boolean;
+        };
+        GenerationCandidate: {
+            /** Format: uuid */
+            candidateId: string;
+            /** Format: uuid */
+            scheduleVersionId: string;
+            /** Format: int32 */
+            rank: number;
+            /** @enum {string} */
+            strategy: "balanced" | "relaxed" | "experience_max";
+            score: number;
+            /** @enum {string} */
+            feasibility: "feasible" | "feasible_with_caution";
+            explanation: string;
+            /** Format: date-time */
+            expiresAt: string;
+            scheduleUrl: string;
+            applyUrl: string;
+        };
+        GenerationFailure: {
+            code: string;
+            detail: string;
+            retryable: boolean;
+        };
+        GenerationResult: {
+            /** @enum {string} */
+            outcome: "success" | "insufficient_feasible_routes";
+            /** Format: uuid */
+            baseScheduleVersionId: string | null;
+            /** Format: date-time */
+            factsAsOf: string;
+            stale: boolean;
+            /** @enum {string} */
+            resultSource: "mcp";
+            candidates: components["schemas"]["GenerationCandidate"][];
+        };
+        GenerationRunStatus: {
+            /** @enum {string} */
+            contractVersion: "1.0.0";
+            /** Format: uuid */
+            runId: string;
+            /** @enum {string} */
+            status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+            pollUrl: string;
+            commandInputHash: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            startedAt?: string;
+            /** Format: date-time */
+            completedAt?: string;
+            result?: components["schemas"]["GenerationResult"];
+            failure?: components["schemas"]["GenerationFailure"];
         };
         PlaceCursorPage: {
             /** Format: int32 */
@@ -1721,6 +1983,11 @@ export interface operations {
             query?: never;
             header: {
                 /**
+                 * @description 새 FE 저장 흐름은 canonical UUID 키를 사용합니다. 같은 키·본문 재시도는 원래 응답과 ETag를 반환하며 키 없는 기존 호출도 지원합니다.
+                 * @example 53000000-0000-4000-8000-000000000001
+                 */
+                "Idempotency-Key"?: string;
+                /**
                  * @description 직전 여행 aggregate의 strong ETag를 큰따옴표까지 그대로 전달합니다.
                  * @example "trip-47000000-0000-4000-8000-000000000047-r1"
                  */
@@ -1755,6 +2022,7 @@ export interface operations {
             /** @description OK */
             200: {
                 headers: {
+                    "Idempotency-Replayed": components["headers"]["Idempotency-Replayed"];
                     ETag: components["headers"]["ETag"];
                     "X-Trace-Id": components["headers"]["TraceId"];
                     [name: string]: unknown;
@@ -1791,18 +2059,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    /**
-                     * @example {
-                     *       "type": "https://api.timing-jeju.com/problems/invalid-request",
-                     *       "title": "요청 값이 올바르지 않습니다",
-                     *       "status": 400,
-                     *       "detail": "필수값, 형식과 If-Match를 확인해 주세요.",
-                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
-                     *       "code": "INVALID_REQUEST",
-                     *       "traceId": "0123456789abcdef0123456789abcdef",
-                     *       "fieldErrors": []
-                     *     }
-                     */
                     "application/problem+json": components["schemas"]["ApiProblemDetails"];
                 };
             };
@@ -1855,21 +2111,11 @@ export interface operations {
             409: {
                 headers: {
                     "X-Trace-Id": components["headers"]["TraceId"];
+                    /** @description 동일 payload가 처리 중인 IDEMPOTENCY_KEY_REUSED 응답에만 재시도 대기 초를 제공합니다. */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
-                    /**
-                     * @example {
-                     *       "type": "https://api.timing-jeju.com/problems/trip-version-conflict",
-                     *       "title": "여행 조건이 이미 변경되었습니다",
-                     *       "status": 409,
-                     *       "detail": "최신 여행과 ETag를 조회한 뒤 다시 요청해 주세요.",
-                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
-                     *       "code": "TRIP_VERSION_CONFLICT",
-                     *       "traceId": "0123456789abcdef0123456789abcdef",
-                     *       "fieldErrors": []
-                     *     }
-                     */
                     "application/problem+json": components["schemas"]["ApiProblemDetails"];
                 };
             };
@@ -1909,6 +2155,11 @@ export interface operations {
             };
             header: {
                 /**
+                 * @description 같은 키·eventType 재시도는 최초 삭제 응답과 ETag를 재생합니다. 다른 eventType에 키를 재사용하면 409입니다.
+                 * @example 53000000-0000-4000-8000-000000000002
+                 */
+                "Idempotency-Key"?: string;
+                /**
                  * @description 직전 여행 aggregate의 strong ETag를 큰따옴표까지 그대로 전달합니다.
                  * @example "trip-47000000-0000-4000-8000-000000000047-r1"
                  */
@@ -1928,6 +2179,7 @@ export interface operations {
             /** @description OK */
             200: {
                 headers: {
+                    "Idempotency-Replayed": components["headers"]["Idempotency-Replayed"];
                     ETag: components["headers"]["ETag"];
                     "X-Trace-Id": components["headers"]["TraceId"];
                     [name: string]: unknown;
@@ -1956,18 +2208,6 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    /**
-                     * @example {
-                     *       "type": "https://api.timing-jeju.com/problems/invalid-request",
-                     *       "title": "요청 값이 올바르지 않습니다",
-                     *       "status": 400,
-                     *       "detail": "필수값, 형식과 If-Match를 확인해 주세요.",
-                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
-                     *       "code": "INVALID_REQUEST",
-                     *       "traceId": "0123456789abcdef0123456789abcdef",
-                     *       "fieldErrors": []
-                     *     }
-                     */
                     "application/problem+json": components["schemas"]["ApiProblemDetails"];
                 };
             };
@@ -2020,21 +2260,11 @@ export interface operations {
             409: {
                 headers: {
                     "X-Trace-Id": components["headers"]["TraceId"];
+                    /** @description 동일 payload가 처리 중인 IDEMPOTENCY_KEY_REUSED 응답에만 재시도 대기 초를 제공합니다. */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
-                    /**
-                     * @example {
-                     *       "type": "https://api.timing-jeju.com/problems/trip-version-conflict",
-                     *       "title": "여행 조건이 이미 변경되었습니다",
-                     *       "status": 409,
-                     *       "detail": "최신 여행과 ETag를 조회한 뒤 다시 요청해 주세요.",
-                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
-                     *       "code": "TRIP_VERSION_CONFLICT",
-                     *       "traceId": "0123456789abcdef0123456789abcdef",
-                     *       "fieldErrors": []
-                     *     }
-                     */
                     "application/problem+json": components["schemas"]["ApiProblemDetails"];
                 };
             };
@@ -2447,10 +2677,225 @@ export interface operations {
             };
         };
     };
+    tripPlannerConditionsUpdate: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description 직전 여행 aggregate의 strong ETag
+                 * @example "trip-44000000-0000-4000-8000-000000000044-r1"
+                 */
+                "If-Match": string;
+                /**
+                 * @description 24시간 재시도 키; printable ASCII 1~128자
+                 * @example day-window-save-239
+                 */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /**
+                 * @description tripId 요청 조건
+                 * @example 44000000-0000-4000-8000-000000000044
+                 */
+                tripId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "dayAnchors": [
+                 *         {
+                 *           "dayId": "44000000-0000-4000-8001-000000000044",
+                 *           "lodgingPlaceId": "20000000-0000-4000-8000-000000000086"
+                 *         }
+                 *       ],
+                 *       "styleCodes": [
+                 *         "relaxed"
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["PlannerConditions"];
+            };
+        };
+        responses: {
+            /** @description 조건 저장 완료 */
+            200: {
+                headers: {
+                    "Idempotency-Replayed": components["headers"]["Idempotency-Replayed"];
+                    ETag: components["headers"]["ETag"];
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "tripId": "44000000-0000-4000-8000-000000000044",
+                     *       "plannerConditions": {
+                     *         "dayAnchors": [
+                     *           {
+                     *             "dayId": "44000000-0000-4000-8001-000000000044",
+                     *             "lodgingPlaceId": "20000000-0000-4000-8000-000000000086"
+                     *           }
+                     *         ],
+                     *         "styleCodes": [
+                     *           "relaxed"
+                     *         ]
+                     *       },
+                     *       "scheduleEffect": "none",
+                     *       "regenerationRequired": false,
+                     *       "activeScheduleVersionId": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PlannerConditionsMutationResponse"];
+                };
+            };
+            /** @description 형식 또는 필수 헤더 오류 */
+            400: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/invalid-request",
+                     *       "title": "요청 값이 올바르지 않습니다",
+                     *       "status": 400,
+                     *       "detail": "여행 제목, 날짜, timezone과 교통 우선순위를 확인해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "INVALID_REQUEST",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            /** @description 인증 필요 */
+            401: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/authentication-required",
+                     *       "title": "인증이 필요합니다",
+                     *       "status": 401,
+                     *       "detail": "로그인 후 다시 요청해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "AUTHENTICATION_REQUIRED",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            403: components["responses"]["AccessDeniedProblem"];
+            /** @description 소유한 여행 없음 */
+            404: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/trip-not-found",
+                     *       "title": "여행을 찾을 수 없습니다",
+                     *       "status": 404,
+                     *       "detail": "요청한 여행이 없거나 접근할 수 없습니다.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "TRIP_NOT_FOUND",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            /** @description 여행 revision 또는 멱등성 충돌 */
+            409: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/trip-version-conflict",
+                     *       "title": "여행이 이미 변경되었습니다",
+                     *       "status": 409,
+                     *       "detail": "최신 여행과 ETag를 조회한 뒤 다시 수정해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "TRIP_VERSION_CONFLICT",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            /** @description Day 또는 장소 조건 위반 */
+            422: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/trip-constraint-violation",
+                     *       "title": "여행 조건을 처리할 수 없습니다",
+                     *       "status": 422,
+                     *       "detail": "여행은 1일부터 30일까지이며 날짜와 교통 우선순위가 일관되어야 합니다.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "TRIP_CONSTRAINT_VIOLATION",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            500: components["responses"]["InternalServerProblem"];
+            /** @description 저장소 사용 불가 */
+            503: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/trip-data-unavailable",
+                     *       "title": "여행 데이터를 사용할 수 없습니다",
+                     *       "status": 503,
+                     *       "detail": "잠시 후 다시 시도해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "TRIP_DATA_UNAVAILABLE",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+        };
+    };
     tripPlacePreferencesUpdate: {
         parameters: {
             query?: never;
             header: {
+                /**
+                 * @description 같은 키·본문 재시도는 원래 응답과 ETag를 재생합니다. 키 없는 기존 호출도 지원합니다.
+                 * @example 53000000-0000-4000-8000-000000000001
+                 */
+                "Idempotency-Key"?: string;
                 /**
                  * @description 직전 여행 상세 응답의 strong ETag를 큰따옴표까지 그대로 전달합니다.
                  * @example "trip-44000000-0000-4000-8000-000000000044-r1"
@@ -2475,13 +2920,15 @@ export interface operations {
                  *           "placeId": "48000000-0000-4000-8000-000000000010",
                  *           "type": "must_visit",
                  *           "targetDayNo": 2,
-                 *           "priority": 90
+                 *           "priority": 90,
+                 *           "requestedStayMinutes": 90
                  *         },
                  *         {
                  *           "placeId": "48000000-0000-4000-8000-000000000011",
                  *           "type": "avoid",
                  *           "targetDayNo": null,
-                 *           "priority": 10
+                 *           "priority": 10,
+                 *           "requestedStayMinutes": null
                  *         }
                  *       ]
                  *     }
@@ -2493,6 +2940,7 @@ export interface operations {
             /** @description OK */
             200: {
                 headers: {
+                    "Idempotency-Replayed": components["headers"]["Idempotency-Replayed"];
                     ETag: components["headers"]["ETag"];
                     "X-Trace-Id": components["headers"]["TraceId"];
                     [name: string]: unknown;
@@ -2511,13 +2959,15 @@ export interface operations {
                      *           "placeId": "48000000-0000-4000-8000-000000000010",
                      *           "type": "must_visit",
                      *           "targetDayNo": 2,
-                     *           "priority": 90
+                     *           "priority": 90,
+                     *           "requestedStayMinutes": 90
                      *         },
                      *         {
                      *           "placeId": "48000000-0000-4000-8000-000000000011",
                      *           "type": "avoid",
                      *           "targetDayNo": null,
-                     *           "priority": 10
+                     *           "priority": 10,
+                     *           "requestedStayMinutes": null
                      *         }
                      *       ]
                      *     }
@@ -2560,6 +3010,8 @@ export interface operations {
             409: {
                 headers: {
                     "X-Trace-Id": components["headers"]["TraceId"];
+                    /** @description 동일 payload가 처리 중인 IDEMPOTENCY_KEY_REUSED 응답에만 재시도 대기 초를 제공합니다. */
+                    "Retry-After"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -2668,6 +3120,11 @@ export interface operations {
                      *         "departure": null
                      *       },
                      *       "accommodations": [],
+                     *       "placePreferences": [],
+                     *       "plannerConditions": {
+                     *         "dayAnchors": [],
+                     *         "styleCodes": []
+                     *       },
                      *       "transportModes": [
                      *         {
                      *           "mode": "public_transit",
@@ -3683,6 +4140,11 @@ export interface operations {
                      *         "departure": null
                      *       },
                      *       "accommodations": [],
+                     *       "placePreferences": [],
+                     *       "plannerConditions": {
+                     *         "dayAnchors": [],
+                     *         "styleCodes": []
+                     *       },
                      *       "transportModes": [
                      *         {
                      *           "mode": "public_transit",
@@ -4177,6 +4639,455 @@ export interface operations {
                      *       "detail": "요청을 처리하는 중 내부 오류가 발생했습니다.",
                      *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
                      *       "code": "INTERNAL_SERVER_ERROR",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+        };
+    };
+    createScheduleGeneration: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description 직전 여행 aggregate의 strong ETag
+                 * @example "trip-44000000-0000-4000-8000-000000000044-r1"
+                 */
+                "If-Match": string;
+                /**
+                 * @description 24시간 재시도 키; printable ASCII 1~128자
+                 * @example day-window-save-239
+                 */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /**
+                 * @description tripId 요청 조건
+                 * @example 44000000-0000-4000-8000-000000000044
+                 */
+                tripId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "targetDayId": "44000000-0000-4000-8001-000000000044",
+                 *       "expectedActiveScheduleVersionId": null,
+                 *       "candidateCount": 3
+                 *     }
+                 */
+                "application/json": components["schemas"]["GenerationCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description 생성 요청 접수 */
+            202: {
+                headers: {
+                    "Idempotency-Replayed": components["headers"]["Idempotency-Replayed"];
+                    /**
+                     * @description queued 또는 running 상태에서만 제공하는 polling 대기 초
+                     * @example 2
+                     */
+                    "Retry-After"?: number;
+                    Location: components["headers"]["Location"];
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "contractVersion": "1.0.0",
+                     *       "runId": "53000000-0000-4000-8000-000000000001",
+                     *       "status": "queued",
+                     *       "pollUrl": "/api/v1/trips/44000000-0000-4000-8000-000000000044/schedule-generations/53000000-0000-4000-8000-000000000001",
+                     *       "commandInputHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                     *       "acceptedAt": "2026-09-10T09:00:00+09:00"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["GenerationAcceptedResponse"];
+                };
+            };
+            /** @description 요청 또는 필수 헤더 오류 */
+            400: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/invalid-async-run-request",
+                     *       "title": "비동기 요청이 올바르지 않습니다",
+                     *       "status": 400,
+                     *       "detail": "요청 필드와 형식을 확인해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "INVALID_ASYNC_RUN_REQUEST",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            /** @description 인증 필요 */
+            401: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/authentication-required",
+                     *       "title": "인증이 필요합니다",
+                     *       "status": 401,
+                     *       "detail": "로그인 후 다시 요청해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "AUTHENTICATION_REQUIRED",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            403: components["responses"]["AccessDeniedProblem"];
+            /** @description 소유한 여행 없음 */
+            404: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/trip-not-found",
+                     *       "title": "여행을 찾을 수 없습니다",
+                     *       "status": 404,
+                     *       "detail": "요청한 여행을 찾을 수 없습니다.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "TRIP_NOT_FOUND",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            /** @description 버전, 멱등성 또는 진행 중 작업 충돌 */
+            409: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/active-run-conflict",
+                     *       "title": "진행 중인 계산이 있습니다",
+                     *       "status": 409,
+                     *       "detail": "기존 계산이 끝난 뒤 다시 요청해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "ACTIVE_RUN_CONFLICT",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            /** @description 생성 조건 불완전 */
+            422: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/generation-input-constraint-violation",
+                     *       "title": "일정 생성 조건을 사용할 수 없습니다",
+                     *       "status": 422,
+                     *       "detail": "여행 기간과 생성 조건을 확인해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "GENERATION_INPUT_CONSTRAINT_VIOLATION",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            /** @description 요청 한도 초과 */
+            429: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.example/problems/too-many-requests",
+                     *       "title": "요청이 너무 많습니다.",
+                     *       "status": 429,
+                     *       "detail": "잠시 후 다시 시도해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "TOO_MANY_REQUESTS",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            500: components["responses"]["InternalServerProblem"];
+            /** @description 접수 사용 불가 */
+            503: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/async-intake-unavailable",
+                     *       "title": "계산 요청을 접수할 수 없습니다",
+                     *       "status": 503,
+                     *       "detail": "요청을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "ASYNC_INTAKE_UNAVAILABLE",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+        };
+    };
+    applyScheduleGenerationCandidate: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description 직전 여행 aggregate의 strong ETag
+                 * @example "trip-44000000-0000-4000-8000-000000000044-r1"
+                 */
+                "If-Match": string;
+                /**
+                 * @description 24시간 재시도 키; printable ASCII 1~128자
+                 * @example day-window-save-239
+                 */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /**
+                 * @description tripId 요청 조건
+                 * @example 44000000-0000-4000-8000-000000000044
+                 */
+                tripId: string;
+                /**
+                 * @description runId 요청 조건
+                 * @example 53000000-0000-4000-8000-000000000001
+                 */
+                runId: string;
+                /**
+                 * @description candidateId 요청 조건
+                 * @example 53000000-0000-4000-8000-000000000002
+                 */
+                candidateId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "expectedActiveScheduleVersionId": null
+                 *     }
+                 */
+                "application/json": components["schemas"]["ApplyCandidateRequest"];
+            };
+        };
+        responses: {
+            /** @description 선택 후보 적용 또는 멱등 응답 재생 */
+            200: {
+                headers: {
+                    "Idempotency-Replayed": components["headers"]["Idempotency-Replayed"];
+                    ETag: components["headers"]["ETag"];
+                    Location: components["headers"]["Location"];
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "contractVersion": "1.0.0",
+                     *       "tripId": "44000000-0000-4000-8000-000000000044",
+                     *       "runId": "53000000-0000-4000-8000-000000000001",
+                     *       "candidateId": "53000000-0000-4000-8000-000000000002",
+                     *       "previousScheduleVersionId": null,
+                     *       "activeScheduleVersionId": "53000000-0000-4000-8000-000000000003",
+                     *       "appliedAt": "2026-09-10T09:05:00+09:00"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ApplyCandidateResponse"];
+                };
+            };
+            /** @description 경로·본문·필수 헤더 오류 */
+            400: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/invalid-async-run-request",
+                     *       "title": "비동기 요청이 올바르지 않습니다",
+                     *       "status": 400,
+                     *       "detail": "요청 필드와 형식을 확인해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "INVALID_ASYNC_RUN_REQUEST",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            /** @description 인증 필요 */
+            401: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/authentication-required",
+                     *       "title": "인증이 필요합니다",
+                     *       "status": 401,
+                     *       "detail": "로그인 후 다시 요청해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "AUTHENTICATION_REQUIRED",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            403: components["responses"]["AccessDeniedProblem"];
+            /** @description 소유한 여행·작업·후보 없음 */
+            404: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/candidate-not-found",
+                     *       "title": "후보를 찾을 수 없습니다",
+                     *       "status": 404,
+                     *       "detail": "요청한 후보를 찾을 수 없습니다.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "CANDIDATE_NOT_FOUND",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            /** @description 버전·멱등성·후보 상태 충돌 */
+            409: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/candidate-stale",
+                     *       "title": "후보의 여행 조건이 변경되었습니다",
+                     *       "status": 409,
+                     *       "detail": "최신 조건으로 다시 생성해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "CANDIDATE_STALE",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            /** @description 후보 만료 또는 근거 복원 불가 */
+            410: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/candidate-expired",
+                     *       "title": "후보 유효기간이 지났습니다",
+                     *       "status": 410,
+                     *       "detail": "여행 조건을 확인한 뒤 다시 생성해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "CANDIDATE_EXPIRED",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            /** @description 적용할 수 없는 후보 */
+            422: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/candidate-not-applicable",
+                     *       "title": "후보를 적용할 수 없습니다",
+                     *       "status": 422,
+                     *       "detail": "현재 여행과 후보 상태를 확인해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "CANDIDATE_NOT_APPLICABLE",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            500: components["responses"]["InternalServerProblem"];
+            /** @description 결과 저장소 일시 장애 */
+            503: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/async-result-temporarily-unavailable",
+                     *       "title": "생성 결과를 조회할 수 없습니다",
+                     *       "status": 503,
+                     *       "detail": "잠시 후 같은 작업을 다시 조회해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "ASYNC_RESULT_TEMPORARILY_UNAVAILABLE",
                      *       "traceId": "0123456789abcdef0123456789abcdef",
                      *       "fieldErrors": []
                      *     }
@@ -4710,6 +5621,11 @@ export interface operations {
                      *         "departure": null
                      *       },
                      *       "accommodations": [],
+                     *       "placePreferences": [],
+                     *       "plannerConditions": {
+                     *         "dayAnchors": [],
+                     *         "styleCodes": []
+                     *       },
                      *       "transportModes": [
                      *         {
                      *           "mode": "public_transit",
@@ -5051,6 +5967,11 @@ export interface operations {
                      *         "departure": null
                      *       },
                      *       "accommodations": [],
+                     *       "placePreferences": [],
+                     *       "plannerConditions": {
+                     *         "dayAnchors": [],
+                     *         "styleCodes": []
+                     *       },
                      *       "transportModes": [
                      *         {
                      *           "mode": "public_transit",
@@ -6882,7 +7803,8 @@ export interface operations {
                      *               "bufferAfterMinutes": 0,
                      *               "required": true,
                      *               "memo": null,
-                     *               "progress": null
+                     *               "progress": null,
+                     *               "boundaryRole": null
                      *             }
                      *           ],
                      *           "legs": []
@@ -6960,7 +7882,339 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ApiProblemDetails"];
                 };
             };
+            /** @description CANDIDATE_EXPIRED 오류 */
+            410: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/candidate-expired",
+                     *       "title": "후보 유효기간이 지났습니다",
+                     *       "status": 410,
+                     *       "detail": "여행 조건을 확인한 뒤 다시 생성해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "CANDIDATE_EXPIRED",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
             500: components["responses"]["InternalServerProblem"];
+        };
+    };
+    tripScheduleVersionRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description tripId 요청 조건
+                 * @example 44000000-0000-4000-8000-000000000044
+                 */
+                tripId: string;
+                /**
+                 * @description 같은 여행에 속한 lowercase canonical UUID 일정 버전. 생략하면 active 버전을 조회합니다.
+                 * @example 49000000-0000-4000-8000-000000000002
+                 */
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "tripId": "49000000-0000-4000-8000-000000000001",
+                     *       "scheduleVersion": {
+                     *         "scheduleVersionId": "49000000-0000-4000-8000-000000000002",
+                     *         "versionNo": 1,
+                     *         "status": "active",
+                     *         "sourceType": "initial",
+                     *         "baseScheduleVersionId": null,
+                     *         "score": 81,
+                     *         "feasibilityStale": false
+                     *       },
+                     *       "days": [
+                     *         {
+                     *           "dayId": "49000000-0000-4000-8000-000000000003",
+                     *           "dayNo": 1,
+                     *           "date": "2026-09-01",
+                     *           "items": [
+                     *             {
+                     *               "itemId": "49000000-0000-4000-8000-000000000004",
+                     *               "sequenceNo": 1,
+                     *               "itemType": "custom",
+                     *               "placeId": null,
+                     *               "title": "공항 도착",
+                     *               "plannedStartAt": "2026-09-01T09:00:00+09:00",
+                     *               "plannedEndAt": "2026-09-01T10:00:00+09:00",
+                     *               "stayMinutes": 60,
+                     *               "bufferAfterMinutes": 0,
+                     *               "required": true,
+                     *               "memo": null,
+                     *               "progress": null,
+                     *               "boundaryRole": null
+                     *             }
+                     *           ],
+                     *           "legs": []
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ScheduleResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/invalid-request",
+                     *       "title": "요청 값이 올바르지 않습니다",
+                     *       "status": 400,
+                     *       "detail": "여행 제목, 날짜, timezone과 교통 우선순위를 확인해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "INVALID_REQUEST",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/authentication-required",
+                     *       "title": "인증이 필요합니다",
+                     *       "status": 401,
+                     *       "detail": "로그인 후 다시 요청해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "AUTHENTICATION_REQUIRED",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            403: components["responses"]["AccessDeniedProblem"];
+            /** @description Not Found */
+            404: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/schedule-version-not-found",
+                     *       "title": "일정 버전을 찾을 수 없습니다",
+                     *       "status": 404,
+                     *       "detail": "요청한 일정 버전이 없거나 해당 여행에 속하지 않습니다.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "SCHEDULE_VERSION_NOT_FOUND",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            /** @description CANDIDATE_EXPIRED 오류 */
+            410: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/candidate-expired",
+                     *       "title": "후보 유효기간이 지났습니다",
+                     *       "status": 410,
+                     *       "detail": "여행 조건을 확인한 뒤 다시 생성해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "CANDIDATE_EXPIRED",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            500: components["responses"]["InternalServerProblem"];
+        };
+    };
+    getScheduleGeneration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description tripId 요청 조건
+                 * @example 44000000-0000-4000-8000-000000000044
+                 */
+                tripId: string;
+                /**
+                 * @description runId 요청 조건
+                 * @example 53000000-0000-4000-8000-000000000001
+                 */
+                runId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 저장된 생성 상태. Retry-After는 queued/running에서만 반환합니다. */
+            200: {
+                headers: {
+                    /**
+                     * @description queued 또는 running 상태에서만 제공하는 polling 대기 초
+                     * @example 2
+                     */
+                    "Retry-After"?: number;
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerationRunStatus"];
+                };
+            };
+            /** @description 경로, query 또는 본문 오류 */
+            400: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/invalid-path-parameter",
+                     *       "title": "경로 값이 올바르지 않습니다",
+                     *       "status": 400,
+                     *       "detail": "요청 경로의 식별자를 올바른 UUID로 입력해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "INVALID_PATH_PARAMETER",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            /** @description 인증 필요 */
+            401: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/authentication-required",
+                     *       "title": "인증이 필요합니다",
+                     *       "status": 401,
+                     *       "detail": "로그인 후 다시 요청해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "AUTHENTICATION_REQUIRED",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            403: components["responses"]["AccessDeniedProblem"];
+            /** @description 소유한 생성 작업 없음 */
+            404: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/async-run-not-found",
+                     *       "title": "생성 작업을 찾을 수 없습니다",
+                     *       "status": 404,
+                     *       "detail": "요청한 생성 작업을 찾을 수 없습니다.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "ASYNC_RUN_NOT_FOUND",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            /** @description 결과 조회 보존 기한 만료 */
+            410: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/async-result-expired",
+                     *       "title": "생성 결과 조회 기간이 지났습니다",
+                     *       "status": 410,
+                     *       "detail": "여행 조건을 확인한 뒤 다시 생성해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "ASYNC_RESULT_EXPIRED",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
+            500: components["responses"]["InternalServerProblem"];
+            /** @description 저장 결과 조회 불가 */
+            503: {
+                headers: {
+                    "X-Trace-Id": components["headers"]["TraceId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "https://api.timing-jeju.com/problems/async-result-temporarily-unavailable",
+                     *       "title": "생성 결과를 조회할 수 없습니다",
+                     *       "status": 503,
+                     *       "detail": "잠시 후 같은 작업을 다시 조회해 주세요.",
+                     *       "instance": "urn:timing-jeju:problem:0123456789abcdef0123456789abcdef",
+                     *       "code": "ASYNC_RESULT_TEMPORARILY_UNAVAILABLE",
+                     *       "traceId": "0123456789abcdef0123456789abcdef",
+                     *       "fieldErrors": []
+                     *     }
+                     */
+                    "application/problem+json": components["schemas"]["ApiProblemDetails"];
+                };
+            };
         };
     };
     placesList: {
