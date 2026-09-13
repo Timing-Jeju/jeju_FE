@@ -1,4 +1,4 @@
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Fragment, useCallback, useMemo, useState } from 'react';
 import {
   Alert,
@@ -36,6 +36,10 @@ import { useScheduleStore, type SchedulePlace } from '@/store/useScheduleStore';
 import { useTripStore } from '@/store/useTripStore';
 import { datesBetween } from '@/utils/date';
 import { PLANNER_UNAVAILABLE_MESSAGE } from '@/services/plannerAvailability';
+import {
+  beginGeneration,
+  generationBlockReason,
+} from '@/services/generationFlow';
 import { useTripPersistence } from '@/hooks/useTripPersistence';
 import { useSchedulePersistence } from '@/hooks/useSchedulePersistence';
 
@@ -66,6 +70,7 @@ const PLACE_MENU = [
 
 export default function CalendarScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ day?: string }>();
   const { hydrateLatestTrip } = useTripPersistence();
   const {
     hydrateSchedule,
@@ -92,7 +97,19 @@ export default function CalendarScreen() {
     (state) => state.pendingMutationRecovery,
   );
 
-  const [selectedDay, setSelectedDay] = useState(1);
+  const routedDay = Number(params.day);
+  const initialDay =
+    Number.isInteger(routedDay) && routedDay >= 1 && routedDay <= 30
+      ? routedDay
+      : 1;
+  const [selection, setSelection] = useState({
+    route: params.day,
+    day: initialDay,
+  });
+  const selectedDay =
+    selection.route === params.day ? selection.day : initialDay;
+  const setSelectedDay = (day: number) =>
+    setSelection({ route: params.day, day });
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [reorderOpen, setReorderOpen] = useState(false);
   const [stayTarget, setStayTarget] = useState<SchedulePlace | null>(null);
@@ -194,8 +211,24 @@ export default function CalendarScreen() {
     );
   };
 
-  const handleGenerate = () => {
-    Alert.alert('일정 서비스 준비 중', PLANNER_UNAVAILABLE_MESSAGE);
+  const handleGenerate = async () => {
+    const reason = generationBlockReason(selectedDay);
+    if (reason) {
+      Alert.alert('일정 생성 안내', reason);
+      return;
+    }
+    try {
+      await beginGeneration(selectedDay);
+      router.push({
+        pathname: '/schedule-loading',
+        params: { day: String(selectedDay) },
+      });
+    } catch (error) {
+      Alert.alert(
+        '일정 생성 안내',
+        error instanceof Error ? error.message : PLANNER_UNAVAILABLE_MESSAGE,
+      );
+    }
   };
 
   const handleAddPlace = (key: string) => {

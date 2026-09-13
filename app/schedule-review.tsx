@@ -1,4 +1,10 @@
 import { PLANNER_AVAILABLE } from '@/services/plannerAvailability';
+import {
+  useGenerationStore,
+  selectGenerationCandidate,
+  applyGeneration,
+} from '@/services/generationFlow';
+import { strategyLabels } from '@/services/api/generations';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Fragment, useMemo, useState } from 'react';
 import {
@@ -319,6 +325,10 @@ function ScheduleReviewScreenContent() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [fillTarget, setFillTarget] = useState<RouteLeg | null>(null);
+  const generation = useGenerationStore();
+  const isCandidate =
+    generation.journal?.dayNo === selectedDay &&
+    generation.run?.result?.outcome === 'success';
 
   const dayCount = useMemo(
     () =>
@@ -328,7 +338,9 @@ function ScheduleReviewScreenContent() {
     [startDate, endDate],
   );
 
-  const candidateReview = reviews[selectedDay];
+  const candidateReview = isCandidate
+    ? generation.review
+    : reviews[selectedDay];
   const review =
     PLANNER_AVAILABLE || candidateReview?.serverBacked
       ? candidateReview
@@ -338,7 +350,24 @@ function ScheduleReviewScreenContent() {
   // 마지막 날에만 확정하고, 그 전에는 다음 날 검토로 넘어간다
   const isLastDay = selectedDay >= dayCount;
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
+    if (isCandidate) {
+      try {
+        const day = await applyGeneration();
+        router.replace({
+          pathname: '/(tabs)/calendar',
+          params: { day: String(day) },
+        });
+      } catch (error) {
+        Alert.alert(
+          '일정 적용 안내',
+          error instanceof Error
+            ? error.message
+            : '적용 결과를 확인하지 못했어요.',
+        );
+      }
+      return;
+    }
     if (review?.serverBacked) {
       Alert.alert(
         '준비 중이에요',
@@ -372,6 +401,15 @@ function ScheduleReviewScreenContent() {
 
   const handleMenuSelect = (key: string) => {
     setMenuTop(null);
+    if (isCandidate) {
+      void selectGenerationCandidate(key).catch((error) =>
+        Alert.alert(
+          '후보 선택 안내',
+          error instanceof Error ? error.message : '후보를 확인하지 못했어요.',
+        ),
+      );
+      return;
+    }
     if (review?.serverBacked && (key === 'reorder' || key === 'remove')) {
       Alert.alert(
         '준비 중이에요',
@@ -432,13 +470,25 @@ function ScheduleReviewScreenContent() {
           dayCount={dayCount}
           selectedDay={selectedDay}
           onSelectDay={(day) => {
+            if (isCandidate) {
+              Alert.alert(
+                '일정 검토',
+                '현재 후보를 적용한 뒤 다음 날짜로 이동해 주세요.',
+              );
+              return;
+            }
             setSelectedDay(day);
             setExpandedId(null);
           }}
         />
 
         <View style={styles.summaryBox}>
-          <Text style={styles.summary}>{review.summary}</Text>
+          <Text style={styles.summary}>
+            {isCandidate && generation.candidate
+              ? `${strategyLabels[generation.candidate.strategy]} · `
+              : ''}
+            {review.summary}
+          </Text>
         </View>
 
         <View style={styles.legSection}>
@@ -464,13 +514,27 @@ function ScheduleReviewScreenContent() {
               onToggle={() =>
                 setExpandedId((prev) => (prev === leg.id ? null : leg.id))
               }
-              onFillGap={() => setFillTarget(leg)}
-              onEdit={() =>
+              onFillGap={() =>
+                isCandidate
+                  ? Alert.alert(
+                      '후보 검토',
+                      '후보는 적용한 뒤 편집할 수 있어요.',
+                    )
+                  : setFillTarget(leg)
+              }
+              onEdit={() => {
+                if (isCandidate) {
+                  Alert.alert(
+                    '후보 검토',
+                    '후보는 적용한 뒤 편집할 수 있어요.',
+                  );
+                  return;
+                }
                 router.push({
                   pathname: '/schedule-leg',
                   params: { day: String(selectedDay), legId: leg.id },
-                })
-              }
+                });
+              }}
             />
           ))}
         </View>
@@ -487,14 +551,21 @@ function ScheduleReviewScreenContent() {
                 ? '확정하기'
                 : `${selectedDay + 1}일차로 넘어가기`
           }
-          disabled={legs.length === 0}
+          disabled={legs.length === 0 || (isCandidate && generation.busy)}
           onPress={handleConfirm}
         />
       </View>
 
       <PopoverMenu
         visible={menuTop !== null}
-        items={REVIEW_MENU}
+        items={
+          isCandidate
+            ? (generation.run?.result?.candidates ?? []).map((candidate) => ({
+                key: candidate.candidateId,
+                label: strategyLabels[candidate.strategy],
+              }))
+            : REVIEW_MENU
+        }
         anchor={{ top: menuTop ?? 0, right: grid.pageMargin }}
         onSelect={handleMenuSelect}
         onClose={() => setMenuTop(null)}
