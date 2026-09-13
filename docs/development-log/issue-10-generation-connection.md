@@ -1,5 +1,11 @@
 # #10 기존 화면의 AI 생성·검토·적용 연결
 
+## 2026-09-14 nullable 승차·대기 계약 인계
+
+- BE 1110049686e2d9408b9e107d4ff2f5f26a430247의 OpenAPI와 runtime manifest를 가져와 source checksum·coverage·generated type을 갱신했다. 미커밋 source 표시를 제거하고 실제 feature branch/commit을 고정했다.
+- First RED: ScheduleLeg waitMinutes/rideMinutes가 integer만 허용하여 신규 null 계약 테스트 실패. 생성 타입을 number | null로 갱신한 뒤 계약 테스트5개 PASS, typecheck/api:check PASS. 전체45 suites/376 tests PASS(3.652초).
+- app/components 수정 없음. BE 전체 품질 게이트와 정식 승인/PR은 별도 진행 중이며 배포·실기기 통합 성공으로 표시하지 않는다.
+
 ## 2026-09-14 수동 일정과 AI 생성 이력 구분
 
 - 최종 후속 검증: reviewer가 적용 후 서로 다른 버전/이력 누락 재조회에서도 journal을 삭제하는 문제를 지적했다. 두 RED를 확인하고 Trip/일정 여행 ID, 예상 적용 버전, active 상태, 날짜별 boolean을 store 갱신·journal 삭제 전에 검사하도록 수정했다. 오류 시 같은 키의 복구 기록을 유지한다. reviewer 재검토에서 기존 finding 해소 및 신규 차단0 확인(부분 검토, 정식 승인 아님).

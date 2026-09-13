@@ -11,9 +11,21 @@ const read = (path) => readFileSync(resolve(root, path));
 const json = (path) => JSON.parse(read(path).toString('utf8'));
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 
+test('승차와 대기의 필수 필드는 초 단위 값에 대해 null을 허용한다', () => {
+  const leg = json('contracts/backend.openapi.json').components.schemas
+    .ScheduleLeg;
+  for (const field of ['waitMinutes', 'rideMinutes']) {
+    expect(leg.required).toContain(field);
+    expect(leg.properties[field].type).toEqual(['integer', 'null']);
+    expect(read('services/generated/backend.d.ts').toString()).toContain(
+      `${field}: number | null;`,
+    );
+  }
+});
+
 test('OpenAPI와 runtime manifest는 검증한 backend SHA/checksum에 고정된다', () => {
   const source = json('contracts/backend.source.json');
-  expect(source.sourceCommit).toBe('36b507735e437cf0a2ff5b3965d0917f8108f011');
+  expect(source.sourceCommit).toBe('1110049686e2d9408b9e107d4ff2f5f26a430247');
   expect(source.sourceBranch).toBe('feat/53-generation-run-intake');
   expect(sha256(read('contracts/backend.openapi.json'))).toBe(
     source.sourceOpenApiSha256,

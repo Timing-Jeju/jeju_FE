@@ -1451,7 +1451,7 @@ export interface components {
             /** Format: int32 */
             size?: number;
             hasNext?: boolean;
-            nextCursor?: null | string;
+            nextCursor?: string | null;
         };
         TripsListResponse: {
             items: components["schemas"]["TripSummary"][];
@@ -1516,10 +1516,16 @@ export interface components {
             plannedArrivalAt: string;
             /** Format: int32 */
             walkMinutes: number;
-            /** Format: int32 */
-            waitMinutes: number;
-            /** Format: int32 */
-            rideMinutes: number;
+            /**
+             * Format: int32
+             * @description 정수 분으로 정확히 표현할 수 없는 초 단위 대기는 null입니다.
+             */
+            waitMinutes: number | null;
+            /**
+             * Format: int32
+             * @description 정수 분으로 정확히 표현할 수 없는 초 단위 승차는 null입니다.
+             */
+            rideMinutes: number | null;
             /** Format: int32 */
             transferMinutes: number;
             /**
@@ -1629,7 +1635,7 @@ export interface components {
             /** Format: int32 */
             size?: number;
             hasNext?: boolean;
-            nextCursor?: null | string;
+            nextCursor?: string | null;
         };
         PlaceDataFreshness: {
             provider?: string;

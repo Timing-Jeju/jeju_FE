@@ -1,8 +1,8 @@
 {
   "repository": "Timing-Jeju/jeju_BE",
   "sourceBranch": "feat/53-generation-run-intake",
-  "sourceCommit": "36b507735e437cf0a2ff5b3965d0917f8108f011",
-  "sourceOpenApiSha256": "20acfb2b06d75573b932f1234978f9de8d119fb4491072eadba355b61c171770",
+  "sourceCommit": "1110049686e2d9408b9e107d4ff2f5f26a430247",
+  "sourceOpenApiSha256": "ede28e659feb37ffd2379e084f1197cbec64800be6d86173fa41b7dc4d3ed4cb",
   "runtimeManifestSha256": "3e6eae009f83571fd943af704941f4f4aab596ea9cd4cbe98ed8846d3992c9f3",
   "operations": [
     "DELETE /api/v1/me/push-devices/{deviceId}",
