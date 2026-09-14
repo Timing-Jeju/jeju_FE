@@ -152,13 +152,20 @@ Trip If-Match, 정확히 세 전략, 후보 URL을 따른다. 이 BE 계약과 �
 - Red: schedule persistence 49개 중 2개 실패, matrix 6개 중 1개 실패. Green: schedule/generation/trip persistence/matrix 4 suites, 120 tests PASS. typecheck, 대상 ESLint, api:check, diff-check PASS. UI/스타일·위치 필드·planner flag는 변경하지 않았다.
 - backend source commit의 원격 도달 가능성은 FE 코드로 해결할 수 없다. `contracts/backend.source.json`과 backend SHA는 수정하지 않았으며, 실제 backend source push 후 provenance를 다시 검증해야 한다.
 
+### PR #26 operation 단위 API 상태 재감사 (2026-09-14)
+
+- 43개 runtime operation을 matrix와 coverage 사이에서 전수 비교하는 테스트를 먼저 추가했다. Red에서 matrix는 31 connected/12 deferred로 과대계상했고, trip DELETE 상태와 `sourceFrontendCommit`도 실제 HEAD와 달라 8개 테스트 중 3개가 실패했다.
+- 실제 화면 invocation을 다시 추적해 `DELETE /api/v1/trips/{tripId}`와 notification preference GET/PATCH를 wrapper/controller-only `deferred`로 분리했다. 반대로 실제 화면 orchestration이 있는 17개 operation의 stale coverage 상태는 `connected`로 바로잡았다.
+- matrix와 coverage는 이제 43개 전부 일치하며 28 connected/15 deferred다. 생성 문서는 generation operation을 계속 표에 포함하고, `PLANNER_AVAILABLE=false` 때문에 호출되지 않는다는 점과 일반 deferred의 의미를 모순 없이 설명한다.
+- `sourceFrontendCommit`은 이 PR의 재감사 기준 HEAD `527579307490c8dfb744bd2cae5f3459bcd3d12e`로 갱신했다. `contracts/backend.source.json`은 변경하지 않았고, 기록된 backend commit의 원격 provenance는 실제 backend source push 전까지 외부 blocker로 남는다.
+
 기존 58개 파일의 StyleSheet는 ui:check로 동일함을 확인한다. 기존 JSX 컨테이너·이미지·버튼 구성도 유지했다.
 실제 기기 화면 비교와 인증된 BE staging E2E는 수행하지 않았다.
 
 PLANNER_AVAILABLE=false를 유지한다. #89/#53/#79/#95/#54 런타임과 #216 저장 허용 근거를
 검증한 뒤 별도 변경으로 활성화해야 한다. 이 PR을 전체 staging 생성·적용 완료로 표시하지 않는다.
 planner-conditions/장소 선호/도보 저장 계약은 새 공개 OpenAPI에 포함됐다. 도보 저장·복원과
-planner 조건·항공 이벤트 저장 orchestration은 연결됐지만 장소 선호의 화면 저장 orchestration,
+planner 조건·항공 이벤트·장소 선호 저장 orchestration은 연결됐지만 staging receipt 검증,
 서버 일별 적용 이력 및 evidence 위험 등급의 실제 화면 반영은 별도 완료 검증이 필요하다.
 첫 미완료 Day는 현재 활성 일정의 날짜별 항목 유무로 선택하며 최종 순차 생성 판정은 BE가 검증해야 한다.
 재시작 복구는 로그인 및 여행 복원 후 동일 Day의 기존 생성 버튼에서 시작한다.

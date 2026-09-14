@@ -19,28 +19,28 @@
       "module": "profile.ts",
       "export": "fetchProfile",
       "wrapper": "connected",
-      "screen": "deferred",
+      "screen": "connected",
       "prerequisite": "Supabase session"
     },
     "PATCH /api/v1/me": {
       "module": "profile.ts",
       "export": "updateProfile",
       "wrapper": "connected",
-      "screen": "deferred",
+      "screen": "connected",
       "prerequisite": "Supabase session"
     },
     "GET /api/v1/legal-documents": {
       "module": "legal.ts",
       "export": "fetchLegalDocuments",
       "wrapper": "connected",
-      "screen": "deferred",
+      "screen": "connected",
       "prerequisite": "none; optional session"
     },
     "PUT /api/v1/me/consents": {
       "module": "legal.ts",
       "export": "updateLegalConsents",
       "wrapper": "connected",
-      "screen": "deferred",
+      "screen": "connected",
       "prerequisite": "Supabase session"
     },
     "GET /api/v1/places": {
@@ -61,7 +61,7 @@
       "module": "weather.ts",
       "export": "fetchWeatherForecast",
       "wrapper": "connected",
-      "screen": "deferred",
+      "screen": "connected",
       "prerequisite": "one public selector; optional session"
     },
     "GET /api/v1/me/saved-places": {
@@ -96,28 +96,28 @@
       "module": "trips.ts",
       "export": "fetchTrips",
       "wrapper": "connected",
-      "screen": "deferred",
+      "screen": "connected",
       "prerequisite": "Supabase session"
     },
     "POST /api/v1/trips": {
       "module": "trips.ts",
       "export": "createTrip",
       "wrapper": "connected",
-      "screen": "deferred",
+      "screen": "connected",
       "prerequisite": "session and Idempotency-Key"
     },
     "GET /api/v1/trips/{tripId}": {
       "module": "trips.ts",
       "export": "fetchTrip",
       "wrapper": "connected",
-      "screen": "deferred",
+      "screen": "connected",
       "prerequisite": "Supabase session"
     },
     "PATCH /api/v1/trips/{tripId}": {
       "module": "trips.ts",
       "export": "updateTrip",
       "wrapper": "connected",
-      "screen": "deferred",
+      "screen": "connected",
       "prerequisite": "session and latest trip ETag"
     },
     "DELETE /api/v1/trips/{tripId}": {
@@ -145,42 +145,42 @@
       "module": "schedule.ts",
       "export": "fetchSchedule",
       "wrapper": "connected",
-      "screen": "deferred",
+      "screen": "connected",
       "prerequisite": "existing Spring schedule only; no AI generation"
     },
     "POST /api/v1/trips/{tripId}/schedule-items": {
       "module": "scheduleItems.ts",
       "export": "createScheduleItem",
       "wrapper": "connected",
-      "screen": "deferred",
+      "screen": "connected",
       "prerequisite": "session, ETag, schedule version, Idempotency-Key"
     },
     "PATCH /api/v1/trips/{tripId}/schedule-items/{itemId}": {
       "module": "scheduleItems.ts",
       "export": "updateScheduleItem",
       "wrapper": "connected",
-      "screen": "deferred",
+      "screen": "connected",
       "prerequisite": "session, ETag, schedule version, Idempotency-Key"
     },
     "DELETE /api/v1/trips/{tripId}/schedule-items/{itemId}": {
       "module": "scheduleItems.ts",
       "export": "deleteScheduleItem",
       "wrapper": "connected",
-      "screen": "deferred",
+      "screen": "connected",
       "prerequisite": "session, ETag, schedule version, Idempotency-Key"
     },
     "PUT /api/v1/trips/{tripId}/schedule-order": {
       "module": "scheduleItems.ts",
       "export": "reorderSchedule",
       "wrapper": "connected",
-      "screen": "deferred",
+      "screen": "connected",
       "prerequisite": "session, ETag, schedule version, Idempotency-Key"
     },
     "POST /api/v1/trips/{tripId}/schedule-items/{itemId}/move": {
       "module": "scheduleItems.ts",
       "export": "moveScheduleItem",
       "wrapper": "connected",
-      "screen": "deferred",
+      "screen": "connected",
       "prerequisite": "session, ETag, schedule version, Idempotency-Key"
     },
     "POST /api/v1/trips/{tripId}/accommodations": {
@@ -236,14 +236,14 @@
       "module": "push.ts",
       "export": "registerPushDevice",
       "wrapper": "connected",
-      "screen": "deferred",
+      "screen": "connected",
       "prerequisite": "session and platform registration token"
     },
     "DELETE /api/v1/me/push-devices/{deviceId}": {
       "module": "push.ts",
       "export": "deletePushDevice",
       "wrapper": "connected",
-      "screen": "deferred",
+      "screen": "connected",
       "prerequisite": "Supabase session"
     },
     "GET /api/v1/me/notification-preferences": {

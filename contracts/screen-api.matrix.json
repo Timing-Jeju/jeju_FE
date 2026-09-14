@@ -1,5 +1,5 @@
 {
-  "sourceFrontendCommit": "1530d5db614ad7a7e1681e45fd271c69dd2a7b28",
+  "sourceFrontendCommit": "527579307490c8dfb744bd2cae5f3459bcd3d12e",
   "stagingVerification": {
     "serverReadConsistency": "blocked: STAGING_API_BASE_URL and STAGING_ACCESS_TOKEN are missing",
     "appRestartHydration": "blocked: no staging account/session and native or browser runtime were supplied"
@@ -90,7 +90,6 @@
         "POST /api/v1/trips",
         "GET /api/v1/trips/{tripId}",
         "PATCH /api/v1/trips/{tripId}",
-        "DELETE /api/v1/trips/{tripId}",
         "PUT /api/v1/trips/{tripId}/day-activity-windows"
       ],
       "operationEvidence": {
@@ -98,13 +97,21 @@
         "POST /api/v1/trips": "services/tripPersistence.ts#await createTrip(body, attempt.key)",
         "GET /api/v1/trips/{tripId}": "services/tripPersistence.ts#await fetchTrip(list.items[0].tripId)",
         "PATCH /api/v1/trips/{tripId}": "services/tripPersistence.ts#await updateTrip(",
-        "DELETE /api/v1/trips/{tripId}": "services/tripPersistence.ts#await deleteTripApi(tripId)",
         "PUT /api/v1/trips/{tripId}/day-activity-windows": "services/tripPersistence.ts#await replaceDayActivityWindows("
       },
       "callEvidence": "app/trip-conditions.tsx#saveTrip",
       "responseEvidence": "tests/tripPersistence.test.ts#hydrateLatestTrip",
       "errorEvidence": "services/tripPersistence.ts#refreshOnConflict",
       "restartHydration": "app/(tabs)/calendar.tsx#hydrateLatestTrip"
+    },
+    {
+      "surface": "trip deletion wrapper action",
+      "screenState": "deferred",
+      "operations": ["DELETE /api/v1/trips/{tripId}"],
+      "callEvidence": "services/tripPersistence.ts#deleteTrip: removeTrip",
+      "responseEvidence": "tests/tripPersistence.test.ts#여행 삭제는 서버 성공 뒤에만 세션 상태를 비운다",
+      "errorEvidence": "services/tripPersistence.ts#refreshOnConflict",
+      "restartHydration": "blocked: deleteTrip action has no screen invocation"
     },
     {
       "surface": "trip preferences wrapper",
@@ -193,24 +200,32 @@
       "restartHydration": "not-applicable: forecast is refetched from an explicit public selector"
     },
     {
-      "surface": "push device and notification preferences",
+      "surface": "push device lifecycle",
       "screenState": "connected",
       "operations": [
         "PUT /api/v1/me/push-devices/{deviceId}",
-        "DELETE /api/v1/me/push-devices/{deviceId}",
-        "GET /api/v1/me/notification-preferences",
-        "PATCH /api/v1/me/notification-preferences"
+        "DELETE /api/v1/me/push-devices/{deviceId}"
       ],
       "callEvidence": "hooks/usePushRegistration.ts#registerPushDevice",
       "operationEvidence": {
         "PUT /api/v1/me/push-devices/{deviceId}": "hooks/usePushRegistration.ts#register: registerPushDevice",
-        "DELETE /api/v1/me/push-devices/{deviceId}": "hooks/usePushRegistration.ts#remove: deletePushDevice",
-        "GET /api/v1/me/notification-preferences": "services/notificationPreferences.ts#fetch: fetchNotificationPreference",
-        "PATCH /api/v1/me/notification-preferences": "services/notificationPreferences.ts#update: updateNotificationPreference"
+        "DELETE /api/v1/me/push-devices/{deviceId}": "hooks/usePushRegistration.ts#remove: deletePushDevice"
       },
+      "responseEvidence": "tests/pushLifecycle.test.ts#권한 철회와 로그아웃은 반복 가능한 DELETE로 기기를 해제한다",
+      "errorEvidence": "tests/pushLifecycle.test.ts#등록 실패 상태에는 token/device/user 식별자를 보존하지 않는다",
+      "restartHydration": "hooks/usePushRegistration.ts#controller.activate(userId)"
+    },
+    {
+      "surface": "notification preference controller without screen",
+      "screenState": "deferred",
+      "operations": [
+        "GET /api/v1/me/notification-preferences",
+        "PATCH /api/v1/me/notification-preferences"
+      ],
+      "callEvidence": "services/notificationPreferences.ts#createNotificationPreferenceController",
       "responseEvidence": "tests/notificationPreferencesHook.test.ts#useNotificationPreferences",
       "errorEvidence": "services/notificationPreferences.ts#PRECONDITION_FAILED",
-      "restartHydration": "services/notificationPreferences.ts#fetch: fetchNotificationPreference"
+      "restartHydration": "blocked: notification preference hook has no screen invocation"
     },
     {
       "surface": "trip-condition planner inputs",
