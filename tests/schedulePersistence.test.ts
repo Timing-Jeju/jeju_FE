@@ -778,6 +778,146 @@ test.each([place1, place2])(
   },
 );
 
+test('생성 완료 Day가 빈 결과여도 장소 추가는 선호 초안이 아니라 수동 일정 항목으로 저장한다', async () => {
+  const day2 = {
+    ...trip.days[0],
+    dayId: place2,
+    dayNo: 2,
+    date: '2026-09-11',
+  };
+  const twoDayTrip = { ...trip, days: [...trip.days, day2] };
+  const active = {
+    ...schedule(),
+    days: [
+      schedule().days[0],
+      {
+        dayId: day2.dayId,
+        dayNo: 2,
+        date: day2.date,
+        items: [],
+        legs: [],
+        hasGenerationResult: true,
+      },
+    ],
+  } satisfies scheduleApi.TripSchedule;
+  useTripStore.setState({
+    serverTrip: twoDayTrip,
+    dayTimes: {
+      ...useTripStore.getState().dayTimes,
+      '2026-09-11': { start: '10:00', end: '18:00' },
+    },
+  });
+  useScheduleStore.setState({ activeVersionId: version1, places: { 1: [] } });
+  jest.mocked(scheduleApi.fetchSchedule).mockResolvedValue(active);
+  jest.mocked(itemApi.createScheduleItem).mockResolvedValue(mutation);
+
+  await createSchedulePersistenceActions().createPlace(2, {
+    placeId: place2,
+    name: '섭지코지',
+    category: '관광지',
+    address: '',
+    coord: null,
+    stayMinutes: 45,
+    visitType: '선택방문',
+  });
+
+  expect(itemApi.createScheduleItem).toHaveBeenCalledWith(
+    tripId,
+    expect.objectContaining({
+      dayNo: 2,
+      sequenceNo: 1,
+      placeId: place2,
+      plannedStartAt: '2026-09-11T10:00:00+09:00',
+    }),
+    { etag: etag1, expectedActiveScheduleVersionId: version1 },
+    expect.any(String),
+  );
+  expect(tripApi.replaceTripPlacePreferences).not.toHaveBeenCalled();
+});
+
+test('hydration은 생성 완료 flag만으로 빈 Day를 완료 처리하고 수동 Day의 선호 초안은 보존한다', async () => {
+  const day2 = {
+    ...trip.days[0],
+    dayId: place2,
+    dayNo: 2,
+    date: '2026-09-11',
+  };
+  const preferences = [
+    {
+      placeId: place1,
+      type: 'preferred' as const,
+      targetDayNo: 1,
+      priority: 0,
+      requestedStayMinutes: 45,
+    },
+    {
+      placeId: place2,
+      type: 'preferred' as const,
+      targetDayNo: 2,
+      priority: 0,
+      requestedStayMinutes: 60,
+    },
+  ];
+  const latest = {
+    ...trip,
+    days: [...trip.days, day2],
+    placePreferences: preferences,
+  };
+  const active = {
+    ...schedule(),
+    days: [
+      { ...schedule().days[0], items: [], hasGenerationResult: true },
+      {
+        dayId: day2.dayId,
+        dayNo: 2,
+        date: day2.date,
+        items: [item(item2, null, 1, '수동 일정')],
+        legs: [],
+        hasGenerationResult: false,
+      },
+    ],
+  } satisfies scheduleApi.TripSchedule;
+  useTripStore.setState({ serverTrip: latest });
+  jest.mocked(tripApi.fetchTrip).mockResolvedValue({
+    data: latest,
+    status: 200,
+    etag: etag2,
+    location: null,
+    idempotencyReplayed: null,
+    traceId: null,
+  });
+  jest.mocked(scheduleApi.fetchSchedule).mockResolvedValue(active);
+  jest.mocked(getPlace).mockResolvedValue({
+    placeId: place2,
+    name: '섭지코지',
+    roadAddress: '',
+    category: '관광지',
+    categoryLabel: '관광지',
+    coord: null,
+    recommendedStayMinutes: 30,
+    thumbnailUrl: null,
+    overview: null,
+    contact: { phone: null, homepageUrl: null },
+    operations: {
+      operatingHoursText: null,
+      closedDaysText: null,
+      parkingText: null,
+      admissionFeeText: null,
+    },
+  });
+
+  await createSchedulePersistenceActions().hydrateSchedule();
+
+  expect(getPlace).toHaveBeenCalledTimes(1);
+  expect(getPlace).toHaveBeenCalledWith(place2);
+  expect(useScheduleStore.getState().places[1]).toEqual([]);
+  expect(useScheduleStore.getState().places[2]).toEqual([
+    expect.objectContaining({ itemId: item2, name: '수동 일정' }),
+    expect.objectContaining({ placeId: place2 }),
+  ]);
+  expect(useScheduleStore.getState().places[2][1].itemId).toBeUndefined();
+});
+
 test('adapter는 서버 순서와 opaque itemId를 보존하고 custom 항목도 실제 제목으로 표시한다', () => {
   const rows = scheduleToPlaces(
     schedule(version1, [

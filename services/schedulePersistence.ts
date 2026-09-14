@@ -390,7 +390,7 @@ const mutateDraftPlace = async (
         active.days.some(
           (day) =>
             (day.dayNo === dayNo || day.dayNo === patch?.targetDayNo) &&
-            day.items.length > 0,
+            (day.hasGenerationResult || day.items.length > 0),
         )
       ) {
         throw new SchedulePersistenceValidationError(
@@ -778,7 +778,7 @@ export function createSchedulePersistenceActions() {
           }
           const completedDays = new Set(
             active?.days
-              .filter((day) => day.items.length > 0)
+              .filter((day) => day.hasGenerationResult)
               .map((day) => day.dayNo) ?? [],
           );
           const days = new Set(latest.data.days.map((day) => day.dayNo));
@@ -1019,11 +1019,29 @@ export function createSchedulePersistenceActions() {
 
   const createPlace = async (dayNo: number, place: SchedulePlace) => {
     const current = useScheduleStore.getState();
-    if (
-      !current.activeVersionId ||
-      (dayNo > 1 && !(current.places[dayNo] ?? []).some((row) => row.itemId))
-    )
+    if (!current.activeVersionId)
       return mutateDraftPlace(dayNo, place.placeId, place);
+    const hasManualItem = (current.places[dayNo] ?? []).some(
+      (row) => row.itemId,
+    );
+    if (dayNo > 1 && !hasManualItem) {
+      const tripId = useTripStore.getState().tripId;
+      const active = tripId ? await fetchSchedule(tripId) : null;
+      if (
+        !active ||
+        useTripStore.getState().tripId !== tripId ||
+        useScheduleStore.getState().activeVersionId !==
+          current.activeVersionId ||
+        active.tripId !== tripId ||
+        active.scheduleVersion.scheduleVersionId !== current.activeVersionId
+      ) {
+        throw new SchedulePersistenceValidationError(
+          '활성 일정이 변경됐어요. 다시 불러와 주세요.',
+        );
+      }
+      if (!active.days.find((day) => day.dayNo === dayNo)?.hasGenerationResult)
+        return mutateDraftPlace(dayNo, place.placeId, place);
+    }
     if (!place.placeId)
       throw new SchedulePersistenceValidationError(
         '추가할 장소를 다시 선택해 주세요.',
