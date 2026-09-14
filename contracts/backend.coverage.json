@@ -138,8 +138,8 @@
       "module": "trips.ts",
       "export": "replaceTripPlacePreferences",
       "wrapper": "connected",
-      "screen": "deferred",
-      "prerequisite": "session, saved placeIds, latest trip ETag"
+      "screen": "connected",
+      "prerequisite": "calendar draft place flow, session, canonical placeId, latest trip ETag"
     },
     "GET /api/v1/trips/{tripId}/schedule": {
       "module": "schedule.ts",
@@ -208,15 +208,15 @@
       "module": "transportEvents.ts",
       "export": "putTransportEvent",
       "wrapper": "connected",
-      "screen": "deferred",
-      "prerequisite": "session and latest trip ETag"
+      "screen": "connected",
+      "prerequisite": "trip-condition arrival/departure input, session and latest trip ETag"
     },
     "DELETE /api/v1/trips/{tripId}/transport-event": {
       "module": "transportEvents.ts",
       "export": "deleteTransportEvent",
       "wrapper": "connected",
-      "screen": "deferred",
-      "prerequisite": "session, eventType, latest trip ETag"
+      "screen": "connected",
+      "prerequisite": "cleared trip-condition transport input, session, eventType, latest trip ETag"
     },
     "GET /api/v1/me/profile-image": {
       "module": "profileImage.ts",
@@ -271,8 +271,8 @@
       "module": "trips.ts",
       "export": "replacePlannerConditions",
       "wrapper": "connected",
-      "screen": "deferred",
-      "prerequisite": "saved-input orchestration and staging verification"
+      "screen": "connected",
+      "prerequisite": "trip-condition lodging/style inputs, session and latest trip ETag"
     },
     "POST /api/v1/trips/{tripId}/schedule-generations": {
       "module": "generations.ts",

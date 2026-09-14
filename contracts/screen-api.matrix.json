@@ -52,10 +52,7 @@
     {
       "surface": "home search and place detail",
       "screenState": "connected",
-      "operations": [
-        "GET /api/v1/places",
-        "GET /api/v1/places/{placeId}"
-      ],
+      "operations": ["GET /api/v1/places", "GET /api/v1/places/{placeId}"],
       "callEvidence": "services/places.ts#fetchCanonicalPlaces",
       "operationEvidence": {
         "GET /api/v1/places": "services/places.ts#fetchCanonicalPlaces(params, signal)",
@@ -110,16 +107,25 @@
       "restartHydration": "app/(tabs)/calendar.tsx#hydrateLatestTrip"
     },
     {
-      "surface": "trip and place preferences",
+      "surface": "trip preferences wrapper",
       "screenState": "deferred",
-      "operations": [
-        "PUT /api/v1/trips/{tripId}/preferences",
-        "PUT /api/v1/trips/{tripId}/place-preferences"
-      ],
+      "operations": ["PUT /api/v1/trips/{tripId}/preferences"],
       "callEvidence": "services/api/trips.ts#replaceTripPreferences",
       "responseEvidence": "tests/backendOpenApiContract.test.js#runtime 43개 operation",
       "errorEvidence": "tests/apiLayerContract.test.ts#Problem은 stable code만",
-      "restartHydration": "blocked: wrappers have no screen or store invocation"
+      "restartHydration": "blocked: wrapper has no screen or store invocation"
+    },
+    {
+      "surface": "calendar place preference drafts",
+      "screenState": "connected",
+      "operations": ["PUT /api/v1/trips/{tripId}/place-preferences"],
+      "callEvidence": "services/schedulePersistence.ts#mutateDraftPlace",
+      "operationEvidence": {
+        "PUT /api/v1/trips/{tripId}/place-preferences": "services/schedulePersistence.ts#await replaceTripPlacePreferences("
+      },
+      "responseEvidence": "tests/schedulePersistence.test.ts#최초 일정 전 장소 추가",
+      "errorEvidence": "services/schedulePersistence.ts#SchedulePendingMutationError",
+      "restartHydration": "services/schedulePersistence.ts#latest.data.placePreferences.filter("
     },
     {
       "surface": "calendar manual schedule",
@@ -146,26 +152,38 @@
       "restartHydration": "services/schedulePersistence.ts#hydrateSchedule"
     },
     {
-      "surface": "accommodation and arrival/departure projections",
+      "surface": "accommodation wrappers",
       "screenState": "deferred",
       "operations": [
         "POST /api/v1/trips/{tripId}/accommodations",
         "PATCH /api/v1/trips/{tripId}/accommodations/{accommodationId}",
-        "DELETE /api/v1/trips/{tripId}/accommodations/{accommodationId}",
-        "PUT /api/v1/trips/{tripId}/transport-event",
-        "DELETE /api/v1/trips/{tripId}/transport-event"
+        "DELETE /api/v1/trips/{tripId}/accommodations/{accommodationId}"
       ],
       "callEvidence": "services/tripPersistence.ts#updateAccommodation",
       "responseEvidence": "tests/tripPersistence.test.ts#scheduledAt",
       "errorEvidence": "services/tripPersistence.ts#refreshOnConflict",
-      "restartHydration": "blocked: issue #13 projection files and seeded aggregate are pending"
+      "restartHydration": "blocked: accommodation actions have no screen invocation"
+    },
+    {
+      "surface": "trip-condition arrival and departure transport",
+      "screenState": "connected",
+      "operations": [
+        "PUT /api/v1/trips/{tripId}/transport-event",
+        "DELETE /api/v1/trips/{tripId}/transport-event"
+      ],
+      "callEvidence": "app/trip-conditions.tsx#saveTrip",
+      "operationEvidence": {
+        "PUT /api/v1/trips/{tripId}/transport-event": "services/tripPersistence.ts#await putTransportEventApi(",
+        "DELETE /api/v1/trips/{tripId}/transport-event": "services/tripPersistence.ts#await deleteTransportEventApi("
+      },
+      "responseEvidence": "tests/tripPersistence.test.ts#조건 저장은 planner 뒤 입도·출도를",
+      "errorEvidence": "services/tripPersistence.ts#refreshOnConflict",
+      "restartHydration": "services/tripHydration.ts#transportEvents: {"
     },
     {
       "surface": "home weather",
       "screenState": "connected",
-      "operations": [
-        "GET /api/v1/weather/forecast"
-      ],
+      "operations": ["GET /api/v1/weather/forecast"],
       "callEvidence": "hooks/useWeatherForecast.ts#fetchWeatherForecast",
       "operationEvidence": {
         "GET /api/v1/weather/forecast": "hooks/useWeatherForecast.ts#fetchWeatherForecast("
@@ -195,19 +213,30 @@
       "restartHydration": "services/notificationPreferences.ts#fetch: fetchNotificationPreference"
     },
     {
-      "surface": "planner conditions and generation review",
+      "surface": "trip-condition planner inputs",
+      "screenState": "connected",
+      "operations": ["PUT /api/v1/trips/{tripId}/planner-conditions"],
+      "callEvidence": "app/trip-conditions.tsx#saveTrip",
+      "operationEvidence": {
+        "PUT /api/v1/trips/{tripId}/planner-conditions": "services/tripPersistence.ts#await replacePlannerConditions("
+      },
+      "responseEvidence": "tests/tripPersistence.test.ts#활동 시간 다음 최신 ETag로 숙소·스타일",
+      "errorEvidence": "services/tripPersistence.ts#TRIP_VERSION_CONFLICT",
+      "restartHydration": "services/tripHydration.ts#plannerConditions"
+    },
+    {
+      "surface": "generation review behind planner availability",
       "screenState": "deferred",
       "operations": [
-        "PUT /api/v1/trips/{tripId}/planner-conditions",
         "POST /api/v1/trips/{tripId}/schedule-generations",
         "GET /api/v1/trips/{tripId}/schedule-generations/{runId}",
         "GET /api/v1/trips/{tripId}/schedule-versions/{versionId}",
         "POST /api/v1/trips/{tripId}/schedule-generations/{runId}/candidates/{candidateId}/apply"
       ],
-      "callEvidence": "services/api/trips.ts#replacePlannerConditions",
-      "responseEvidence": "tests/backendOpenApiContract.test.js#runtime 43개",
+      "callEvidence": "services/generationFlow.ts#startGeneration",
+      "responseEvidence": "tests/generationFlow.test.ts#적용 후 다음 날짜",
       "errorEvidence": "services/generationFlow.ts#handleGenerationError",
-      "restartHydration": "blocked: saved planner-input orchestration and staging resume/apply verification remain"
+      "restartHydration": "blocked: feature flag remains OFF until BE/AI staging generation and apply verification"
     }
   ]
 }

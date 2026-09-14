@@ -39,17 +39,46 @@ test('각 화면은 호출·응답·오류·재시작 hydration 증거를 가진
   }
 });
 
-test('trip preference wrapper-only operation은 화면 연결로 표기하지 않는다', () => {
+test('operation별 연결 상태는 matrix와 coverage가 일치하고 실제 orchestration 증거를 가리킨다', () => {
   const matrix = json('contracts/screen-api.matrix.json');
-  const wrapperOnly = new Set([
-    'PUT /api/v1/trips/{tripId}/preferences',
+  const coverage = json('contracts/backend.coverage.json');
+  const connected = new Set([
     'PUT /api/v1/trips/{tripId}/place-preferences',
+    'PUT /api/v1/trips/{tripId}/planner-conditions',
+    'PUT /api/v1/trips/{tripId}/transport-event',
+    'DELETE /api/v1/trips/{tripId}/transport-event',
   ]);
 
-  for (const domain of matrix.domains) {
-    if (domain.operations.some((operation) => wrapperOnly.has(operation))) {
-      expect(domain.screenState).toBe('deferred');
-    }
+  for (const operation of connected) {
+    const domain = matrix.domains.find((candidate) =>
+      candidate.operations.includes(operation),
+    );
+    expect(domain.screenState).toBe('connected');
+    expect(coverage.operations[operation].screen).toBe('connected');
+    const [path, token] = domain.operationEvidence[operation].split('#');
+    expect(path.startsWith('services/api/')).toBe(false);
+    expect(read(path)).toContain(token);
+  }
+});
+
+test('wrapper-only와 feature-flag 차단 operation만 연결된 operation과 분리해 deferred로 둔다', () => {
+  const matrix = json('contracts/screen-api.matrix.json');
+  const deferred = [
+    'PUT /api/v1/trips/{tripId}/preferences',
+    'POST /api/v1/trips/{tripId}/accommodations',
+    'PATCH /api/v1/trips/{tripId}/accommodations/{accommodationId}',
+    'DELETE /api/v1/trips/{tripId}/accommodations/{accommodationId}',
+    'POST /api/v1/trips/{tripId}/schedule-generations',
+    'GET /api/v1/trips/{tripId}/schedule-generations/{runId}',
+    'GET /api/v1/trips/{tripId}/schedule-versions/{versionId}',
+    'POST /api/v1/trips/{tripId}/schedule-generations/{runId}/candidates/{candidateId}/apply',
+  ];
+
+  for (const operation of deferred) {
+    const domain = matrix.domains.find((candidate) =>
+      candidate.operations.includes(operation),
+    );
+    expect(domain.screenState).toBe('deferred');
   }
 });
 

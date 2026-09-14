@@ -144,6 +144,14 @@ Trip If-Match, 정확히 세 전략, 후보 URL을 따른다. 이 BE 계약과 �
 - 전체 45 suites/369 tests PASS(3.591초), typecheck/lint/api:check/ui:check/diff-check PASS. 독립 부분 리뷰 신규 차단 없음(정식 승인 아님). 화면 파일은 이번 변경에서 수정하지 않았다.
 - 앱 재시작 durable recovery 강화는 사용자 요청대로 후순위다. 전체 생성·적용 E2E, 최종 품질 게이트/Docker/정식 승인/PR은 아직 남았다.
 
+### PR #26 review finding 2·3 보완 (2026-09-14)
+
+- `items.length`를 생성 완료의 대리값으로 사용하던 두 회귀를 테스트로 먼저 고정했다. `hasGenerationResult=true`이면서 항목이 0개인 Day도 생성 완료로 보아 장소 추가를 수동 일정 API로 보내며, hydration에서는 해당 Day의 과거 장소 선호를 초안으로 다시 표시하지 않는다.
+- `hasGenerationResult=false`인 Day의 수동 항목은 그대로 유지하고 그 Day의 미적용 장소 선호도 함께 복원한다. 초안 mutation 직전 검증은 생성 완료 flag와 기존 수동 item을 모두 보호해 수동 편집 의미를 바꾸지 않는다.
+- 화면 API matrix를 operation 단위로 나눴다. 장소 선호, planner 조건, 교통 PUT/DELETE는 실제 `schedulePersistence`/`tripPersistence` orchestration과 테스트를 증거로 `connected` 처리했다. 화면 호출이 없는 일반 trip preferences와 숙소 action, `PLANNER_AVAILABLE=false` 뒤의 생성·조회·적용만 별도 `deferred`로 유지했다. coverage JSON과 생성 문서도 같은 상태로 맞췄다.
+- Red: schedule persistence 49개 중 2개 실패, matrix 6개 중 1개 실패. Green: schedule/generation/trip persistence/matrix 4 suites, 120 tests PASS. typecheck, 대상 ESLint, api:check, diff-check PASS. UI/스타일·위치 필드·planner flag는 변경하지 않았다.
+- backend source commit의 원격 도달 가능성은 FE 코드로 해결할 수 없다. `contracts/backend.source.json`과 backend SHA는 수정하지 않았으며, 실제 backend source push 후 provenance를 다시 검증해야 한다.
+
 기존 58개 파일의 StyleSheet는 ui:check로 동일함을 확인한다. 기존 JSX 컨테이너·이미지·버튼 구성도 유지했다.
 실제 기기 화면 비교와 인증된 BE staging E2E는 수행하지 않았다.
 

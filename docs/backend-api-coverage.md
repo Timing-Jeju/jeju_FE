@@ -9,7 +9,7 @@ Backend: `Timing-Jeju/jeju_BE@1110049686e2d9408b9e107d4ff2f5f26a430247` (`feat/5
 | `DELETE /api/v1/trips/{tripId}` | `trips.ts#deleteTrip` | deferred | Supabase session |
 | `DELETE /api/v1/trips/{tripId}/accommodations/{accommodationId}` | `accommodations.ts#deleteAccommodation` | deferred | session and latest trip ETag |
 | `DELETE /api/v1/trips/{tripId}/schedule-items/{itemId}` | `scheduleItems.ts#deleteScheduleItem` | deferred | session, ETag, schedule version, Idempotency-Key |
-| `DELETE /api/v1/trips/{tripId}/transport-event` | `transportEvents.ts#deleteTransportEvent` | deferred | session, eventType, latest trip ETag |
+| `DELETE /api/v1/trips/{tripId}/transport-event` | `transportEvents.ts#deleteTransportEvent` | connected | cleared trip-condition transport input, session, eventType, latest trip ETag |
 | `GET /api/v1/auth/social/naver/userinfo` | `authSocial.ts#fetchNaverUserInfo` | deferred | Naver provider token |
 | `GET /api/v1/auth/social/providers` | `authSocial.ts#fetchSocialProviders` | deferred | provider configuration |
 | `GET /api/v1/legal-documents` | `legal.ts#fetchLegalDocuments` | deferred | none; optional session |
@@ -42,10 +42,10 @@ Backend: `Timing-Jeju/jeju_BE@1110049686e2d9408b9e107d4ff2f5f26a430247` (`feat/5
 | `PUT /api/v1/me/profile-image` | `profileImage.ts#putProfileImage` | deferred | session, storage object, latest ETag, Idempotency-Key |
 | `PUT /api/v1/me/push-devices/{deviceId}` | `push.ts#registerPushDevice` | deferred | session and platform registration token |
 | `PUT /api/v1/trips/{tripId}/day-activity-windows` | `trips.ts#replaceDayActivityWindows` | connected | 기존 활동 시간 입력 사용; 선행 BE 전체 검증·병합 후 반영 |
-| `PUT /api/v1/trips/{tripId}/place-preferences` | `trips.ts#replaceTripPlacePreferences` | deferred | session, saved placeIds, latest trip ETag |
-| `PUT /api/v1/trips/{tripId}/planner-conditions` | `trips.ts#replacePlannerConditions` | deferred | saved-input orchestration and staging verification |
+| `PUT /api/v1/trips/{tripId}/place-preferences` | `trips.ts#replaceTripPlacePreferences` | connected | calendar draft place flow, session, canonical placeId, latest trip ETag |
+| `PUT /api/v1/trips/{tripId}/planner-conditions` | `trips.ts#replacePlannerConditions` | connected | trip-condition lodging/style inputs, session and latest trip ETag |
 | `PUT /api/v1/trips/{tripId}/preferences` | `trips.ts#replaceTripPreferences` | deferred | session and latest trip ETag |
 | `PUT /api/v1/trips/{tripId}/schedule-order` | `scheduleItems.ts#reorderSchedule` | deferred | session, ETag, schedule version, Idempotency-Key |
-| `PUT /api/v1/trips/{tripId}/transport-event` | `transportEvents.ts#putTransportEvent` | deferred | session and latest trip ETag |
+| `PUT /api/v1/trips/{tripId}/transport-event` | `transportEvents.ts#putTransportEvent` | connected | trip-condition arrival/departure input, session and latest trip ETag |
 
 화면 연결이 `deferred`인 항목은 이 이슈의 API 기반에는 포함되지만 후속 화면 연결이 필요하다. 공개 Spring endpoint가 없는 AI 생성·조회·적용은 이 표와 wrapper에 포함하지 않는다.
