@@ -53,7 +53,7 @@ test('trip preference wrapper-only operation은 화면 연결로 표기하지 �
   }
 });
 
-test('deferred 화면은 blocker를 숨기지 않고 AI planner는 계속 비활성이다', () => {
+test('deferred 화면은 blocker를 유지하고 서버 AI planner는 활성화한다', () => {
   const matrix = json('contracts/screen-api.matrix.json');
   const deferred = matrix.domains.filter(
     (domain) => domain.screenState === 'deferred',
@@ -64,7 +64,8 @@ test('deferred 화면은 blocker를 숨기지 않고 AI planner는 계속 비활
   expect(
     deferred.every((domain) => domain.restartHydration.startsWith('blocked:')),
   ).toBe(true);
-  expect(planner).toContain('PLANNER_AVAILABLE = false');
+  expect(planner).toContain('PLANNER_AVAILABLE = true');
+  expect(planner).toContain('LIVE_GUIDANCE_AVAILABLE = false');
 });
 
 test('반복 GET을 앱 재시작 hydration 완료 증거로 과대평가하지 않는다', () => {

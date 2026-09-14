@@ -57,7 +57,7 @@ test('runtime 43개 operation마다 실제 wrapper와 화면 선행 상태가 �
   }
 });
 
-test('공개 생성·조회·적용 계약을 인계해도 staging 검증 전에는 활성화하지 않는다', () => {
+test('공개 생성·조회·적용 계약으로 서버 기반 플래너를 활성화한다', () => {
   const runtime = json('contracts/backend.runtime.json');
   const prefix = '/api/v1/trips/{tripId}/schedule-generations';
   expect(runtime.operations).toHaveProperty(`POST ${prefix}`);
@@ -65,7 +65,7 @@ test('공개 생성·조회·적용 계약을 인계해도 staging 검증 전에
   expect(runtime.operations).toHaveProperty(
     `POST ${prefix}/{runId}/candidates/{candidateId}/apply`,
   );
-  expect(PLANNER_AVAILABLE).toBe(false);
+  expect(PLANNER_AVAILABLE).toBe(true);
 });
 
 test('저장 장소 목록 item ETag와 수정/삭제 concurrency 계약을 고정한다', () => {

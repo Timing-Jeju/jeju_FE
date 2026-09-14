@@ -1,4 +1,4 @@
-import { PLANNER_AVAILABLE } from '@/services/plannerAvailability';
+import { LIVE_GUIDANCE_AVAILABLE } from '@/services/plannerAvailability';
 import {
   NaverMapMarkerOverlay,
   NaverMapView,
@@ -153,7 +153,7 @@ function LiveMapScreenContent() {
 
   // TODO: 실제 위치 추적 연동 전에는 오늘 일정의 두 번째 구간을 현위치로 본다
   const legs = useMemo(
-    () => (PLANNER_AVAILABLE ? (activeReview(reviews)?.legs ?? []) : []),
+    () => (LIVE_GUIDANCE_AVAILABLE ? (activeReview(reviews)?.legs ?? []) : []),
     [reviews],
   );
 
@@ -190,7 +190,7 @@ function LiveMapScreenContent() {
    * 좌표는 지도 SDK가 직접 받으므로 여기서는 권한만 확인한다.
    */
   useEffect(() => {
-    if (!PLANNER_AVAILABLE) return;
+    if (!LIVE_GUIDANCE_AVAILABLE) return;
     let cancelled = false;
     requestLocationPermission().then((granted) => {
       if (!cancelled && granted) {
@@ -203,7 +203,7 @@ function LiveMapScreenContent() {
   }, []);
 
   const handleRecenter = async () => {
-    if (!PLANNER_AVAILABLE) return;
+    if (!LIVE_GUIDANCE_AVAILABLE) return;
     if (await requestLocationPermission()) {
       mapRef.current?.setLocationTrackingMode('Follow');
     }
