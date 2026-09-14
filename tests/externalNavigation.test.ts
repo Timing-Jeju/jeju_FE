@@ -1,6 +1,7 @@
 import {
   ExternalNavigationError,
   buildNaverDestinationLinks,
+  configuredAppName,
   openNaverDestinationNavigation,
 } from '@/services/externalNavigation';
 
@@ -30,7 +31,14 @@ test.each([
       dname: destination.name,
       appname: 'com.jeju.tourist',
     });
-    expect(links.httpsFallback).toMatch(/^https:\/\/app\.map\.naver\.com\//);
+    const fallback = new URL(links.httpsFallback);
+    expect(fallback.protocol).toBe('https:');
+    expect(fallback.hostname).toBe('www.google.com');
+    expect(fallback.pathname).toBe('/maps/dir/');
+    expect(Object.fromEntries(fallback.searchParams)).toEqual({
+      api: '1',
+      destination: `${latitude},${longitude}`,
+    });
     expect(queryKeys(links.deepLink)).toEqual([
       'dlat',
       'dlng',
@@ -38,10 +46,23 @@ test.each([
       'appname',
     ]);
     expect(queryKeys(links.httpsFallback).sort()).toEqual(
-      ['elat', 'elng', 'etitle', 'menu', 'version'].sort(),
+      ['api', 'destination'].sort(),
     );
+    expect(fallback.searchParams.has('origin')).toBe(false);
   },
 );
+
+test('NAVER appname은 iOS bundle과 Android package만 사용하고 web에서는 비활성화한다', () => {
+  const config = {
+    ios: { bundleIdentifier: 'com.jeju.ios' },
+    android: { package: 'com.jeju.android' },
+    scheme: 'timing-jeju',
+  };
+
+  expect(configuredAppName('ios', config)).toBe('com.jeju.ios');
+  expect(configuredAppName('android', config)).toBe('com.jeju.android');
+  expect(configuredAppName('web', config)).toBeUndefined();
+});
 
 test('목적지 이름에 query 문자가 있어도 출발지 파라미터로 해석되지 않는다', () => {
   const links = buildNaverDestinationLinks(
@@ -100,7 +121,7 @@ test('딥링크가 열리면 HTTPS fallback을 호출하지 않는다', async ()
   expect(openURL.mock.calls[0][0]).toMatch(/^nmap:\/\/navigation\?/);
 });
 
-test('딥링크 열기가 실패하면 목적지 전용 HTTPS 링크만 연다', async () => {
+test('딥링크 열기가 실패하면 공식 Google destination-only HTTPS 링크만 연다', async () => {
   const openURL = jest
     .fn()
     .mockRejectedValueOnce(new Error('not installed'))
@@ -114,7 +135,28 @@ test('딥링크 열기가 실패하면 목적지 전용 HTTPS 링크만 연다',
   ).resolves.toBe('https-fallback');
 
   expect(openURL).toHaveBeenCalledTimes(2);
-  expect(openURL.mock.calls[1][0]).toMatch(/^https:\/\/app\.map\.naver\.com\//);
+  expect(openURL.mock.calls[1][0]).toMatch(
+    /^https:\/\/www\.google\.com\/maps\/dir\/\?/,
+  );
+  expect(new URL(openURL.mock.calls[1][0]).searchParams.has('origin')).toBe(
+    false,
+  );
+});
+
+test('web에서는 NAVER scheme을 시도하지 않고 Google HTTPS fallback을 유지한다', async () => {
+  const openURL = jest.fn().mockResolvedValue(undefined);
+
+  await expect(
+    openNaverDestinationNavigation(destination, {
+      platform: 'web',
+      openURL,
+    }),
+  ).resolves.toBe('https-fallback');
+
+  expect(openURL).toHaveBeenCalledTimes(1);
+  expect(openURL.mock.calls[0][0]).toMatch(
+    /^https:\/\/www\.google\.com\/maps\/dir\/\?/,
+  );
 });
 
 test('딥링크와 HTTPS fallback이 모두 실패하면 URL을 노출하지 않는 재시도 오류를 반환한다', async () => {
@@ -127,7 +169,7 @@ test('딥링크와 HTTPS fallback이 모두 실패하면 URL을 노출하지 않
     }),
   ).rejects.toEqual(
     new ExternalNavigationError(
-      '네이버 지도를 열지 못했어요. 잠시 후 다시 시도해 주세요.',
+      '지도를 열지 못했어요. 잠시 후 다시 시도해 주세요.',
     ),
   );
   expect(openURL).toHaveBeenCalledTimes(2);

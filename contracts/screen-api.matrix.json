@@ -7,11 +7,14 @@
   "externalNavigation": {
     "provider": "NAVER Maps",
     "surface": "schedule leg destination row",
-    "officialContract": "https://guide.ncloud-docs.com/docs/en/maps-url-scheme",
+    "officialContracts": {
+      "naverDeepLink": "https://guide.ncloud-docs.com/docs/en/maps-url-scheme",
+      "httpsFallback": "https://developers.google.com/maps/documentation/urls/get-started"
+    },
     "serverOperations": [],
     "transmittedQueryParameters": {
       "deepLink": ["dlat", "dlng", "dname", "appname"],
-      "httpsFallback": ["version", "menu", "elat", "elng", "etitle"]
+      "httpsFallback": ["api", "destination"]
     },
     "forbiddenQueryParameters": [
       "slat",

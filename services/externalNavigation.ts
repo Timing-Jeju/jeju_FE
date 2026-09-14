@@ -6,7 +6,7 @@ import type { Coord } from './naverApi';
 const NAVER_LATITUDE = { min: 31.43, max: 44.35 } as const;
 const NAVER_LONGITUDE = { min: 122.37, max: 132 } as const;
 const NAVER_DEEP_LINK = 'nmap://navigation';
-const NAVER_HTTPS_FALLBACK = 'https://app.map.naver.com/launchApp/';
+const GOOGLE_DIRECTIONS_URL = 'https://www.google.com/maps/dir/';
 
 export interface NavigationDestination {
   name: string;
@@ -25,13 +25,21 @@ type UrlOpener = (url: string) => Promise<unknown>;
 interface NavigationOptions {
   appName?: string;
   openURL?: UrlOpener;
+  platform?: string;
 }
 
-const configuredAppName = () => {
-  if (Platform.OS === 'ios') return Constants.expoConfig?.ios?.bundleIdentifier;
-  if (Platform.OS === 'android') return Constants.expoConfig?.android?.package;
-  const scheme = Constants.expoConfig?.scheme;
-  return typeof scheme === 'string' ? scheme : undefined;
+interface ExpoIdentityConfig {
+  ios?: { bundleIdentifier?: string };
+  android?: { package?: string };
+}
+
+export const configuredAppName = (
+  platform: string = Platform.OS,
+  config: ExpoIdentityConfig | null = Constants.expoConfig,
+) => {
+  if (platform === 'ios') return config?.ios?.bundleIdentifier;
+  if (platform === 'android') return config?.android?.package;
+  return undefined;
 };
 
 const query = (entries: [string, string][]) =>
@@ -62,6 +70,14 @@ const requireDestination = (destination: NavigationDestination) => {
   return { latitude, longitude, name };
 };
 
+const buildGoogleDestinationLink = (destination: NavigationDestination) => {
+  const { latitude, longitude } = requireDestination(destination);
+  return `${GOOGLE_DIRECTIONS_URL}?${query([
+    ['api', '1'],
+    ['destination', `${latitude},${longitude}`],
+  ])}`;
+};
+
 /**
  * NAVER Maps 공식 URL Scheme의 현재 위치→목적지 예시처럼 출발지 파라미터를
  * 완전히 생략한다. 현재 위치 권한과 처리는 외부 지도 앱의 책임이다.
@@ -83,13 +99,7 @@ export const buildNaverDestinationLinks = (
       ['dname', name],
       ['appname', identifier],
     ])}`,
-    httpsFallback: `${NAVER_HTTPS_FALLBACK}?${query([
-      ['version', '11'],
-      ['menu', 'navigation'],
-      ['elat', lat],
-      ['elng', lng],
-      ['etitle', name],
-    ])}`,
+    httpsFallback: buildGoogleDestinationLink(destination),
   } as const;
 };
 
@@ -97,22 +107,27 @@ export const openNaverDestinationNavigation = async (
   destination: NavigationDestination,
   options: NavigationOptions = {},
 ) => {
-  const links = buildNaverDestinationLinks(
-    destination,
-    options.appName ?? configuredAppName() ?? '',
-  );
   const openURL = options.openURL ?? Linking.openURL;
+  const platform = options.platform ?? Platform.OS;
+  const openFallback = async (url: string) => {
+    try {
+      await openURL(url);
+      return 'https-fallback' as const;
+    } catch {
+      throw new ExternalNavigationError(
+        '지도를 열지 못했어요. 잠시 후 다시 시도해 주세요.',
+      );
+    }
+  };
+  const appName = options.appName ?? configuredAppName(platform);
+  if (platform === 'web' || !appName) {
+    return openFallback(buildGoogleDestinationLink(destination));
+  }
+  const links = buildNaverDestinationLinks(destination, appName);
   try {
     await openURL(links.deepLink);
     return 'deep-link' as const;
   } catch {
-    try {
-      await openURL(links.httpsFallback);
-      return 'https-fallback' as const;
-    } catch {
-      throw new ExternalNavigationError(
-        '네이버 지도를 열지 못했어요. 잠시 후 다시 시도해 주세요.',
-      );
-    }
+    return openFallback(links.httpsFallback);
   }
 };

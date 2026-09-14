@@ -78,8 +78,11 @@ test('외부 길찾기 matrix는 서버 operation 없이 목적지 전용 공식
   const matrix = json('contracts/screen-api.matrix.json');
   const navigation = matrix.externalNavigation;
 
-  expect(navigation.officialContract).toBe(
+  expect(navigation.officialContracts.naverDeepLink).toBe(
     'https://guide.ncloud-docs.com/docs/en/maps-url-scheme',
+  );
+  expect(navigation.officialContracts.httpsFallback).toBe(
+    'https://developers.google.com/maps/documentation/urls/get-started',
   );
   expect(navigation.serverOperations).toEqual([]);
   expect(navigation.transmittedQueryParameters.deepLink).toEqual([
@@ -89,11 +92,8 @@ test('외부 길찾기 matrix는 서버 operation 없이 목적지 전용 공식
     'appname',
   ]);
   expect(navigation.transmittedQueryParameters.httpsFallback).toEqual([
-    'version',
-    'menu',
-    'elat',
-    'elng',
-    'etitle',
+    'api',
+    'destination',
   ]);
   expect(navigation.forbiddenQueryParameters).toEqual(
     expect.arrayContaining(['slat', 'slng', 'sname', 'currentLocation', 'gps']),
