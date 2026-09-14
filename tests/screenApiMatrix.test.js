@@ -78,6 +78,10 @@ test('외부 길찾기 matrix는 서버 operation 없이 목적지 전용 공식
   const matrix = json('contracts/screen-api.matrix.json');
   const navigation = matrix.externalNavigation;
 
+  expect(navigation.providers).toEqual({
+    primary: 'NAVER Maps app',
+    httpsFallback: 'Google Maps',
+  });
   expect(navigation.officialContracts.naverDeepLink).toBe(
     'https://guide.ncloud-docs.com/docs/en/maps-url-scheme',
   );

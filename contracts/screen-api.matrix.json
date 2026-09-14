@@ -5,7 +5,10 @@
     "appRestartHydration": "blocked: no staging account/session and native or browser runtime were supplied"
   },
   "externalNavigation": {
-    "provider": "NAVER Maps",
+    "providers": {
+      "primary": "NAVER Maps app",
+      "httpsFallback": "Google Maps"
+    },
     "surface": "schedule leg destination row",
     "officialContracts": {
       "naverDeepLink": "https://guide.ncloud-docs.com/docs/en/maps-url-scheme",

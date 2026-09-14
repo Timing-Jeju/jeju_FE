@@ -273,9 +273,7 @@ test('서버 일정의 도착 장소를 누르면 목적지 좌표와 이름만 
   });
 
   const screen = await render(<Leg />);
-  await fireEvent.press(
-    screen.getByLabelText('네이버 지도에서 섭지코지 길찾기'),
-  );
+  await fireEvent.press(screen.getByLabelText('지도에서 섭지코지 길찾기'));
 
   expect(openNaverDestinationNavigation).toHaveBeenCalledWith({
     name: '섭지코지',
@@ -335,9 +333,7 @@ test('외부 지도와 fallback이 모두 실패하면 기존 화면에서 재�
   });
 
   const screen = await render(<Leg />);
-  await fireEvent.press(
-    screen.getByLabelText('네이버 지도에서 섭지코지 길찾기'),
-  );
+  await fireEvent.press(screen.getByLabelText('지도에서 섭지코지 길찾기'));
 
   expect(alert).toHaveBeenCalledWith('길찾기를 열 수 없어요', '열기 실패');
 });

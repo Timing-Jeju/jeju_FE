@@ -15,6 +15,7 @@
 - 최초 관련 검사: external navigation, 일정 화면, API matrix, 서버 payload 보안 4 suites/59 tests PASS. typecheck, 대상 ESLint, api:check, ui:check, diff-check PASS.
 - 실제 iOS/Android 개발 빌드 딥링크·fallback QA와 인증된 staging Spring/FastAPI 요청 검사는 실행 환경이 없어 미수행이다. 코드 계약은 서버 operation 0건과 위치 field 차단을 검증하지만 이 두 수동 검증을 대체하지 않는다.
 - Reviewer P1/P2 Red: 비공식 NAVER HTTPS host, platform 식별자 분기 부재, matrix 공식 계약 불일치로 관련 2 suites의 24개 중 6개가 실패했다. Green에서는 HTTPS fallback을 Google 공식 destination-only URL로 교체하고 `origin`을 금지했다. NAVER `appname`은 iOS bundle ID와 Android package만 사용하며 web에서는 NAVER scheme을 비활성화하고 Google HTTPS 기능을 유지한다. 최종 4 suites/61 tests, typecheck, 대상 ESLint, api:check, ui:check, diff-check가 모두 PASS했다.
+- Reviewer 접근성/metadata P2 Red: provider-neutral label과 primary/fallback provider 선언을 요구한 2 suites의 15개 중 3개가 실패했다. 화면 구조와 StyleSheet는 건드리지 않고 label을 `지도에서 … 길찾기`로 바꾸고 matrix에 NAVER Maps app primary, Google Maps HTTPS fallback을 분리했다. Green에서 2 suites/15 tests와 typecheck, api:check, ui:check, 대상 ESLint, diff-check가 모두 PASS했다.
 
 ## 보안 경계
 

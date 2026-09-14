@@ -275,7 +275,7 @@ function ScheduleLegScreenContent() {
                   }
                   accessibilityLabel={
                     index === leg.steps.length - 1 && toCoord
-                      ? `네이버 지도에서 ${leg.to} 길찾기`
+                      ? `지도에서 ${leg.to} 길찾기`
                       : undefined
                   }
                   onPress={handleOpenDestination}
