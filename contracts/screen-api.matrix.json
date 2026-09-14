@@ -1,8 +1,30 @@
 {
-  "sourceFrontendCommit": "1530d5db614ad7a7e1681e45fd271c69dd2a7b28",
+  "sourceFrontendCommit": "3d3c9663d834525b5a3fb45d8ff0e53163ae6f4c",
   "stagingVerification": {
     "serverReadConsistency": "blocked: STAGING_API_BASE_URL and STAGING_ACCESS_TOKEN are missing",
     "appRestartHydration": "blocked: no staging account/session and native or browser runtime were supplied"
+  },
+  "externalNavigation": {
+    "provider": "NAVER Maps",
+    "surface": "schedule leg destination row",
+    "officialContract": "https://guide.ncloud-docs.com/docs/en/maps-url-scheme",
+    "serverOperations": [],
+    "transmittedQueryParameters": {
+      "deepLink": ["dlat", "dlng", "dname", "appname"],
+      "httpsFallback": ["version", "menu", "elat", "elng", "etitle"]
+    },
+    "forbiddenQueryParameters": [
+      "slat",
+      "slng",
+      "sname",
+      "start",
+      "origin",
+      "currentLocation",
+      "gps"
+    ],
+    "callEvidence": "app/schedule-leg.tsx#openNaverDestinationNavigation({ name: leg.to, coord: toCoord })",
+    "responseEvidence": "tests/externalNavigation.test.ts#딥링크가 열리면 HTTPS fallback을 호출하지 않는다",
+    "errorEvidence": "app/schedule-leg.tsx#길찾기를 열 수 없어요"
   },
   "domains": [
     {

@@ -11,7 +11,7 @@ import { serverOrigin } from '../environment';
  * - 기본 live Compose        : http://localhost:18080
  * - showcase Compose         : http://localhost:18082
  *
- * naverKeys와 같은 방침으로, 값이 없으면 앱은 뜨되 호출만 실패한다.
+ * 값이 없으면 앱은 뜨되 서버 호출만 실패한다.
  */
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? '';
 

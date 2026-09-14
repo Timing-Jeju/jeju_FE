@@ -5,7 +5,7 @@ import Leg from '@/app/schedule-leg';
 import Live from '@/app/live-map';
 import { useScheduleStore } from '@/store/useScheduleStore';
 import { requestLocationPermission } from '@/services/location';
-import { getDrivingRoute } from '@/services/naverApi';
+import { openNaverDestinationNavigation } from '@/services/externalNavigation';
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ back: jest.fn() }),
@@ -26,7 +26,9 @@ jest.mock('@mj-studio/react-native-naver-map', () => {
 jest.mock('@/services/location', () => ({
   requestLocationPermission: jest.fn(),
 }));
-jest.mock('@/services/naverApi', () => ({ getDrivingRoute: jest.fn() }));
+jest.mock('@/services/externalNavigation', () => ({
+  openNaverDestinationNavigation: jest.fn(),
+}));
 jest.mock('@/components/ui/MenuIcon', () => {
   const React = jest.requireActual('react');
   const { Text } = jest.requireActual('react-native');
@@ -215,11 +217,129 @@ test('serverBacked 확정·재정렬·삭제는 unsupported 함수를 호출하�
   );
 });
 
-test('미지원 구간 상세는 기존 빈 상태를 표시하고 경로 API를 호출하지 않는다', async () => {
+test('미지원 구간 상세는 기존 빈 상태를 표시하고 외부 지도를 열지 않는다', async () => {
   const screen = await render(<Leg />);
   expect(screen.getByText('상세 일정')).toBeTruthy();
   expect(screen.getByText('구간 상세는 준비 중이에요.')).toBeTruthy();
-  expect(getDrivingRoute).not.toHaveBeenCalled();
+  expect(openNaverDestinationNavigation).not.toHaveBeenCalled();
+});
+
+test('서버 일정의 도착 장소를 누르면 목적지 좌표와 이름만 외부 지도 서비스에 전달한다', async () => {
+  jest.mocked(openNaverDestinationNavigation).mockResolvedValue('deep-link');
+  useScheduleStore.setState({
+    reviews: {
+      1: {
+        summary: '서버 일정 버전 2',
+        mode: 'manual',
+        dirty: false,
+        confirmed: false,
+        serverBacked: true,
+        legs: [
+          {
+            id: 'old',
+            from: '성산일출봉',
+            to: '섭지코지',
+            fromCoord: { latitude: 33.46, longitude: 126.94 },
+            toCoord: { latitude: 33.423, longitude: 126.93 },
+            status: 'cautionary',
+            startTime: '09:00',
+            endTime: '09:30',
+            cost: null,
+            distanceText: '거리 정보 없음',
+            reason: '위험도 정보 미제공',
+            steps: [
+              {
+                kind: 'place',
+                name: '성산일출봉',
+                detail: null,
+                buses: [],
+                caution: false,
+              },
+              {
+                kind: 'place',
+                name: '섭지코지',
+                detail: null,
+                buses: [],
+                caution: false,
+              },
+            ],
+            departStayMinutes: 60,
+            slackMinutes: 10,
+            buses: [],
+          },
+        ],
+      },
+    },
+  });
+
+  const screen = await render(<Leg />);
+  await fireEvent.press(
+    screen.getByLabelText('네이버 지도에서 섭지코지 길찾기'),
+  );
+
+  expect(openNaverDestinationNavigation).toHaveBeenCalledWith({
+    name: '섭지코지',
+    coord: { latitude: 33.423, longitude: 126.93 },
+  });
+});
+
+test('외부 지도와 fallback이 모두 실패하면 기존 화면에서 재시도 오류를 알린다', async () => {
+  const alert = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+  jest
+    .mocked(openNaverDestinationNavigation)
+    .mockRejectedValue(new Error('열기 실패'));
+  useScheduleStore.setState({
+    reviews: {
+      1: {
+        summary: '서버 일정 버전 2',
+        mode: 'manual',
+        dirty: false,
+        confirmed: false,
+        serverBacked: true,
+        legs: [
+          {
+            id: 'old',
+            from: '성산일출봉',
+            to: '섭지코지',
+            fromCoord: null,
+            toCoord: { latitude: 33.423, longitude: 126.93 },
+            status: 'cautionary',
+            startTime: '09:00',
+            endTime: '09:30',
+            cost: null,
+            distanceText: '거리 정보 없음',
+            reason: '위험도 정보 미제공',
+            steps: [
+              {
+                kind: 'place',
+                name: '성산일출봉',
+                detail: null,
+                buses: [],
+                caution: false,
+              },
+              {
+                kind: 'place',
+                name: '섭지코지',
+                detail: null,
+                buses: [],
+                caution: false,
+              },
+            ],
+            departStayMinutes: 60,
+            slackMinutes: 10,
+            buses: [],
+          },
+        ],
+      },
+    },
+  });
+
+  const screen = await render(<Leg />);
+  await fireEvent.press(
+    screen.getByLabelText('네이버 지도에서 섭지코지 길찾기'),
+  );
+
+  expect(alert).toHaveBeenCalledWith('길찾기를 열 수 없어요', '열기 실패');
 });
 
 test('실시간 화면은 기존 패널을 유지하면서 위치 수집과 가짜 시간·안전 판정을 하지 않는다', async () => {

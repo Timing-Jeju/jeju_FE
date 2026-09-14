@@ -1,6 +1,6 @@
 /* eslint-env node, jest */
 
-const { readFileSync } = require('node:fs');
+const { readFileSync, readdirSync, statSync } = require('node:fs');
 const { resolve } = require('node:path');
 
 const root = resolve(__dirname, '..');
@@ -72,4 +72,55 @@ test('반복 GET을 앱 재시작 hydration 완료 증거로 과대평가하지 
 
   expect(matrix.stagingVerification.serverReadConsistency).toMatch(/^blocked:/);
   expect(matrix.stagingVerification.appRestartHydration).toMatch(/^blocked:/);
+});
+
+test('외부 길찾기 matrix는 서버 operation 없이 목적지 전용 공식 계약과 코드 증거를 고정한다', () => {
+  const matrix = json('contracts/screen-api.matrix.json');
+  const navigation = matrix.externalNavigation;
+
+  expect(navigation.officialContract).toBe(
+    'https://guide.ncloud-docs.com/docs/en/maps-url-scheme',
+  );
+  expect(navigation.serverOperations).toEqual([]);
+  expect(navigation.transmittedQueryParameters.deepLink).toEqual([
+    'dlat',
+    'dlng',
+    'dname',
+    'appname',
+  ]);
+  expect(navigation.transmittedQueryParameters.httpsFallback).toEqual([
+    'version',
+    'menu',
+    'elat',
+    'elng',
+    'etitle',
+  ]);
+  expect(navigation.forbiddenQueryParameters).toEqual(
+    expect.arrayContaining(['slat', 'slng', 'sname', 'currentLocation', 'gps']),
+  );
+  for (const field of ['callEvidence', 'responseEvidence', 'errorEvidence']) {
+    const [path, token] = navigation[field].split('#');
+    expect(read(path)).toContain(token);
+  }
+});
+
+test('앱 소스에는 지도 SDK public client ID만 남고 client secret REST 호출은 없다', () => {
+  const files = [];
+  const visit = (path) => {
+    for (const name of readdirSync(path)) {
+      const entry = resolve(path, name);
+      if (statSync(entry).isDirectory()) visit(entry);
+      else if (/\.(ts|tsx|js)$/.test(name)) files.push(entry);
+    }
+  };
+  visit(resolve(root, 'services'));
+  const source = files.map((path) => readFileSync(path, 'utf8')).join('\n');
+  const appConfig = read('app.config.js');
+
+  expect(source).not.toMatch(/EXPO_PUBLIC_[A-Z0-9_]*(SECRET|SEARCH)/);
+  expect(source).not.toMatch(
+    /map-direction|map-geocode|openapi\.naver\.com\/v1\/search\/local/,
+  );
+  expect(appConfig).toContain('EXPO_PUBLIC_NCP_MAPS_CLIENT_ID');
+  expect(appConfig).not.toMatch(/EXPO_PUBLIC_[A-Z0-9_]*(SECRET|SEARCH)/);
 });

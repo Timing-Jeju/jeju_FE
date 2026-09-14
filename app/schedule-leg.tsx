@@ -1,11 +1,10 @@
 import { PLANNER_AVAILABLE } from '@/services/plannerAvailability';
 import {
   NaverMapMarkerOverlay,
-  NaverMapPathOverlay,
   NaverMapView,
 } from '@mj-studio/react-native-naver-map';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import {
   Alert,
   Image,
@@ -43,7 +42,8 @@ import {
   spacing,
   transport,
 } from '@/constants';
-import { getDrivingRoute, type Coord } from '@/services/naverApi';
+import { openNaverDestinationNavigation } from '@/services/externalNavigation';
+import type { Coord } from '@/services/naverApi';
 import { useScheduleStore, type RouteLeg } from '@/store/useScheduleStore';
 import { formatTime } from '@/utils/date';
 import { buildAlternatives } from '@/utils/schedule';
@@ -108,7 +108,6 @@ function ScheduleLegScreenContent() {
     null,
   );
   const [deleteVisible, setDeleteVisible] = useState(false);
-  const [path, setPath] = useState<Coord[]>([]);
 
   const candidateReview = reviews[day];
   const review =
@@ -126,25 +125,6 @@ function ScheduleLegScreenContent() {
 
   const fromCoord = leg?.fromCoord ?? null;
   const toCoord = leg?.toCoord ?? null;
-
-  // 두 지점을 모두 알 때만 지도에 실제 경로를 그린다
-  useEffect(() => {
-    if (!fromCoord || !toCoord) return;
-
-    let cancelled = false;
-    getDrivingRoute(fromCoord, toCoord)
-      .then((route) => {
-        if (!cancelled) setPath(route.path);
-      })
-      .catch(() => {
-        // 경로를 못 받아오면 지도에는 출발 / 도착 마커만 남긴다
-        if (!cancelled) setPath([]);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [fromCoord, toCoord]);
 
   if (!leg) {
     return (
@@ -189,6 +169,20 @@ function ScheduleLegScreenContent() {
     );
     setLegs(day, next);
     router.back();
+  };
+
+  const handleOpenDestination = () => {
+    if (!toCoord) return;
+    void openNaverDestinationNavigation({ name: leg.to, coord: toCoord }).catch(
+      (error: unknown) => {
+        Alert.alert(
+          '길찾기를 열 수 없어요',
+          error instanceof Error
+            ? error.message
+            : '잠시 후 다시 시도해 주세요.',
+        );
+      },
+    );
   };
 
   return (
@@ -262,14 +256,6 @@ function ScheduleLegScreenContent() {
                 anchor={MARKER_ANCHOR}
               />
             ))}
-            {path.length > 1 && (
-              <NaverMapPathOverlay
-                coords={path}
-                width={6}
-                color={colors.primary}
-                outlineColor={colors.white}
-              />
-            )}
           </NaverMapView>
         )}
 
@@ -279,7 +265,21 @@ function ScheduleLegScreenContent() {
           <View style={styles.routeBox}>
             {leg.steps.map((step, index) => (
               <Fragment key={`${step.kind}-${step.name}-${index}`}>
-                <View style={styles.pointRow}>
+                <Pressable
+                  style={styles.pointRow}
+                  disabled={index !== leg.steps.length - 1 || !toCoord}
+                  accessibilityRole={
+                    index === leg.steps.length - 1 && toCoord
+                      ? 'link'
+                      : undefined
+                  }
+                  accessibilityLabel={
+                    index === leg.steps.length - 1 && toCoord
+                      ? `네이버 지도에서 ${leg.to} 길찾기`
+                      : undefined
+                  }
+                  onPress={handleOpenDestination}
+                >
                   {step.kind === 'place' ? (
                     <Image source={locationIcon} style={styles.pointIcon} />
                   ) : (
@@ -289,7 +289,7 @@ function ScheduleLegScreenContent() {
                   {step.caution && (
                     <Image source={infoIcon} style={styles.cautionIcon} />
                   )}
-                </View>
+                </Pressable>
                 {index < leg.steps.length - 1 && (
                   <View style={styles.connectorRow}>
                     <View style={styles.connectorLine} />
