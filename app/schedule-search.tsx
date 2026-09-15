@@ -38,11 +38,7 @@ import {
 import type { Place } from '@/services/places';
 import { usePlaceSearch } from '@/hooks/usePlaceSearch';
 import { useSchedulePersistence } from '@/hooks/useSchedulePersistence';
-import {
-  dayOrdinal,
-  useScheduleStore,
-  type SchedulePlace,
-} from '@/store/useScheduleStore';
+import { dayOrdinal, type SchedulePlace } from '@/store/useScheduleStore';
 
 // Figma 디자인 전용 색상 (constants 팔레트에 없는 값)
 const TITLE = '#191919';
@@ -62,7 +58,6 @@ export default function ScheduleSearchScreen() {
   const params = useLocalSearchParams<{ day?: string }>();
   const day = Number(params.day) || 1;
 
-  const activeVersionId = useScheduleStore((state) => state.activeVersionId);
   const { createPlace } = useSchedulePersistence();
 
   const [query, setQuery] = useState('');
@@ -90,6 +85,13 @@ export default function ScheduleSearchScreen() {
   };
 
   const handleAdd = async () => {
+    if (selected.some((place) => place.recommendedStayMinutes == null)) {
+      Alert.alert(
+        '체류 시간 확인이 필요해요',
+        '체류 시간이 제공되지 않은 장소는 체류 시간을 지정한 뒤 추가해 주세요.',
+      );
+      return;
+    }
     const places = selected.map(
       (place): SchedulePlace => ({
         placeId: place.placeId,
@@ -97,17 +99,10 @@ export default function ScheduleSearchScreen() {
         category: place.categoryLabel,
         address: place.roadAddress,
         visitType: '선택방문',
-        stayMinutes: place.recommendedStayMinutes ?? 60,
+        stayMinutes: place.recommendedStayMinutes!,
         coord: place.coord,
       }),
     );
-    if (!activeVersionId) {
-      Alert.alert(
-        '활성 일정이 필요해요',
-        '서버 일정을 다시 불러온 뒤 장소를 추가해 주세요.',
-      );
-      return;
-    }
     setSubmitting(true);
     try {
       for (const place of places) {

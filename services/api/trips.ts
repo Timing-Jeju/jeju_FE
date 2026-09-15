@@ -24,7 +24,7 @@ export type TripStatus =
 /** 여행 일정의 여유 정도 */
 export type UserPace = 'slow' | 'normal' | 'fast';
 
-export type TransportMode = 'public_transit' | 'rental_car' | 'taxi';
+export type TransportMode = components['schemas']['TransportMode']['mode'];
 
 /**
  * 이동 수단 우선순위.
@@ -251,28 +251,18 @@ export const replaceTripPreferences = (
     headers: { 'If-Match': etag },
   });
 
-/** 꼭 가는 곳 / 피하는 곳 */
-export type PlacePreferenceType = 'must_visit' | 'avoid';
+/** 필수 / 선택 / 제외 장소. 공개 BE 계약의 필드와 enum을 그대로 사용한다. */
+export type TripPlacePreference = components['schemas']['PlacePreferenceItem'];
+export type PlacePreferenceType = TripPlacePreference['type'];
 
-export interface TripPlacePreference {
-  placeId: string;
-  type: PlacePreferenceType;
-  /** 1..30, 며칠째에 갈지. 없으면 null */
-  targetDayNo: number | null;
-  /** 0..100 */
-  priority: number;
-}
-
-export interface TripPlacePreferencesResponse extends TripMutationEffect {
-  items: TripPlacePreference[];
-}
+export type TripPlacePreferencesResponse =
+  components['schemas']['PlacePreferencesResponse'];
 
 /**
  * 장소 선호 전체 교체. `If-Match` 필수이고 0..100개다.
  *
- * **넣으려는 장소를 먼저 찜해야 한다.** 서버가 내 `saved_places`를 조인해서 확인하므로,
- * 찜하지 않은 placeId를 보내면 그 장소가 실제로 존재해도 404 PLACE_NOT_FOUND다.
- * `createSavedPlace(placeId)` → 이 호출 순서로 쓴다.
+ * 유효한 canonical 장소는 찜 여부와 관계없이 지정할 수 있다.
+ * 장소 표시 정보는 전송하지 않는다. 체류시간 미지정은 null이며 임의 기본값을 만들지 않는다.
  *
  * 부분 수정이 아니라 전체 교체이므로, 하나만 지우려면 나머지를 다 실어 보낸다.
  * 빈 배열을 보내면 전부 지운다.
@@ -285,17 +275,58 @@ export const replaceTripPlacePreferences = (
   tripId: string,
   items: TripPlacePreference[],
   etag: string,
+  idempotencyKey?: string,
 ): Promise<ApiResponse<TripPlacePreferencesResponse>> =>
   request<TripPlacePreferencesResponse>({
     method: 'PUT',
     path: `/trips/${encodeURIComponent(tripId)}/place-preferences`,
     auth: 'required',
-    body: { items },
-    headers: { 'If-Match': etag },
+    body: {
+      items: items.map(
+        ({ placeId, type, targetDayNo, priority, requestedStayMinutes }) => ({
+          placeId,
+          type,
+          targetDayNo,
+          priority,
+          requestedStayMinutes: requestedStayMinutes ?? null,
+        }),
+      ),
+    },
+    headers: {
+      'If-Match': etag,
+      ...(idempotencyKey !== undefined
+        ? { 'Idempotency-Key': idempotencyKey }
+        : {}),
+    },
   });
 
 export type DayActivityWindowsRequest =
   components['schemas']['ReplaceTripDayActivityWindowsRequest'];
+
+export type PlannerConditions = components['schemas']['PlannerConditions'];
+export type PlannerConditionsResponse =
+  components['schemas']['PlannerConditionsMutationResponse'];
+
+/** 숙소 canonical ID와 지원 스타일만 저장한다. 재시도는 동일 body·ETag·키를 사용한다. */
+export const replacePlannerConditions = (
+  tripId: string,
+  body: PlannerConditions,
+  etag: string,
+  idempotencyKey: string,
+): Promise<ApiResponse<PlannerConditionsResponse>> =>
+  request<PlannerConditionsResponse>({
+    method: 'PUT',
+    path: `/trips/${encodeURIComponent(tripId)}/planner-conditions`,
+    auth: 'required',
+    body: {
+      dayAnchors: body.dayAnchors.map(({ dayId, lodgingPlaceId }) => ({
+        dayId,
+        lodgingPlaceId,
+      })),
+      styleCodes: [...body.styleCodes],
+    },
+    headers: { 'If-Match': etag, 'Idempotency-Key': idempotencyKey },
+  });
 export type DayActivityWindowsResponse =
   components['schemas']['TripDayActivityWindowsResponse'];
 

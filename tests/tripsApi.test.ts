@@ -1,10 +1,16 @@
 import { request, requestData, type ApiResponse } from '@/services/api/http';
 import { ApiError } from '@/services/api/problem';
 import {
+  putTransportEvent,
+  deleteTransportEvent,
+} from '@/services/api/transportEvents';
+import {
   fetchTrip,
   fetchTrips,
   updateTrip,
   replaceDayActivityWindows,
+  replacePlannerConditions,
+  replaceTripPlacePreferences,
   type ScoreProvenance,
   type Trip,
   type TripListItem,
@@ -16,6 +22,94 @@ jest.mock('@/services/api/http', () => ({
 }));
 
 const tripId = '44000000-0000-4000-8000-000000000044';
+
+test('장소 선호 저장 재시도는 호출자가 보존한 동일 키와 ETag를 전달한다', async () => {
+  const key = '53000000-0000-4000-8000-000000000001';
+  await replaceTripPlacePreferences(tripId, [], '"trip-r1"', key);
+  await replaceTripPlacePreferences(tripId, [], '"trip-r1"', key);
+  expect(request).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      body: { items: [] },
+      headers: { 'If-Match': '"trip-r1"', 'Idempotency-Key': key },
+    }),
+  );
+});
+
+test('날짜별 선택 장소는 canonical 필드와 체류시간만 전송하고 찜 생성을 요구하지 않는다', async () => {
+  const preference = {
+    placeId: tripId,
+    type: 'preferred' as const,
+    targetDayNo: 2,
+    priority: 50,
+    requestedStayMinutes: null,
+    name: '전송하지 않을 이름',
+    address: '전송하지 않을 주소',
+  };
+  await replaceTripPlacePreferences(tripId, [preference], '"trip-r1"');
+  expect(request).toHaveBeenLastCalledWith({
+    method: 'PUT',
+    path: `/trips/${tripId}/place-preferences`,
+    auth: 'required',
+    body: {
+      items: [
+        {
+          placeId: tripId,
+          type: 'preferred',
+          targetDayNo: 2,
+          priority: 50,
+          requestedStayMinutes: null,
+        },
+      ],
+    },
+    headers: { 'If-Match': '"trip-r1"' },
+  });
+});
+
+test('교통 삭제 재시도는 같은 selector와 멱등 키·ETag를 전달하고 본문을 만들지 않는다', async () => {
+  await deleteTransportEvent(tripId, 'departure', '"trip-r1"', 'delete-key');
+  expect(request).toHaveBeenCalledWith({
+    method: 'DELETE',
+    path: `/trips/${tripId}/transport-event`,
+    auth: 'required',
+    params: { eventType: 'departure' },
+    headers: { 'If-Match': '"trip-r1"', 'Idempotency-Key': 'delete-key' },
+  });
+});
+
+test('항공 저장 재시도는 터미널 ID를 만들지 않고 같은 멱등 키와 ETag를 전달한다', async () => {
+  const body = {
+    eventType: 'arrival' as const,
+    transportType: 'flight' as const,
+    terminalPlaceId: null,
+    customTerminalName: null,
+    scheduledAt: '2026-09-10T09:00:00+09:00',
+    transportNumber: null,
+    note: null,
+  };
+  await putTransportEvent(tripId, body, '"trip-r1"', 'flight-key');
+  expect(request).toHaveBeenCalledWith({
+    method: 'PUT',
+    path: `/trips/${tripId}/transport-event`,
+    auth: 'required',
+    body,
+    headers: { 'If-Match': '"trip-r1"', 'Idempotency-Key': 'flight-key' },
+  });
+});
+
+test('플래너 조건은 canonical 숙소 ID와 스타일 및 동일 멱등 키로 저장한다', async () => {
+  const body = {
+    dayAnchors: [{ dayId: tripId, lodgingPlaceId: tripId }],
+    styleCodes: ['relaxed' as const],
+  };
+  await replacePlannerConditions(tripId, body, '"trip-r1"', 'planner-key');
+  expect(request).toHaveBeenCalledWith({
+    method: 'PUT',
+    path: `/trips/${tripId}/planner-conditions`,
+    auth: 'required',
+    body,
+    headers: { 'If-Match': '"trip-r1"', 'Idempotency-Key': 'planner-key' },
+  });
+});
 const scheduleVersionId = '49000000-0000-4000-8000-000000000002';
 const etag1 = `"trip-${tripId}-r1"`;
 const etag2 = `"trip-${tripId}-r2"`;
@@ -42,6 +136,8 @@ const summary: TripListItem = {
   updatedAt: '2026-09-10T01:00:00Z',
 };
 const trip: Trip = {
+  placePreferences: [],
+  plannerConditions: { dayAnchors: [], styleCodes: [] },
   ...summary,
   userPace: 'normal',
   transportModes: [{ mode: 'public_transit', priority: 1, primary: true }],

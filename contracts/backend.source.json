@@ -1,9 +1,9 @@
 {
   "repository": "Timing-Jeju/jeju_BE",
-  "sourceBranch": "fix/248-saved-place-delete-cas",
-  "sourceCommit": "fc72bb4cb631f407c8bc16620b096fa1691d1a6a",
-  "sourceOpenApiSha256": "09dd9f82f4718495fc0ffecd42d479613033c471d44674376f723c390a6e21aa",
-  "runtimeManifestSha256": "e94e230624913ac6608c446f4e548d19d73556d69d8920fbde5a5f9178fbe7ec",
+  "sourceBranch": "feat/53-generation-run-intake",
+  "sourceCommit": "1110049686e2d9408b9e107d4ff2f5f26a430247",
+  "sourceOpenApiSha256": "ede28e659feb37ffd2379e084f1197cbec64800be6d86173fa41b7dc4d3ed4cb",
+  "runtimeManifestSha256": "3e6eae009f83571fd943af704941f4f4aab596ea9cd4cbe98ed8846d3992c9f3",
   "operations": [
     "DELETE /api/v1/me/push-devices/{deviceId}",
     "DELETE /api/v1/me/saved-places/{placeId}",
@@ -23,6 +23,8 @@
     "GET /api/v1/trips",
     "GET /api/v1/trips/{tripId}",
     "GET /api/v1/trips/{tripId}/schedule",
+    "GET /api/v1/trips/{tripId}/schedule-generations/{runId}",
+    "GET /api/v1/trips/{tripId}/schedule-versions/{versionId}",
     "GET /api/v1/weather/forecast",
     "PATCH /api/v1/me",
     "PATCH /api/v1/me/notification-preferences",
@@ -33,6 +35,8 @@
     "POST /api/v1/me/saved-places",
     "POST /api/v1/trips",
     "POST /api/v1/trips/{tripId}/accommodations",
+    "POST /api/v1/trips/{tripId}/schedule-generations",
+    "POST /api/v1/trips/{tripId}/schedule-generations/{runId}/candidates/{candidateId}/apply",
     "POST /api/v1/trips/{tripId}/schedule-items",
     "POST /api/v1/trips/{tripId}/schedule-items/{itemId}/move",
     "PUT /api/v1/me/consents",
@@ -40,9 +44,9 @@
     "PUT /api/v1/me/push-devices/{deviceId}",
     "PUT /api/v1/trips/{tripId}/day-activity-windows",
     "PUT /api/v1/trips/{tripId}/place-preferences",
+    "PUT /api/v1/trips/{tripId}/planner-conditions",
     "PUT /api/v1/trips/{tripId}/preferences",
     "PUT /api/v1/trips/{tripId}/schedule-order",
     "PUT /api/v1/trips/{tripId}/transport-event"
-  ],
-  "verificationStatus": "merged; local full quality gate and GitHub CI passed"
+  ]
 }

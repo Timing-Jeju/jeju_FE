@@ -263,8 +263,24 @@ export async function beginGeneration(dayNo: number) {
         throw error;
       });
       assertCurrent(current);
+      if (
+        active?.days.some(
+          (day) =>
+            !('hasGenerationResult' in day) ||
+            typeof day.hasGenerationResult !== 'boolean',
+        )
+      )
+        throw new Error(
+          'AI 생성 이력을 확인할 수 없어요. 일정을 다시 불러와 주세요.',
+        );
       const firstIncomplete = trip.serverTrip!.days.find(
-        (d) => !active?.days.find((s) => s.dayNo === d.dayNo)?.items.length,
+        (d) =>
+          !active?.days.some(
+            (s) =>
+              s.dayNo === d.dayNo &&
+              'hasGenerationResult' in s &&
+              s.hasGenerationResult === true,
+          ),
       );
       if (firstIncomplete?.dayNo !== dayNo)
         throw new Error('Day 1부터 첫 미완료 날짜를 순서대로 생성해 주세요.');
@@ -471,6 +487,17 @@ async function completeApplication(journal: Journal, current: () => boolean) {
     fetchSchedule(journal.tripId),
   ]);
   assertCurrent(current);
+  if (
+    trip.data.tripId !== journal.tripId ||
+    schedule.tripId !== journal.tripId ||
+    trip.data.activeScheduleVersionId !== pending.scheduleVersionId ||
+    schedule.scheduleVersion.scheduleVersionId !== pending.scheduleVersionId ||
+    schedule.scheduleVersion.status !== 'active' ||
+    schedule.days.some((day) => typeof day.hasGenerationResult !== 'boolean')
+  )
+    throw new Error(
+      '적용 후 일정 정보가 일치하지 않아요. 같은 요청으로 다시 확인해 주세요.',
+    );
   const places = scheduleToPlaces(schedule);
   useTripStore.setState({ serverTrip: trip.data, etag: trip.etag });
   useScheduleStore.setState({
@@ -485,7 +512,8 @@ async function completeApplication(journal: Journal, current: () => boolean) {
   useGenerationStore.setState({ ...empty, journal });
   return (
     trip.data.days.find(
-      (day) => !schedule.days.find((d) => d.dayNo === day.dayNo)?.items.length,
+      (day) =>
+        !schedule.days.find((d) => d.dayNo === day.dayNo)?.hasGenerationResult,
     )?.dayNo ?? journal.dayNo
   );
 }

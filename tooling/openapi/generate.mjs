@@ -112,7 +112,7 @@ const coverageOutput = [
     return `| \`${operation}\` | \`${entry.module}#${entry.export}\` | ${entry.screen} | ${entry.prerequisite} |`;
   }),
   '',
-  '화면 연결이 `deferred`인 항목은 이 이슈의 API 기반에는 포함되지만 후속 화면 연결이 필요하다. 공개 Spring endpoint가 없는 AI 생성·조회·적용은 이 표와 wrapper에 포함하지 않는다.',
+  '화면 연결이 `deferred`인 항목은 wrapper가 있어도 실제 화면 invocation이 없거나 기능 gate가 닫혀 있다. 일정 생성·조회·적용 endpoint는 표에 포함하지만 `PLANNER_AVAILABLE=false` 동안 deferred로 유지한다.',
   '',
 ].join('\n');
 const coveragePath = 'docs/backend-api-coverage.md';

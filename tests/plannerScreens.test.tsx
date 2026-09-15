@@ -70,14 +70,14 @@ beforeEach(() => {
   });
 });
 
-test('미지원 검토는 기존 헤더·빈 상태를 표시하고 과거 모의 결과를 숨긴다', async () => {
+test('활성화된 검토도 서버 일정이 없으면 과거 모의 결과를 숨긴다', async () => {
   const screen = await render(<Review />);
   expect(screen.getByText('일정 검토')).toBeTruthy();
-  expect(screen.getByText(/생성·평가·적용은 아직 지원하지/)).toBeTruthy();
+  expect(screen.getByText(/아직 생성된 일정이 없어요/)).toBeTruthy();
   expect(screen.queryByText('과거 모의 결과')).toBeNull();
 });
 
-test('공개 서버 일정 구간은 AI planner flag가 꺼져도 검토 화면에 표시한다', async () => {
+test('공개 서버 일정 구간은 검토 화면에 표시한다', async () => {
   useScheduleStore.setState({
     reviews: {
       1: {
@@ -218,7 +218,7 @@ test('serverBacked 확정·재정렬·삭제는 unsupported 함수를 호출하�
 test('미지원 구간 상세는 기존 빈 상태를 표시하고 경로 API를 호출하지 않는다', async () => {
   const screen = await render(<Leg />);
   expect(screen.getByText('상세 일정')).toBeTruthy();
-  expect(screen.getByText('구간 상세는 준비 중이에요.')).toBeTruthy();
+  expect(screen.getByText('일정 정보를 찾을 수 없어요.')).toBeTruthy();
   expect(getDrivingRoute).not.toHaveBeenCalled();
 });
 

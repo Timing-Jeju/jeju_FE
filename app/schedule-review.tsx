@@ -341,10 +341,7 @@ function ScheduleReviewScreenContent() {
   const candidateReview = isCandidate
     ? generation.review
     : reviews[selectedDay];
-  const review =
-    PLANNER_AVAILABLE || candidateReview?.serverBacked
-      ? candidateReview
-      : undefined;
+  const review = candidateReview?.serverBacked ? candidateReview : undefined;
   const legs = useMemo(() => review?.legs ?? [], [review]);
 
   // 마지막 날에만 확정하고, 그 전에는 다음 날 검토로 넘어간다

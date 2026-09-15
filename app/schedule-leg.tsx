@@ -111,10 +111,7 @@ function ScheduleLegScreenContent() {
   const [path, setPath] = useState<Coord[]>([]);
 
   const candidateReview = reviews[day];
-  const review =
-    PLANNER_AVAILABLE || candidateReview?.serverBacked
-      ? candidateReview
-      : undefined;
+  const review = candidateReview?.serverBacked ? candidateReview : undefined;
   const legs = review?.legs ?? [];
   const legIndex = legs.findIndex((item) => item.id === params.legId);
   const leg: RouteLeg | undefined = legs[legIndex];

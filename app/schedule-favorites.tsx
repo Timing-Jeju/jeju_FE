@@ -40,11 +40,7 @@ import {
   type FavoriteFilter,
   type FavoritePlace,
 } from '@/store/useFavoriteStore';
-import {
-  dayOrdinal,
-  useScheduleStore,
-  type SchedulePlace,
-} from '@/store/useScheduleStore';
+import { dayOrdinal, type SchedulePlace } from '@/store/useScheduleStore';
 import {
   favoriteMutationErrorMessage,
   useFavoriteSync,
@@ -68,7 +64,6 @@ export default function ScheduleFavoritesScreen() {
 
   const favorites = useFavoriteStore((state) => state.favorites);
   const updateFavorite = useFavoriteStore((state) => state.updateFavorite);
-  const activeVersionId = useScheduleStore((state) => state.activeVersionId);
   const { createPlace } = useSchedulePersistence();
 
   const [filter, setFilter] = useState<FavoriteFilter>('전체');
@@ -110,13 +105,6 @@ export default function ScheduleFavoritesScreen() {
         coord: place.coord,
       }),
     );
-    if (!activeVersionId) {
-      Alert.alert(
-        '활성 일정이 필요해요',
-        '서버 일정을 다시 불러온 뒤 장소를 추가해 주세요.',
-      );
-      return;
-    }
     setSubmitting(true);
     try {
       for (const place of places) {

@@ -122,6 +122,69 @@ afterEach(() => {
   useGenerationStore.setState({ run: null });
 });
 
+test('수동 일정이 채워져 있어도 AI 이력이 없으면 Day 1을 생성한다', async () => {
+  const trip = useTripStore.getState().serverTrip!;
+  useTripStore.setState({
+    serverTrip: { ...trip, activeScheduleVersionId: id(40) },
+  });
+  useScheduleStore.setState({ activeVersionId: id(40) });
+  jest.mocked(fetchSchedule).mockResolvedValue({
+    ...schedule,
+    scheduleVersion: {
+      ...schedule.scheduleVersion,
+      scheduleVersionId: id(40),
+      status: 'active',
+    },
+    days: [
+      {
+        dayId: id(3),
+        dayNo: 1,
+        date: '2099-01-01',
+        items: [{ itemId: id(41) }],
+        legs: [],
+        hasGenerationResult: false,
+      },
+    ],
+  } as any);
+  await beginGeneration(1);
+  expect(api.startGeneration).toHaveBeenCalled();
+  expect(
+    useGenerationStore.getState().journal?.command
+      .expectedActiveScheduleVersionId,
+  ).toBe(id(40));
+});
+
+test.each([
+  ['이미 AI 이력이 있음', true, 'Day 1부터 첫 미완료 날짜'],
+  ['서버 이력 필드 누락', undefined, 'AI 생성 이력을 확인할 수 없어요'],
+])('%s이면 Day 1을 중복 접수하지 않는다', async (_purpose, result, message) => {
+  const trip = useTripStore.getState().serverTrip!;
+  useTripStore.setState({
+    serverTrip: { ...trip, activeScheduleVersionId: id(40) },
+  });
+  useScheduleStore.setState({ activeVersionId: id(40) });
+  jest.mocked(fetchSchedule).mockResolvedValue({
+    ...schedule,
+    scheduleVersion: {
+      ...schedule.scheduleVersion,
+      scheduleVersionId: id(40),
+      status: 'active',
+    },
+    days: [
+      {
+        dayId: id(3),
+        dayNo: 1,
+        date: '2099-01-01',
+        items: [],
+        legs: [],
+        ...(result === undefined ? {} : { hasGenerationResult: result }),
+      },
+    ],
+  } as any);
+  await expect(beginGeneration(1)).rejects.toThrow(message as string);
+  expect(api.startGeneration).not.toHaveBeenCalled();
+});
+
 test('최대 5일을 넘으면 저장된 일반 여행도 AI 접수를 하지 않는다', async () => {
   const trip = useTripStore.getState().serverTrip!;
   useTripStore.setState({
@@ -207,6 +270,29 @@ test('후보가 2개이거나 외부 URL이면 미리보기 조회 전에 거부
   ).toThrow();
 });
 
+test('서버의 24시간 후보를 허용하며 단말 시계로 보존 기한을 축소하지 않는다', () => {
+  const result = {
+    ...success,
+    result: {
+      ...success.result!,
+      candidates: candidates.map((candidate) => ({
+        ...candidate,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      })),
+    },
+  };
+  expect(api.validateRun(result, tripId)).toBe(result);
+  // 단말 시계가 서버보다 느려도 유효 후보 자체를 잘못된 계약으로 거부하지 않는다.
+  const now = jest
+    .spyOn(Date, 'now')
+    .mockReturnValue(Date.now() - 60 * 60 * 1000);
+  try {
+    expect(api.validateRun(result, tripId)).toBe(result);
+  } finally {
+    now.mockRestore();
+  }
+});
+
 test('정확히 세 후보 중 균형형만 미리보기하고 자동 적용하지 않는다', async () => {
   await beginGeneration(1);
   const result = await pollGeneration(new AbortController().signal);
@@ -216,6 +302,35 @@ test('정확히 세 후보 중 균형형만 미리보기하고 자동 적용하�
   for (const key of await AsyncStorage.getAllKeys()) {
     expect(await AsyncStorage.getItem(key)).not.toContain('검증된 일정');
   }
+});
+
+test('적용 후 다음 날짜는 항목 수가 아니라 AI 이력으로 결정한다', async () => {
+  await beginGeneration(1);
+  await pollGeneration(new AbortController().signal);
+  jest
+    .mocked(api.applyCandidate)
+    .mockResolvedValue({ data: { activeScheduleVersionId: id(20) } } as any);
+  const original = useTripStore.getState().serverTrip!;
+  jest.mocked(fetchTrip).mockResolvedValue({
+    data: {
+      ...original,
+      activeScheduleVersionId: id(20),
+      days: [
+        original.days[0],
+        { ...original.days[0], dayId: id(4), dayNo: 2, date: '2099-01-02' },
+      ],
+    },
+    etag: '"trip-r2"',
+  } as any);
+  jest.mocked(fetchSchedule).mockResolvedValue({
+    ...schedule,
+    scheduleVersion: { ...schedule.scheduleVersion, status: 'active' },
+    days: [
+      { dayNo: 1, items: [], legs: [], hasGenerationResult: true },
+      { dayNo: 2, items: [], legs: [], hasGenerationResult: false },
+    ],
+  } as any);
+  await expect(applyGeneration()).resolves.toBe(2);
 });
 
 test('여행 전환 후 늦은 polling 응답이 새 여행의 후보를 덮지 않는다', async () => {
@@ -234,11 +349,54 @@ test('여행 전환 후 늦은 polling 응답이 새 여행의 후보를 덮지 
   expect(useGenerationStore.getState().candidate).toBeNull();
 });
 
+test.each(['버전 불일치', '이력 필드 누락'])(
+  '적용 후 %s이면 동일 키 복구 기록을 보존한다',
+  async (purpose) => {
+    await beginGeneration(1);
+    await pollGeneration(new AbortController().signal);
+    jest
+      .mocked(api.applyCandidate)
+      .mockResolvedValue({ data: { activeScheduleVersionId: id(20) } } as any);
+    jest.mocked(fetchTrip).mockResolvedValue({
+      data: {
+        ...useTripStore.getState().serverTrip,
+        activeScheduleVersionId: id(20),
+      },
+      etag: '"trip-r2"',
+    } as any);
+    jest.mocked(fetchSchedule).mockResolvedValue({
+      ...schedule,
+      scheduleVersion: {
+        ...schedule.scheduleVersion,
+        status: 'active',
+        scheduleVersionId: purpose === '버전 불일치' ? id(21) : id(20),
+      },
+      days: [
+        {
+          dayNo: 1,
+          items: [],
+          legs: [],
+          ...(purpose === '이력 필드 누락'
+            ? {}
+            : { hasGenerationResult: true }),
+        },
+      ],
+    } as any);
+    await expect(applyGeneration()).rejects.toThrow();
+    expect(await AsyncStorage.getAllKeys()).toHaveLength(1);
+    expect(useGenerationStore.getState().journal?.apply).toBeDefined();
+    expect(useScheduleStore.getState().activeVersionId).toBeNull();
+  },
+);
+
 test('적용 응답 유실 후에는 후보 본문 없이 원래 키와 ETag로 receipt를 확인한다', async () => {
   await beginGeneration(1);
   await pollGeneration(new AbortController().signal);
   jest.mocked(fetchTrip).mockResolvedValue({
-    data: useTripStore.getState().serverTrip,
+    data: {
+      ...useTripStore.getState().serverTrip,
+      activeScheduleVersionId: id(20),
+    },
     etag: '"trip-r2"',
   } as any);
   jest.mocked(api.applyCandidate).mockRejectedValueOnce(new Error('network'));
@@ -249,7 +407,11 @@ test('적용 응답 유실 후에는 후보 본문 없이 원래 키와 ETag로 
   jest
     .mocked(api.applyCandidate)
     .mockResolvedValue({ data: { activeScheduleVersionId: id(20) } } as any);
-  jest.mocked(fetchSchedule).mockResolvedValue(schedule as any);
+  jest.mocked(fetchSchedule).mockResolvedValue({
+    ...schedule,
+    scheduleVersion: { ...schedule.scheduleVersion, status: 'active' },
+    days: schedule.days.map((day) => ({ ...day, hasGenerationResult: true })),
+  } as any);
   await resumeGenerationApplication();
   expect(jest.mocked(api.applyCandidate).mock.calls[1].slice(0, 4)).toEqual(
     original.slice(0, 4),

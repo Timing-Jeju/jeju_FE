@@ -17,6 +17,7 @@ jest.mock('@/services/api/trips', () => ({
   updateTrip: jest.fn(),
   deleteTrip: jest.fn(),
   replaceDayActivityWindows: jest.fn(),
+  replacePlannerConditions: jest.fn(),
 }));
 jest.mock('@/services/api/accommodations', () => ({
   createAccommodation: jest.fn(),
@@ -54,6 +55,8 @@ const conditions: TripConditions = {
 };
 
 const trip: trips.Trip = {
+  placePreferences: [],
+  plannerConditions: { dayAnchors: [], styleCodes: [] },
   tripId,
   title: '제주 여행',
   status: 'draft',
@@ -92,8 +95,44 @@ const response = (etag: string, data = trip) => ({
   traceId: null,
 });
 
+const transportResponse = (
+  eventType: transportEvents.TransportEventType,
+  event: transportEvents.TransportEvent | null,
+  etag = etag3,
+) => ({
+  ...response(etag),
+  data: {
+    tripId,
+    eventType,
+    event,
+    deleted: event === null,
+    scheduleEffect: 'none' as const,
+    regenerationRequired: false,
+    activeScheduleVersionId: null,
+    tripStatus: 'draft',
+    updatedAt: trip.updatedAt,
+  },
+});
+
 beforeEach(() => {
   jest.clearAllMocks();
+  jest
+    .mocked(transportEvents.putTransportEvent)
+    .mockReset()
+    .mockImplementation(async (_, body) =>
+      transportResponse(body.eventType, body),
+    );
+  jest
+    .mocked(transportEvents.deleteTransportEvent)
+    .mockReset()
+    .mockImplementation(async (_, eventType) =>
+      transportResponse(eventType, null),
+    );
+  jest
+    .mocked(trips.replacePlannerConditions)
+    .mockReset()
+    .mockResolvedValue(response(etag3, trip));
+  jest.mocked(trips.fetchTrip).mockReset().mockResolvedValue(response(etag3));
   jest
     .mocked(trips.replaceDayActivityWindows)
     .mockReset()
@@ -114,6 +153,312 @@ const deferred = <T>() => {
   });
   return { promise, resolve };
 };
+
+test('조건 저장은 planner 뒤 입도·출도를 최신 ETag와 별도 키로 저장하고 재조회한다', async () => {
+  jest.mocked(trips.createTrip).mockResolvedValueOnce(response(etag1));
+  const etag4 = `"trip-${tripId}-r4"`;
+  jest
+    .mocked(transportEvents.putTransportEvent)
+    .mockImplementationOnce(async (_, body) =>
+      transportResponse(body.eventType, body, etag4),
+    );
+  await createTripPersistenceActions().saveTrip(conditions);
+  const calls = jest.mocked(transportEvents.putTransportEvent).mock.calls;
+  expect(calls).toHaveLength(2);
+  expect(calls[0]).toEqual([
+    tripId,
+    {
+      eventType: 'arrival',
+      transportType: 'flight',
+      terminalPlaceId: null,
+      customTerminalName: null,
+      scheduledAt: '2026-09-10T09:00:00+09:00',
+      transportNumber: null,
+      note: null,
+    },
+    etag3,
+    expect.any(String),
+  ]);
+  expect(calls[1][1]).toMatchObject({
+    eventType: 'departure',
+    transportType: 'ferry',
+    scheduledAt: '2026-09-12T18:30:00+09:00',
+  });
+  expect(calls[1][2]).toBe(etag4);
+  expect(calls[1][3]).not.toBe(calls[0][3]);
+  expect(useTripStore.getState().saved).toBe(true);
+});
+
+test('출도 응답 유실 재시도는 입도와 앞 저장을 반복하지 않고 동일 요청을 재생한다', async () => {
+  jest.mocked(trips.createTrip).mockResolvedValueOnce(response(etag1));
+  jest
+    .mocked(transportEvents.putTransportEvent)
+    .mockImplementationOnce(async (_, body) =>
+      transportResponse(body.eventType, body),
+    )
+    .mockRejectedValueOnce(
+      new ApiError({ status: 0, code: 'CLIENT_NETWORK_ERROR' }),
+    );
+  const actions = createTripPersistenceActions();
+  await expect(actions.saveTrip(conditions)).rejects.toMatchObject({
+    code: 'CLIENT_NETWORK_ERROR',
+  });
+  expect(useTripStore.getState().saved).toBe(false);
+  await actions.saveTrip(conditions);
+  const calls = jest.mocked(transportEvents.putTransportEvent).mock.calls;
+  expect(calls).toHaveLength(3);
+  expect(calls[2]).toEqual(calls[1]);
+  expect(trips.createTrip).toHaveBeenCalledTimes(1);
+  expect(trips.replacePlannerConditions).toHaveBeenCalledTimes(1);
+  expect(useTripStore.getState().saved).toBe(true);
+});
+
+test.each([false, true])(
+  '조건 저장은 기존 교통 상세를 보존하고 수단 변경만 터미널·편명을 초기화한다 (변경=%s)',
+  async (changedKind) => {
+    const departure: transportEvents.TransportEvent = {
+      eventType: 'departure',
+      transportType: 'ferry',
+      terminalPlaceId: tripId,
+      customTerminalName: null,
+      scheduledAt: '2026-09-12T18:30:00+09:00',
+      transportNumber: '기존 선박 편명',
+      note: '기존 메모',
+    };
+    jest.mocked(trips.createTrip).mockResolvedValueOnce(response(etag1));
+    jest.mocked(trips.fetchTrip).mockResolvedValueOnce(
+      response(etag3, {
+        ...trip,
+        transportEvents: { arrival: null, departure },
+      }),
+    );
+    await createTripPersistenceActions().saveTrip({
+      ...conditions,
+      departureTransport: changedKind ? '비행기' : '선박',
+      styles: ['카페투어'],
+    });
+    const body = jest.mocked(transportEvents.putTransportEvent).mock
+      .calls[1][1];
+    expect(body).toEqual({
+      ...departure,
+      transportType: changedKind ? 'flight' : 'ferry',
+      terminalPlaceId: changedKind ? null : departure.terminalPlaceId,
+      transportNumber: changedKind ? null : departure.transportNumber,
+    });
+  },
+);
+
+test('입도 입력을 비우면 저장된 입도를 동일 삭제 키로 제거한 뒤 출도를 저장한다', async () => {
+  const arrival: transportEvents.TransportEvent = {
+    eventType: 'arrival',
+    transportType: 'flight',
+    terminalPlaceId: tripId,
+    customTerminalName: null,
+    scheduledAt: '2026-09-10T09:00:00+09:00',
+    transportNumber: null,
+    note: null,
+  };
+  jest.mocked(trips.createTrip).mockResolvedValueOnce(response(etag1));
+  jest.mocked(trips.fetchTrip).mockResolvedValueOnce(
+    response(etag3, {
+      ...trip,
+      transportEvents: { arrival, departure: null },
+    }),
+  );
+  jest
+    .mocked(transportEvents.deleteTransportEvent)
+    .mockRejectedValueOnce(
+      new ApiError({ status: 0, code: 'CLIENT_NETWORK_ERROR' }),
+    );
+  const cleared = { ...conditions, arrivalTransport: null, arrivalTime: null };
+  const actions = createTripPersistenceActions();
+  await expect(actions.saveTrip(cleared)).rejects.toMatchObject({
+    code: 'CLIENT_NETWORK_ERROR',
+  });
+  await actions.saveTrip(cleared);
+  const calls = jest.mocked(transportEvents.deleteTransportEvent).mock.calls;
+  expect(calls).toHaveLength(2);
+  expect(calls[0]).toEqual([tripId, 'arrival', etag3, expect.any(String)]);
+  expect(calls[1]).toEqual(calls[0]);
+  expect(transportEvents.putTransportEvent).toHaveBeenCalledTimes(1);
+});
+
+test('교통 저장 뒤 최종 조회 유실은 완료한 PUT을 반복하지 않고 조회만 재시도한다', async () => {
+  jest.mocked(trips.createTrip).mockResolvedValueOnce(response(etag1));
+  jest
+    .mocked(trips.fetchTrip)
+    .mockResolvedValueOnce(response(etag3))
+    .mockRejectedValueOnce(
+      new ApiError({ status: 0, code: 'CLIENT_NETWORK_ERROR' }),
+    );
+  const actions = createTripPersistenceActions();
+  await expect(actions.saveTrip(conditions)).rejects.toMatchObject({
+    code: 'CLIENT_NETWORK_ERROR',
+  });
+  expect(useTripStore.getState().pendingTransportEvents?.remaining).toEqual([]);
+  expect(useTripStore.getState().saved).toBe(false);
+  await actions.saveTrip(conditions);
+  expect(transportEvents.putTransportEvent).toHaveBeenCalledTimes(2);
+  expect(trips.replacePlannerConditions).toHaveBeenCalledTimes(1);
+  expect(useTripStore.getState().pendingTransportEvents).toBeNull();
+  expect(useTripStore.getState().saved).toBe(true);
+});
+
+test('교통 저장 중 입력을 바꾸면 이전 응답으로 새 입력을 저장 완료 처리하지 않는다', async () => {
+  jest.mocked(trips.createTrip).mockResolvedValueOnce(response(etag1));
+  const pending = deferred<ReturnType<typeof transportResponse>>();
+  jest
+    .mocked(transportEvents.putTransportEvent)
+    .mockReturnValueOnce(pending.promise);
+  const saving = createTripPersistenceActions().saveTrip(conditions);
+  for (let i = 0; i < 20; i += 1) await Promise.resolve();
+  const first = jest.mocked(transportEvents.putTransportEvent).mock.calls[0][1];
+  useTripStore
+    .getState()
+    .saveConditions({ ...conditions, arrivalTime: '11:00' });
+  pending.resolve(transportResponse('arrival', first));
+  await saving;
+  expect(useTripStore.getState().arrivalTime).toBe('11:00');
+  expect(useTripStore.getState().saved).toBe(false);
+});
+
+test('교통 최종 조회에서 다른 ETag를 받으면 다른 쓰기와 섞인 저장을 완료로 알리지 않는다', async () => {
+  jest.mocked(trips.createTrip).mockResolvedValueOnce(response(etag1));
+  jest
+    .mocked(trips.fetchTrip)
+    .mockResolvedValueOnce(response(etag3))
+    .mockResolvedValueOnce(response(`"trip-${tripId}-r9"`));
+  await createTripPersistenceActions().saveTrip(conditions);
+  expect(useTripStore.getState().saved).toBe(false);
+  expect(useTripStore.getState().etag).toBe(`"trip-${tripId}-r9"`);
+});
+
+test('활동 시간 다음 최신 ETag로 숙소·스타일을 저장하고 최종 재조회 뒤 완료한다', async () => {
+  jest.mocked(trips.createTrip).mockResolvedValueOnce(response(etag1));
+  const finalRead = deferred<ReturnType<typeof response>>();
+  jest.mocked(trips.fetchTrip).mockReturnValueOnce(finalRead.promise);
+  const saving = createTripPersistenceActions().saveTrip(conditions);
+  for (let i = 0; i < 10; i += 1) await Promise.resolve();
+  expect(trips.replacePlannerConditions).toHaveBeenCalledWith(
+    tripId,
+    {
+      dayAnchors: [],
+      styleCodes: ['restaurant'],
+    },
+    etag3,
+    expect.any(String),
+  );
+  expect(useTripStore.getState().saved).toBe(false);
+  finalRead.resolve(response(etag3));
+  await saving;
+  expect(useTripStore.getState().saved).toBe(true);
+});
+
+test('숙소·스타일 응답 유실 재시도는 root와 활동 시간을 반복하지 않고 같은 키를 쓴다', async () => {
+  jest.mocked(trips.createTrip).mockResolvedValueOnce(response(etag1));
+  jest
+    .mocked(trips.replacePlannerConditions)
+    .mockRejectedValueOnce(
+      new ApiError({ status: 0, code: 'CLIENT_NETWORK_ERROR' }),
+    );
+  const actions = createTripPersistenceActions();
+  await expect(actions.saveTrip(conditions)).rejects.toMatchObject({
+    code: 'CLIENT_NETWORK_ERROR',
+  });
+  await actions.saveTrip(conditions);
+  expect(trips.createTrip).toHaveBeenCalledTimes(1);
+  expect(trips.replaceDayActivityWindows).toHaveBeenCalledTimes(1);
+  const calls = jest.mocked(trips.replacePlannerConditions).mock.calls;
+  expect(calls).toHaveLength(2);
+  expect(calls[1]).toEqual(calls[0]);
+});
+
+test.each([false, true])(
+  'planner 저장과 재조회 사이 다른 버전이 나타나면 교통 저장을 시작하지 않는다 (receipt 재생=%s)',
+  async (idempotencyReplayed) => {
+    jest.mocked(trips.createTrip).mockResolvedValueOnce(response(etag1));
+    jest.mocked(trips.replacePlannerConditions).mockResolvedValueOnce({
+      ...response(etag3),
+      idempotencyReplayed,
+    });
+    jest
+      .mocked(trips.fetchTrip)
+      .mockResolvedValue(response(`"trip-${tripId}-r4"`));
+    await expect(
+      createTripPersistenceActions().saveTrip(conditions),
+    ).rejects.toMatchObject({
+      code: 'TRIP_VERSION_CONFLICT',
+    });
+    expect(transportEvents.putTransportEvent).not.toHaveBeenCalled();
+    expect(transportEvents.deleteTransportEvent).not.toHaveBeenCalled();
+    expect(useTripStore.getState().saved).toBe(false);
+    expect(useTripStore.getState().pendingTransportEvents).toBeNull();
+    expect(useTripStore.getState().pendingPlannerConditions).toBeNull();
+    expect(useTripStore.getState().etag).toBe(`"trip-${tripId}-r4"`);
+  },
+);
+
+test('최종 재조회 유실도 동일 planner 요청으로 재확인하고 완료 전 journal을 보존한다', async () => {
+  jest.mocked(trips.createTrip).mockResolvedValueOnce(response(etag1));
+  jest
+    .mocked(trips.fetchTrip)
+    .mockRejectedValueOnce(
+      new ApiError({ status: 0, code: 'CLIENT_NETWORK_ERROR' }),
+    );
+  const actions = createTripPersistenceActions();
+  await expect(actions.saveTrip(conditions)).rejects.toMatchObject({
+    code: 'CLIENT_NETWORK_ERROR',
+  });
+  expect(useTripStore.getState().pendingPlannerConditions).not.toBeNull();
+  expect(useTripStore.getState().saved).toBe(false);
+  await actions.saveTrip(conditions);
+  expect(trips.createTrip).toHaveBeenCalledTimes(1);
+  expect(trips.replaceDayActivityWindows).toHaveBeenCalledTimes(1);
+  const calls = jest.mocked(trips.replacePlannerConditions).mock.calls;
+  expect(calls[1]).toEqual(calls[0]);
+  expect(useTripStore.getState().pendingPlannerConditions).toBeNull();
+});
+
+test('활동 시간 재시도 중 스타일을 바꿔도 이전 planner snapshot을 먼저 확정한다', async () => {
+  jest.mocked(trips.createTrip).mockResolvedValueOnce(response(etag1));
+  jest.mocked(trips.updateTrip).mockResolvedValueOnce(response(etag3));
+  jest
+    .mocked(trips.replaceDayActivityWindows)
+    .mockRejectedValueOnce(
+      new ApiError({ status: 0, code: 'CLIENT_NETWORK_ERROR' }),
+    );
+  const actions = createTripPersistenceActions();
+  await expect(actions.saveTrip(conditions)).rejects.toMatchObject({
+    code: 'CLIENT_NETWORK_ERROR',
+  });
+  await actions.saveTrip({ ...conditions, styles: ['카페투어'] });
+  expect(
+    jest
+      .mocked(trips.replacePlannerConditions)
+      .mock.calls.map((call) => call[1].styleCodes),
+  ).toEqual([['restaurant'], ['cafe']]);
+});
+
+test('planner 대기 중 스타일 변경은 이전 응답으로 저장 완료 처리하지 않는다', async () => {
+  jest.mocked(trips.createTrip).mockResolvedValueOnce(response(etag1));
+  const pending =
+    deferred<Awaited<ReturnType<typeof trips.replacePlannerConditions>>>();
+  jest
+    .mocked(trips.replacePlannerConditions)
+    .mockReturnValueOnce(pending.promise);
+  const saving = createTripPersistenceActions().saveTrip(conditions);
+  for (let i = 0; i < 10; i += 1) await Promise.resolve();
+  expect(trips.replacePlannerConditions).toHaveBeenCalledTimes(1);
+  useTripStore
+    .getState()
+    .saveConditions({ ...conditions, styles: ['카페투어'] });
+  pending.resolve(response(etag3));
+  await saving;
+  expect(useTripStore.getState()).toMatchObject({
+    styles: ['카페투어'],
+    saved: false,
+  });
+});
 
 test('한국어 이동수단을 순서가 고정된 Spring enum으로 매핑하고 위치·dayTimes를 보내지 않는다', () => {
   const body = toTripCreateRequest(conditions);
@@ -139,10 +484,34 @@ test('한국어 이동수단을 순서가 고정된 Spring enum으로 매핑하�
   });
 });
 
-test('Spring에 없는 도보 전용 enum은 다른 값으로 가장하지 않고 차단한다', () => {
-  expect(() =>
-    toTripCreateRequest({ ...conditions, transport: ['walk'] }),
-  ).toThrow('도보 이동 수단은 아직 서버에 저장할 수 없어요.');
+test('도보 단독과 혼합 우선순위를 Spring walk enum으로 그대로 저장한다', () => {
+  expect(
+    toTripCreateRequest({ ...conditions, transport: ['walk'] }).transportModes,
+  ).toEqual([{ mode: 'walk', priority: 1, primary: true }]);
+  expect(
+    toTripPatchRequest({ ...conditions, transport: ['bus', 'taxi', 'walk'] })
+      .transportModes,
+  ).toEqual([
+    { mode: 'public_transit', priority: 1, primary: true },
+    { mode: 'taxi', priority: 2, primary: false },
+    { mode: 'walk', priority: 3, primary: false },
+  ]);
+});
+
+test('여행을 다시 열면 서버에 저장된 도보 선택도 복원한다', async () => {
+  jest.mocked(trips.fetchTrips).mockResolvedValue({
+    items: [trip],
+    page: { size: 20, hasNext: false, nextCursor: null },
+  });
+  jest.mocked(trips.fetchTrip).mockResolvedValue({
+    ...response(etag1),
+    data: {
+      ...trip,
+      transportModes: [{ mode: 'walk', priority: 1, primary: true }],
+    },
+  });
+  await createTripPersistenceActions().hydrateLatestTrip();
+  expect(useTripStore.getState().transport).toEqual(['walk']);
 });
 
 test('여행 기간은 YYYY-MM-DD 순서와 30일 한도를 요청 전에 검증한다', () => {
@@ -455,6 +824,32 @@ test('입출도 PUT/DELETE는 +09:00 payload와 ETag만 전달하고 GPS를 포�
   expect(useTripStore.getState().etag).toBe(etag3);
 });
 
+test.each(['flight', 'ferry'] as const)(
+  '%s 터미널 미지정은 원문이나 위치를 만들지 않고 서버에 전달한다',
+  async (transportType) => {
+    useTripStore.setState({ tripId, etag: etag1, serverTrip: trip });
+    const event: transportEvents.TransportEventRequest = {
+      eventType: 'arrival',
+      transportType,
+      terminalPlaceId: null,
+      customTerminalName: null,
+      scheduledAt: '2026-09-10T09:00:00+09:00',
+      transportNumber: null,
+      note: null,
+    };
+    jest.mocked(transportEvents.putTransportEvent).mockResolvedValue({
+      data: { eventType: 'arrival', deleted: false, event },
+      etag: etag2,
+    } as never);
+    await createTripPersistenceActions().putTransportEvent(event);
+    expect(transportEvents.putTransportEvent).toHaveBeenCalledWith(
+      tripId,
+      event,
+      etag1,
+    );
+  },
+);
+
 test('입출도 터미널 XOR, +09:00, 도착-출발 순서를 요청 전에 검증한다', async () => {
   useTripStore.setState({
     tripId,
@@ -556,6 +951,8 @@ test('상세 복원은 서버 활동 시간과 숙소 및 입출도 정보를 �
       etag: etag1,
       key: 'old',
       fingerprint: 'old',
+      plannerConditions: { dayAnchors: [], styleCodes: [] },
+      transportDrafts: { arrival: null, departure: null },
     },
     dayTimes: { '2025-01-01': { start: '01:00', end: '02:00' } },
   });
@@ -622,6 +1019,13 @@ test('서버에 저장된 입출도와 숙소의 실제 값만 복원하며 좌�
     ...trip,
     accommodations: [accommodation],
     transportEvents: { arrival, departure: null },
+    plannerConditions: {
+      dayAnchors: trip.days.map((day) => ({
+        dayId: day.dayId,
+        lodgingPlaceId: accommodation.placeId!,
+      })),
+      styleCodes: [],
+    },
   };
   jest.mocked(trips.fetchTrips).mockResolvedValue({
     items: [stored],
@@ -889,7 +1293,7 @@ test('불확실한 저장 후 입력을 바꾸면 이전 요청을 먼저 확정
   expect(trips.updateTrip).toHaveBeenCalledWith(
     tripId,
     toTripPatchRequest(edited),
-    etag2,
+    etag3,
   );
 });
 
