@@ -3,7 +3,7 @@ import {
   NaverMapMarkerOverlay,
   NaverMapPathOverlay,
   NaverMapView,
-} from '@mj-studio/react-native-naver-map';
+} from '@/components/NaverMap';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
